@@ -1,0 +1,8 @@
+{"id": "tel_001", "timestamp": "2026-05-21T10:00:00Z", "subject": "Facility discharge", "measurement": "85 ppm sulfur dioxide"}
+{"id": "tel_002", "timestamp": "2026-05-21T10:15:00Z", "subject": "Facility discharge", "measurement": "92 ppm sulfur dioxide"}
+{"id": "tel_003", "timestamp": "2026-05-21T10:30:00Z", "subject": "Facility discharge", "measurement": "78 ppm sulfur dioxide"}
+{"id": "tel_004", "timestamp": "2026-05-21T10:45:00Z", "subject": "Nitrogen oxide emissions", "measurement": "65 ppm during operating hours"}
+{"id": "tel_005", "timestamp": "2026-05-21T11:00:00Z", "subject": "Wastewater discharge pH", "measurement": "7.2"}
+{"id": "tel_006", "timestamp": "2026-05-21T11:15:00Z", "subject": "Nitrogen oxide emissions", "measurement": "72 ppm during operating hours"}
+{"id": "tel_007", "timestamp": "2026-05-21T11:30:00Z", "subject": "Facility discharge", "measurement": "88 ppm sulfur dioxide"}
+{"id": "tel_008", "timestamp": "2026-05-21T11:45:00Z", "subject": "Wastewater discharge pH", "measurement": "7.5"}

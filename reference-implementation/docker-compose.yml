@@ -1,0 +1,191 @@
+version: '3.8'
+
+services:
+  # MiLM Inference Engine
+  milm:
+    build:
+      context: .
+      dockerfile: Dockerfile.milm
+    container_name: milm-service
+    ports:
+      - "8000:8000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      MILM_MODEL: ${MILM_MODEL:-claude-opus-4-6}
+      MILM_TEMPERATURE: ${MILM_TEMPERATURE:-0}
+      MILM_MAX_TOKENS: ${MILM_MAX_TOKENS:-500}
+      MILM_LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      KG_PATH: /app/kg.json
+      LEDGER_DB: sqlite:////data/ledger.db
+    volumes:
+      - ./examples/knowledge-graphs:/app/kg:ro
+      - milm-data:/data
+    networks:
+      - ski-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Data Integration Sidecar
+  sidecar:
+    build:
+      context: .
+      dockerfile: Dockerfile.sidecar
+    container_name: ski-sidecar
+    environment:
+      MILM_ENDPOINT: http://milm:8000
+      TELEMETRY_SOURCE: ${TELEMETRY_SOURCE:-kafka}
+      TELEMETRY_BATCH_SIZE: ${TELEMETRY_BATCH_SIZE:-100}
+      HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-60}
+      KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
+      KAFKA_TOPIC: ${KAFKA_TOPIC:-operational-data}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    volumes:
+      - ./examples/telemetry:/data:ro
+    networks:
+      - ski-network
+    depends_on:
+      - milm
+      - kafka
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL for Audit Ledger
+  postgres:
+    image: postgres:15-alpine
+    container_name: ski-ledger-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ski_ledger}
+      POSTGRES_USER: ${POSTGRES_USER:-ski}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ski_password}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./src/ledger/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    networks:
+      - ski-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ski"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Kafka for Telemetry (optional, used if TELEMETRY_SOURCE=kafka)
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: ski-kafka
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - ski-network
+    depends_on:
+      - zookeeper
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # Zookeeper for Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: ski-zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_SYNC_LIMIT: 2
+      ZOOKEEPER_INIT_LIMIT: 5
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper
+    networks:
+      - ski-network
+    restart: unless-stopped
+
+  # Prometheus for Metrics
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ski-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - ski-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Grafana for Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ski-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    networks:
+      - ski-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # pgAdmin for Database Management (optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ski-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - ski-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  milm-data:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
+  pgadmin-data:
+  kafka-data:
+  zookeeper-data:
+
+networks:
+  ski-network:
+    driver: bridge
