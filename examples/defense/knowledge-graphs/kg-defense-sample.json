@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "name": "Defense Sector - Compliance and Security",
+    "version": "v1.0",
+    "sector": "defense",
+    "description": "Knowledge Graph for defense contracting compliance and security requirements",
+    "created": "2026-05-21T10:00:00Z",
+    "regulatory_framework": "DFARS, CMMC, NIST SP 800-171"
+  },
+  "rules": [
+    {
+      "id": "d001",
+      "subject": "Controlled unclassified information (CUI)",
+      "relation": "must_comply_with",
+      "object": "NIST SP 800-171 security controls",
+      "source_document": "DFARS Clause 252.204-7012",
+      "source_clause": "Safeguarding CUI",
+      "confidence": "EXPLICIT",
+      "reasoning": "Federal contractors must implement NIST 800-171 for CUI protection"
+    },
+    {
+      "id": "d002",
+      "subject": "CMMC compliance",
+      "relation": "must_achieve_minimum",
+      "object": "CMMC Level required by contract",
+      "source_document": "DFARS Rule 2019-4 (Updated)",
+      "source_clause": "Cybersecurity Maturity",
+      "confidence": "EXPLICIT",
+      "reasoning": "Defense contractors must achieve specified CMMC maturity level"
+    },
+    {
+      "id": "d003",
+      "subject": "Access control audit",
+      "relation": "must_occur_at_least",
+      "object": "Annually",
+      "source_document": "NIST SP 800-171 Rev 2",
+      "source_clause": "AC-2 Account Management",
+      "confidence": "EXPLICIT",
+      "reasoning": "Annual access control audits required for CUI protection"
+    },
+    {
+      "id": "d004",
+      "subject": "Incident response",
+      "relation": "must_be_reported_within",
+      "object": "72 hours of discovery",
+      "source_document": "DFARS Clause 252.204-7012",
+      "source_clause": "Incident Reporting",
+      "confidence": "EXPLICIT",
+      "reasoning": "Security incidents involving CUI must be reported within 72 hours"
+    }
+  ]
+}
