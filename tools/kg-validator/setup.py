@@ -32,7 +32,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "pydantic==2.6.3",
-        "click==8.1.7",
+        "click==8.1.8",
         "python-dotenv==1.0.1",
         "rapidfuzz==3.7.0",
         "jinja2==3.1.3",
