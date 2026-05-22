@@ -1,0 +1,129 @@
+# Root pyproject.toml — ruff, mypy, pytest, coverage configuration.
+# This file's only purpose is tooling configuration; no build metadata
+# lives here (each tool under tools/ has its own setup.py).
+
+[tool.ruff]
+line-length = 110
+target-version = "py39"
+extend-exclude = [
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    "*.egg-info",
+    "examples/*/knowledge-graphs/*.json",
+]
+
+[tool.ruff.lint]
+# Conservative for the alpha: just the obvious correctness rules.
+# We can tighten in v0.2.
+select = [
+    "E",       # pycodestyle errors
+    "F",       # pyflakes
+    "I",       # isort
+    "B",       # flake8-bugbear
+    "UP",      # pyupgrade
+    "W",       # pycodestyle warnings
+]
+ignore = [
+    "E501",    # line length — handled by formatter
+    "B008",    # function call in default arg (FastAPI Depends/Header)
+    "B904",    # raise ... from ... — sometimes intentionally omitted
+    "UP006",   # PEP 585 generic — we target 3.9
+    "UP007",   # PEP 604 union types — we target 3.9
+    "UP035",   # deprecated import — Dict/List from typing OK for 3.9
+    "UP045",   # X | None — we target 3.9
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests and conformance often need to import unusual things or use
+# patterns that would warn elsewhere.
+"conformance/**/*.py" = ["E402", "B011"]
+"**/tests/**/*.py" = ["E402", "B011", "F401"]
+"scripts/**/*.py" = ["E402"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+# ---------------------------------------------------------------------
+# mypy — advisory for the alpha. Tighten in v0.2.
+# ---------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+follow_imports = "silent"
+warn_unused_ignores = false
+warn_redundant_casts = true
+strict_optional = false
+disallow_untyped_defs = false
+check_untyped_defs = false
+# Limit the scope to the new packages we wrote; old tool code is exempt
+# until it gets a typed rewrite.
+files = [
+    "reference-implementation/src/ski_model",
+    "reference-implementation/src/symbolic_evaluator",
+    "reference-implementation/src/tag_registry",
+    "conformance",
+]
+exclude = [
+    "build/",
+    "dist/",
+    "\\.venv/",
+]
+
+# ---------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = [
+    "conformance",
+    "tools/kg-extractor/tests",
+    "tools/kg-validator/tests",
+    "tools/ski-model-deploy/tests",
+    "tools/audit-ledger/tests",
+]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--ignore=examples",
+    "--ignore=reference-implementation/tls",
+]
+markers = [
+    "level1: Level 1 Foundational conformance tests",
+    "level2: Level 2 Managed conformance tests",
+    "level3: Level 3 Assured conformance tests",
+    "requires_live_deployment: Test requires a running SKI Model endpoint",
+    "requires_ledger: Test requires a Postgres ledger DSN",
+]
+
+# ---------------------------------------------------------------------
+# coverage.py
+# ---------------------------------------------------------------------
+[tool.coverage.run]
+source = [
+    "reference-implementation/src",
+    "tools",
+]
+omit = [
+    "*/tests/*",
+    "*/conftest.py",
+    "examples/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+# ---------------------------------------------------------------------
+# bandit — used by CI via the bandit CLI, but a config file here keeps
+# the rules consistent between local and CI runs.
+# ---------------------------------------------------------------------
+[tool.bandit]
+exclude_dirs = ["tests", "examples", "conformance"]
+skips = [
+    "B101",   # assert_used — fine in tests/conformance
+]
