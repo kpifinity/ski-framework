@@ -9,7 +9,6 @@ v2.1 changes:
     model name, and model file SHA-256 to make compilation auditable.
 """
 
-from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional
 

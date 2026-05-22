@@ -4,7 +4,8 @@ Utility functions for KG Validator
 
 import json
 import os
-from typing import List, Dict, Any
+from typing import Any, List
+
 from .models import ComplianceRule
 
 
