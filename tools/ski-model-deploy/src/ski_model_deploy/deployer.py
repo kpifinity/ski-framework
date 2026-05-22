@@ -18,7 +18,7 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Dict, Optional
 
 from .models import DeploymentConfig, DeploymentMode, DeploymentStatus, HealthCheck
 from .utils import generate_docker_compose, load_config, save_config
