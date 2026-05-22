@@ -31,7 +31,7 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "click==8.1.7",
-        "pydantic==2.6.3",
+        "pydantic==2.13.4",
         "python-dotenv==1.0.1",
         "pyyaml==6.0.1",
         "jinja2==3.1.3",
