@@ -36,7 +36,7 @@ setup(
         "pyyaml==6.0.1",
         "jinja2==3.1.3",
         "httpx==0.27.0",
-        "cryptography==42.0.5",
+        "cryptography==48.0.0",
         "docker==7.0.0",
         "psycopg[binary]==3.1.18",
     ],
