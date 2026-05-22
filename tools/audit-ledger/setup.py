@@ -21,7 +21,7 @@ setup(
         "python-dotenv==1.0.1",
         "jinja2==3.1.3",
         "pyyaml==6.0.1",
-        "httpx==0.27.0",
+        "httpx==0.28.1",
         "tabulate==0.9.0",
     ],
     entry_points={
