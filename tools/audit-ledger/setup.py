@@ -18,7 +18,7 @@ setup(
         "sqlalchemy==2.0.27",
         "click==8.1.7",
         "pydantic==2.6.3",
-        "python-dotenv==1.0.1",
+        "python-dotenv==1.2.1",
         "jinja2==3.1.3",
         "pyyaml==6.0.1",
         "httpx==0.27.0",
