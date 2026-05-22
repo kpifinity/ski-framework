@@ -38,7 +38,7 @@ setup(
         "httpx==0.27.0",
         "cryptography==42.0.5",
         "docker==7.0.0",
-        "psycopg[binary]==3.1.18",
+        "psycopg[binary]==3.2.13",
     ],
     entry_points={
         "console_scripts": [
