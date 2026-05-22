@@ -116,6 +116,9 @@ class TestExtractionResult:
             total_rules_extracted=2,
             rules_by_confidence={"EXPLICIT": 1, "DISCRETIONARY": 1},
             extraction_duration_seconds=1.0,
+            backend="anthropic",
+            model_used="claude-opus",
+            temperature=0.0,
         )
 
         result = ExtractionResult(rules=[rule1, rule2], metadata=metadata)
