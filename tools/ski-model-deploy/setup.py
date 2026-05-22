@@ -35,7 +35,7 @@ setup(
         "python-dotenv==1.0.1",
         "pyyaml==6.0.1",
         "jinja2==3.1.3",
-        "httpx==0.27.0",
+        "httpx==0.28.1",
         "cryptography==42.0.5",
         "docker==7.0.0",
         "psycopg[binary]==3.1.18",
