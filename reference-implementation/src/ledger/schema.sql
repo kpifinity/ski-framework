@@ -4,7 +4,7 @@
 -- Append-only, hash-chained ledger of evaluation verdicts.
 --
 -- Notes:
---  * `confidence_level` was REMOVED in v2.1 — confidence scores are
+--  * Confidence scoring was REMOVED in v2.1 — confidence scores are
 --    architecturally prohibited (B3.1 + Axiom 2 Bounded Determinism).
 --  * Verdicts use the five-verdict taxonomy:
 --      CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE, DISCRETIONARY.

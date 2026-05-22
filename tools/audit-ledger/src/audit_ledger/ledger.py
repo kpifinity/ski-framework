@@ -15,14 +15,12 @@ from __future__ import annotations
 
 import csv
 import gzip
-import hashlib
 import json
 import os
-import shlex
 import shutil
 import subprocess
 from datetime import datetime
-from typing import Any, Iterable, List, Optional, Tuple
+from typing import Any, Iterable, List, Optional
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -389,7 +387,10 @@ class Ledger:
                 ).all()
             }
             total = sum(verdict_counts.values())
-            pct = lambda key: ((verdict_counts.get(key, 0) / total) * 100) if total else 0
+
+            def pct(key: str) -> float:
+                return ((verdict_counts.get(key, 0) / total) * 100) if total else 0.0
+
             verdict_summary = VerdictSummary(
                 total=total,
                 clear=verdict_counts.get("CLEAR", 0),

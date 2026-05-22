@@ -151,7 +151,7 @@ class Deployer:
             return False
         headers = {"x-api-key": api_key} if api_key else {}
         try:
-            r = httpx.get(f"{endpoint}/api/health", headers=headers, timeout=5.0, verify=False)
+            r = httpx.get(f"{endpoint}/api/health", headers=headers, timeout=5.0, verify=False)  # nosec B501 — self-signed certs in dev
             return r.status_code == 200
         except Exception:
             return False

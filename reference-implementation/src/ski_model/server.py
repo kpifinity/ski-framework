@@ -377,7 +377,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "ski_model.server:app",
-        host=os.getenv("HOST", "0.0.0.0"),
+        host=os.getenv("HOST", "0.0.0.0"),  # nosec B104 — container default
         port=int(os.getenv("PORT", "8000")),
         workers=1,
         reload=False,

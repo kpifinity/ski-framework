@@ -14,7 +14,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import ssl
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -165,7 +164,7 @@ async def _heartbeat_loop() -> None:
 if __name__ == "__main__":
     uvicorn.run(
         "sidecar.main:app",
-        host=os.getenv("HOST", "0.0.0.0"),
+        host=os.getenv("HOST", "0.0.0.0"),  # nosec B104 — container default
         port=int(os.getenv("PORT", "8001")),
         workers=1,
         reload=False,
