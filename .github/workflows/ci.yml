@@ -18,7 +18,7 @@ jobs:
     name: SKI conformance tests (Level 1)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -31,7 +31,7 @@ jobs:
     name: CodeQL (Python)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: github/codeql-action/init@v3
         with:
           languages: python
@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -67,7 +67,7 @@ jobs:
       matrix:
         python: ["3.9", "3.10", "3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
@@ -86,7 +86,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -123,7 +123,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -156,7 +156,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Build SKI Model image
         run: docker build -f reference-implementation/Dockerfile.ski-model -t ski-model:ci reference-implementation
       - name: Build Sidecar image
@@ -182,7 +182,7 @@ jobs:
     continue-on-error: true
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
       - name: Verify all PR commits are signed
