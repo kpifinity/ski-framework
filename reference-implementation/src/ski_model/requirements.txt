@@ -1,6 +1,6 @@
 # SKI Model — pinned dependencies.
 # Update via pip-compile; do not loosen pins without a security review.
-fastapi==0.110.0
+fastapi==0.136.1
 uvicorn[standard]==0.27.1
 pydantic==2.6.3
 python-dotenv==1.0.1
