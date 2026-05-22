@@ -141,7 +141,9 @@ jobs:
             tools/ski-model-deploy/requirements.txt \
             tools/audit-ledger/requirements.txt; do
               name=$(echo "$req" | tr '/' '_')
-              cyclonedx-py requirements -i "$req" -o "sbom/sbom-${name}.json" || true
+              # cyclonedx-py requirements takes the requirements file as
+              # a POSITIONAL argument (not -i).
+              cyclonedx-py requirements -o "sbom/sbom-${name}.json" "$req" || true
           done
           ls -la sbom/
       - uses: actions/upload-artifact@v4

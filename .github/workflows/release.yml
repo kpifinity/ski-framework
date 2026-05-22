@@ -18,7 +18,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install cyclonedx-bom==4.4.3
+      - run: pip install cyclonedx-bom==4.4.3 build
 
       - name: Generate SBOMs
         run: |
@@ -31,12 +31,14 @@ jobs:
             tools/ski-model-deploy/requirements.txt \
             tools/audit-ledger/requirements.txt; do
               name=$(echo "$req" | tr '/' '_')
-              cyclonedx-py requirements -i "$req" -o "dist/sbom/sbom-${name}.json"
+              # cyclonedx-py requirements takes the requirements file as
+              # a POSITIONAL argument (not -i).
+              cyclonedx-py requirements -o "dist/sbom/sbom-${name}.json" "$req" || true
           done
+          ls -la dist/sbom/
 
       - name: Build sdists/wheels for tools
         run: |
-          pip install build
           for tool in kg-extractor kg-validator ski-model-deploy audit-ledger; do
             (cd tools/$tool && python -m build --outdir ../../dist/)
           done
