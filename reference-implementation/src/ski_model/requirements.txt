@@ -8,7 +8,7 @@ psycopg[binary]==3.1.18
 sqlalchemy==2.0.27
 pyyaml==6.0.1
 prometheus-client==0.20.0
-httpx==0.27.0
+httpx==0.28.1
 cryptography==42.0.5
 # Optional non-conformant demo backend. Remove this line in production builds
 # to eliminate the possibility of cloud-API inference at build time.
