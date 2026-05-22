@@ -42,7 +42,7 @@ setup(
         "httpx==0.27.0",
         "pypdf==4.2.0",
         "python-docx==1.1.0",
-        "anthropic==0.21.3",
+        "anthropic==0.104.0",
         "openai==1.16.2",
     ],
     entry_points={
