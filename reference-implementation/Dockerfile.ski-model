@@ -1,0 +1,31 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# System dependencies — curl is used by the container healthcheck only.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Python dependencies
+COPY src/ski_model/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# SKI Model source code
+COPY src/ski_model/ ./ski_model/
+COPY src/symbolic_evaluator/ ./symbolic_evaluator/
+COPY src/tag_registry/ ./tag_registry/
+
+# Runtime data directory
+RUN mkdir -p /data /app/tls
+
+# Run as a non-root user
+RUN useradd --create-home --shell /bin/false --uid 10001 ski && \
+    chown -R ski:ski /app /data
+USER ski
+
+EXPOSE 8000
+
+# The server enforces SKI_MODEL_WORKERS=1 and uses uvicorn's lifespan
+# context. See ski_model/server.py.
+CMD ["python", "-m", "ski_model.server"]

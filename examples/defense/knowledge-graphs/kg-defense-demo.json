@@ -1,0 +1,72 @@
+{
+  "metadata": {
+    "name": "Defense demo KG",
+    "version": "v0.1-demo",
+    "sector": "defense",
+    "description": "DEMO ONLY — three illustrative rules. NOT a production CUI / NIST 800-171 KG. See examples/README.md.",
+    "compiled_at": "2026-05-22T00:00:00Z",
+    "source_document": "Illustrative — derived from publicly summarised NIST SP 800-171 references for demo purposes only",
+    "source_document_version": "demo-2026-05"
+  },
+  "rules": [
+    {
+      "id": "defense.cui.encryption_at_rest",
+      "subject": "data.cui.storage",
+      "relation": "must_equal",
+      "object": {"operator": "eq", "metric": "encrypted_at_rest", "value": true},
+      "predicate": {"operator": "eq", "metric": "encrypted_at_rest", "value": true},
+      "track": "symbolic",
+      "confidence": "EXPLICIT",
+      "reasoning": "Demo rule: CUI at rest must be encrypted.",
+      "source_clause": "demo-NIST-800-171-3.13.16",
+      "source_document_version": "demo-2026-05",
+      "effective_date": "2026-01-01",
+      "sunset_date": null,
+      "precedence": 100,
+      "conflicts_with": []
+    },
+    {
+      "id": "defense.access.mfa_required",
+      "subject": "access.privileged",
+      "relation": "must_equal",
+      "object": {"operator": "eq", "metric": "mfa_present", "value": true},
+      "predicate": {"operator": "eq", "metric": "mfa_present", "value": true},
+      "track": "symbolic",
+      "confidence": "EXPLICIT",
+      "reasoning": "Demo rule: privileged access requires multi-factor authentication.",
+      "source_clause": "demo-NIST-800-171-3.5.3",
+      "source_document_version": "demo-2026-05",
+      "effective_date": "2026-01-01",
+      "sunset_date": null,
+      "precedence": 100,
+      "conflicts_with": []
+    },
+    {
+      "id": "defense.incident.review",
+      "subject": "incident.security.candidate",
+      "relation": "requires_human_review",
+      "object": {"operator": "discretionary", "metric": "security_incident"},
+      "predicate": {"operator": "exists", "metric": "security_incident"},
+      "track": "llm",
+      "confidence": "DISCRETIONARY",
+      "reasoning": "Demo rule: candidate security incidents require human review and classification.",
+      "source_clause": "demo-incident-discretionary",
+      "source_document_version": "demo-2026-05",
+      "effective_date": "2026-01-01",
+      "sunset_date": null,
+      "precedence": 200,
+      "conflicts_with": []
+    }
+  ],
+  "tag_registry": {
+    "data.cui.storage":               "defense.cui.encryption_at_rest",
+    "access.privileged":              "defense.access.mfa_required",
+    "incident.security.candidate":    "defense.incident.review"
+  },
+  "signature": {
+    "algorithm": "DEMO_UNSIGNED",
+    "public_key_pem": "",
+    "value_hex": "",
+    "note": "Demo only. Non-conformant."
+  }
+}

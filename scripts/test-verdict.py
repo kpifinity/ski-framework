@@ -1,133 +1,104 @@
 #!/usr/bin/env python3
+"""test-verdict.py — submit JSONL telemetry directly to the SKI Model and tally verdicts.
 
+Rejects records that carry a `rule_id` — producers must not pre-route.
 """
-Test Verdicts - Submit telemetry and test verdict results
-"""
+from __future__ import annotations
 
-import json
-import sys
 import argparse
-import requests
-from pathlib import Path
+import json
+import os
+import sys
+
+import httpx
 
 
-def load_telemetry(file_path):
-    """Load telemetry from JSONL file"""
-    telemetry = []
-
-    try:
-        with open(file_path, "r") as f:
-            for line in f:
-                if line.strip():
-                    telemetry.append(json.loads(line))
-    except FileNotFoundError:
-        print(f"✗ File not found: {file_path}")
-        sys.exit(1)
-    except json.JSONDecodeError as e:
-        print(f"✗ Invalid JSON in {file_path}: {e}")
-        sys.exit(1)
-
-    return telemetry
+VERDICT_KEYS = ("CLEAR", "FLAG", "NULL_UNMAPPED", "NULL_STALE", "DISCRETIONARY")
 
 
-def submit_telemetry(endpoint, telemetry):
-    """Submit telemetry to MiLM and get verdict"""
-    try:
-        response = requests.post(
-            f"{endpoint}/api/evaluate",
-            json=telemetry,
-            timeout=30
-        )
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.ConnectionError:
-        print(f"✗ Connection refused: {endpoint}")
-        print("  Is MiLM running? Check: curl http://localhost:8000/api/health")
-        sys.exit(1)
-    except requests.exceptions.Timeout:
-        print(f"✗ Request timeout: {endpoint}")
-        sys.exit(1)
-    except requests.exceptions.HTTPError as e:
-        print(f"✗ HTTP Error: {e}")
-        sys.exit(1)
-
-
-def main():
-    parser = argparse.ArgumentParser(description="Test verdict evaluation")
-    parser.add_argument("--endpoint", "-e", default="http://localhost:8000",
-                       help="MiLM endpoint (default: http://localhost:8000)")
-    parser.add_argument("--telemetry", "-t", default="examples/telemetry/sample-data.jsonl",
-                       help="Telemetry JSONL file")
-    parser.add_argument("--output", "-o", help="Output file for results")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
-
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--endpoint", "-e", default=os.getenv("SKI_MODEL_ENDPOINT", "https://localhost:8000"))
+    parser.add_argument("--api-key", default=os.getenv("SKI_API_KEY", ""))
+    parser.add_argument("--telemetry", "-t", default="examples/energy/telemetry/sample.jsonl")
+    parser.add_argument("--output", "-o", help="Write the verdicts to a JSON file.")
+    parser.add_argument("--verbose", "-v", action="store_true")
+    parser.add_argument("--insecure", action="store_true")
     args = parser.parse_args()
 
-    # Load telemetry
-    print(f"\n📊 Testing Verdicts\n")
-    print(f"MiLM Endpoint: {args.endpoint}")
-    print(f"Telemetry File: {args.telemetry}\n")
+    headers = {"x-api-key": args.api_key} if args.api_key else {}
 
-    telemetry_records = load_telemetry(args.telemetry)
-    print(f"Loaded {len(telemetry_records)} telemetry records")
+    if not os.path.exists(args.telemetry):
+        print(f"✗ File not found: {args.telemetry}", file=sys.stderr)
+        return 1
 
-    # Check MiLM health
-    print(f"\n🔍 Checking MiLM health...")
-    try:
-        response = requests.get(f"{args.endpoint}/api/health", timeout=5)
-        health = response.json()
-        print(f"✓ MiLM is running")
-        print(f"  Knowledge Graph loaded: {health.get('kg_loaded')}")
-        print(f"  Verdicts produced: {health.get('verdicts_produced')}")
-    except Exception as e:
-        print(f"✗ MiLM health check failed: {e}")
-        print("  Make sure MiLM is running: docker-compose up -d")
-        sys.exit(1)
+    records: list[dict] = []
+    with open(args.telemetry, "r") as f:
+        for lineno, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = json.loads(line)
+            except json.JSONDecodeError as exc:
+                print(f"✗ {args.telemetry}:{lineno}: invalid JSON ({exc})", file=sys.stderr)
+                return 1
+            if "rule_id" in rec:
+                print(
+                    f"✗ {args.telemetry}:{lineno}: contains a `rule_id` — "
+                    "producers must not pre-route to a rule (B4.3).",
+                    file=sys.stderr,
+                )
+                return 1
+            records.append(rec)
 
-    # Submit telemetry and get verdicts
-    print(f"\n📬 Submitting telemetry...\n")
+    counts: dict[str, int] = {v: 0 for v in VERDICT_KEYS}
+    verdicts: list[dict] = []
 
-    verdicts = []
-    verdict_counts = {"CLEAR": 0, "FLAG": 0, "NULL": 0, "DISCRETIONARY": 0}
+    with httpx.Client(timeout=30.0, verify=not args.insecure) as client:
+        # Quick health probe.
+        try:
+            client.get(args.endpoint.rstrip("/") + "/api/health", headers=headers).raise_for_status()
+        except httpx.HTTPError as exc:
+            print(f"✗ Cannot reach SKI Model: {exc}", file=sys.stderr)
+            return 1
 
-    for i, telemetry in enumerate(telemetry_records, 1):
-        print(f"  [{i}/{len(telemetry_records)}] Evaluating: {telemetry.get('subject')}", end="")
+        for i, rec in enumerate(records, start=1):
+            # Adapt the older sample format to the v2.1 contract:
+            #   telemetry_id, timestamp, subject, measurement.
+            payload = {
+                "telemetry_id": rec.get("telemetry_id") or rec.get("id") or f"tel_{i}",
+                "timestamp": rec.get("timestamp"),
+                "subject": rec.get("subject"),
+                "measurement": rec.get("measurement") or {k: v for k, v in rec.items() if k not in ("id", "timestamp", "subject", "telemetry_id")},
+            }
+            try:
+                resp = client.post(args.endpoint.rstrip("/") + "/api/evaluate", json=payload, headers=headers)
+                resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                print(f"✗ {i}: HTTP error: {exc}", file=sys.stderr)
+                continue
+            v = resp.json()
+            verdicts.append(v)
+            counts[v.get("verdict", "")] = counts.get(v.get("verdict", ""), 0) + 1
+            print(f"  [{i}/{len(records)}] {payload['subject']:<40} → {v.get('verdict')}")
+            if args.verbose:
+                print(f"        rule_id={v.get('rule_id')!r}  reasoning={v.get('reasoning')!r}")
 
-        verdict = submit_telemetry(args.endpoint, telemetry)
-        verdicts.append(verdict)
-
-        verdict_type = verdict.get("verdict", "UNKNOWN")
-        verdict_counts[verdict_type] = verdict_counts.get(verdict_type, 0) + 1
-
-        print(f" → {verdict_type}")
-
-        if args.verbose:
-            print(f"        Reasoning: {verdict.get('reasoning')}")
-
-    # Summary
     print("\n" + "=" * 50)
-    print("Verdict Summary:")
+    print("Verdict summary")
     print("=" * 50)
-    for verdict_type, count in verdict_counts.items():
-        percentage = (count / len(telemetry_records) * 100) if telemetry_records else 0
-        print(f"{verdict_type:15} {count:3} ({percentage:5.1f}%)")
+    for v in VERDICT_KEYS:
+        pct = (counts[v] / len(records) * 100) if records else 0
+        print(f"  {v:<16} {counts[v]:>4}  ({pct:5.1f}%)")
 
-    # Save results if requested
     if args.output:
-        results = {
-            "total_verdicts": len(verdicts),
-            "verdict_counts": verdict_counts,
-            "verdicts": verdicts,
-            "endpoint": args.endpoint
-        }
-
         with open(args.output, "w") as f:
-            json.dump(results, f, indent=2)
+            json.dump({"counts": counts, "verdicts": verdicts}, f, indent=2)
+        print(f"\nResults written to {args.output}")
 
-        print(f"\n✓ Results saved to: {args.output}")
-
-    print("\n✓ Verdict testing complete")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

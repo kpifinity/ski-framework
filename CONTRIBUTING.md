@@ -1,174 +1,109 @@
-# Contributing to SKI Framework
+# Contributing to the SKI Framework
 
-Thank you for your interest in contributing to the SKI Framework! We welcome contributions from the community.
+> **Status reminder:** SKI is in **early alpha**. The specification is stable at v2.1; the reference implementation and tooling are evolving rapidly. Expect breaking changes before v1.0.
 
-## Ways to Contribute
+Thank you for your interest in contributing. SKI is an open-core project: the framework specification and the reference tooling live here; the proprietary Knowledge Graph libraries live in a private KpiFinity repository and are not accessible from this one. See [Open / proprietary boundary](#open--proprietary-boundary) below.
 
-### 1. Report Issues or Suggest Improvements
-- Found a bug? Open an issue on [GitHub Issues](https://github.com/kpifinity/ski-framework/issues)
-- Have an idea? Start a discussion on [GitHub Discussions](https://github.com/kpifinity/ski-framework/discussions)
+## Ways to contribute
 
-### 2. Improve Documentation
-- Fix typos or clarify confusing sections
-- Add examples or use cases
-- Improve diagrams or explanations
-- Submit a pull request with your improvements
+- **Report bugs** or suggest improvements via [GitHub Issues](https://github.com/kpifinity/ski-framework/issues). Use the issue templates so reports include the information we need.
+- **Improve the specification** under `docs/`. Spec changes go through a longer review than code changes — see [Specification changes](#specification-changes).
+- **Strengthen the reference implementation.** The Symbolic Evaluator, SKI Model wrapper, Tag Registry, and audit ledger all benefit from additional test coverage and adversarial scenarios.
+- **Add conformance tests.** New Level 1 / Level 2 / Level 3 tests are some of the highest-leverage contributions you can make. See [conformance/README.md](./conformance/README.md).
+- **Build MCP connectors** or telemetry adapters for new data sources.
 
-### 3. Develop Tools or Connectors
-- Build MCP connectors for new data sources
-- Develop tooling for Knowledge Graph extraction or validation
-- Create deployment automation scripts
-- Contribute reference implementations
+## Open / proprietary boundary
 
-### 4. Participate in Community
-- Answer questions in [GitHub Discussions](https://github.com/kpifinity/ski-framework/discussions)
-- Share your implementation experience
-- Contribute sector-specific examples
-- Help translate documentation
+This repository contains:
+- The SKI Framework specification.
+- The reference implementation (Symbolic Evaluator, SKI Model wrapper, Tag Registry, audit ledger, sidecar).
+- Four CLI tools (`kg-extractor`, `kg-validator`, `ski-model-deploy`, `audit-ledger`).
+- A conformance test suite.
+- **Demo-only** example KGs and telemetry data — illustrative, never production-grade.
 
-## Getting Started
+This repository does **not** contain:
+- The commercial Knowledge Graph libraries (energy, finance, manufacturing, defense).
+- Sector-specific MCP connectors with KpiFinity support contracts attached.
+- Implementation playbooks delivered as part of KpiFinity engagements.
 
-### 1. Fork the Repository
+If you propose adding a production-grade sector KG to this repo, we will redirect you to either (a) trim it to ≤5 illustrative rules with a `DEMO ONLY` banner, or (b) publish it in a community-maintained `ski-framework-examples` repository under your own attribution. The commercial-grade KGs deliberately stay out of this repository.
+
+## Getting started
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/ski-framework.git
 cd ski-framework
-```
 
-### 2. Create a Branch
-```bash
-git checkout -b feature/your-feature-name
-# or
-git checkout -b fix/your-bug-fix
-```
-
-### 3. Make Your Changes
-- Follow the code style guidelines (see below)
-- Write clear commit messages
-- Test your changes
-
-### 4. Submit a Pull Request
-- Push your branch to your fork
-- Open a pull request with a clear description
-- Link to any related issues
-
-## Code Style Guidelines
-
-### Python
-```python
-# Follow PEP 8
-# Use type hints where possible
-# Write docstrings for functions
-
-def extract_knowledge_graph(
-    source_documents: List[str],
-    llm_model: str = "claude-3"
-) -> dict:
-    """
-    Extract Knowledge Graph from regulatory documents.
-    
-    Args:
-        source_documents: List of document paths
-        llm_model: Which LLM to use for extraction
-        
-    Returns:
-        Validated Knowledge Graph dict
-    """
-    pass
-```
-
-### Documentation
-- Use clear, plain language
-- Include examples where helpful
-- Link to relevant sections
-- Keep lines under 100 characters where possible
-
-### Commit Messages
-```
-# Good commit messages follow this format:
-# [TYPE] Brief description (50 chars max)
-#
-# Longer explanation if needed. Explain WHAT and WHY, not HOW.
-
-[docs] Add Knowledge Graph extraction guide
-[fix] Correct audit ledger hash chain validation
-[feature] Add MCP connector framework
-[test] Add integration tests for MiLM deployment
-```
-
-## Pull Request Process
-
-1. **Title**: Use format `[TYPE] Brief description`
-   - Types: `[docs]`, `[fix]`, `[feature]`, `[test]`, `[refactor]`
-
-2. **Description**: Explain what and why
-   - What problem does this solve?
-   - How does it solve it?
-   - Link to related issues
-
-3. **Testing**: 
-   - Include tests for new features
-   - Verify existing tests pass
-   - Include before/after examples if applicable
-
-4. **Documentation**:
-   - Update README if needed
-   - Add docstrings for new functions
-   - Update relevant docs/
-
-5. **Review**: 
-   - Be responsive to feedback
-   - Make requested changes promptly
-   - Tag maintainers for review
-
-## Development Setup
-
-```bash
-# Clone repository
-git clone https://github.com/kpifinity/ski-framework.git
-cd ski-framework
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
+python -m venv .venv && source .venv/bin/activate     # or `.venv\Scripts\activate` on Windows
 pip install -r requirements-dev.txt
 
-# Run tests
-python -m pytest
-
-# Check code style
-flake8 .
-black --check .
+pre-commit install                                     # optional but recommended
+pytest                                                  # unit tests
+pytest conformance/                                     # conformance suite
 ```
 
-## Licensing
+The reference implementation expects a local Ollama instance. The fastest path is `docker compose -f reference-implementation/docker-compose.yml up -d ollama` and `docker exec ski-ollama ollama pull qwen2.5:7b-instruct`.
 
-By contributing to SKI Framework, you agree that your contributions will be licensed under its Creative Commons Attribution 4.0 International License.
+## Code style
 
-- Open-source framework and tools: CC BY 4.0
-- Pre-built Knowledge Graph libraries: Proprietary (KpiFinity)
-- Examples and documentation: CC BY 4.0
+- **Python** — PEP 8 enforced by `ruff` (see `pyproject.toml`). Type hints required on new code; `mypy --strict` is the CI target. Public functions get docstrings.
+- **SQL** — uppercase keywords; one statement per line; explicit column lists.
+- **Shell** — `#!/bin/bash` + `set -euo pipefail`. Pass `shellcheck` cleanly.
+- **YAML / TOML** — two-space indent; lowercase keys.
 
-## Getting Help
+## Commit messages
 
-- **Questions about the framework?** Check [SKI Framework documentation](https://skiframework.org)
-- **Need implementation help?** Contact [KpiFinity](https://kpifinity.com)
-- **Want to discuss ideas?** Start a [GitHub Discussion](https://github.com/kpifinity/ski-framework/discussions)
+Format: `[type] short subject (≤72 chars)` followed by a blank line and a body that explains what and why.
 
-## Code of Conduct
+Types: `feat`, `fix`, `docs`, `refactor`, `test`, `perf`, `build`, `ci`, `chore`, `security`.
 
-We're committed to a welcoming and inclusive community.
+```
+[feat] add NULL_STALE handling in Symbolic Evaluator
 
-- Be respectful of others
-- Assume good intent
-- Welcome new perspectives
-- Help each other learn
+Wires the freshness predicate to the telemetry buffer so rules with
+`requires_recent_within_seconds` return NULL_STALE when the buffer
+has no fresh sample. Closes #142.
+```
 
-## Thank You!
+## Pull request process
 
-We appreciate your contributions to making SKI Framework better. Every contribution—whether code, documentation, or ideas—helps the community.
+1. Fork and create a feature branch off `main`.
+2. Run `ruff check`, `mypy`, and `pytest` locally before opening the PR.
+3. Open the PR using the [template](./.github/PULL_REQUEST_TEMPLATE.md).
+4. CI must be green and the change must be reviewed by a CODEOWNER.
+5. Squash-merge is the default. Merge commits are reserved for spec-version bumps.
 
----
+PRs that change runtime behaviour are required to add or update a conformance test. PRs that change the audit ledger schema or the canonical serialization require sign-off from a CODEOWNER and a release-note entry.
 
-Questions? Open an issue or email hello@kpifinity.com
+## Specification changes
+
+Edits to `docs/` are licensed under CC BY 4.0; edits to code are licensed under Apache 2.0. A single PR may touch both. For substantive spec changes:
+
+1. Open an issue first to discuss intent.
+2. Open the PR with a `[spec]` prefix.
+3. Provide a one-paragraph migration note (what changes for adopters between v2.x and v2.y).
+4. Update `CHANGELOG.md` under the next planned version.
+
+## Security
+
+Do **not** open public issues for security vulnerabilities. Follow the disclosure process in [SECURITY.md](./SECURITY.md). Security PRs go through a private branch.
+
+## Licensing of contributions
+
+By submitting a contribution you agree to license it under:
+- **Apache License 2.0** for software (Python, Dockerfiles, shell scripts, SQL, YAML, the conformance suite).
+- **Creative Commons Attribution 4.0 International** for specification documents (`docs/`, framework PDF, diagrams).
+
+This is the same dual license already applied to the existing content of the repository. See [LICENSE](./LICENSE), [LICENSE-docs.md](./LICENSE-docs.md), and [NOTICE](./NOTICE).
+
+## Code of conduct
+
+This project follows the Contributor Covenant 2.1. See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md). Violations may be reported to <conduct@kpifinity.com>.
+
+## Getting help
+
+- Specification questions → [skiframework.org](https://skiframework.org) and [GitHub Discussions](https://github.com/kpifinity/ski-framework/discussions).
+- Implementation questions → [GitHub Issues](https://github.com/kpifinity/ski-framework/issues).
+- Commercial support → [KpiFinity](https://kpifinity.com).
+
+Thank you for helping make SKI better.

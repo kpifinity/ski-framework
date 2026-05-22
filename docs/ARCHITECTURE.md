@@ -1,369 +1,216 @@
-# SKI Framework Architecture
+# SKI Framework architecture (v2.1)
 
-## High-Level Overview
+> **License:** this document is licensed under [CC BY 4.0](../LICENSE-docs.md).
 
-SKI operates as a **two-phase system** separated by a physical boundary:
+## High-level overview
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 1: OFFLINE (Outside Sovereign Boundary)               │
-│ ─────────────────────────────────────────────────────────── │
-│ Regulatory Documents → LLM Extraction → Knowledge Graph      │
-│ (Probabilistic work happens here)                            │
-│ Output: Signed Knowledge Graph                               │
-└─────────────────────────────────────────────────────────────┘
-                           ↓
-                  One-way boundary crossing
-                  (Data diode or physical media)
-                           ↓
-┌─────────────────────────────────────────────────────────────┐
-│ PHASE 2: RUNTIME (Inside Sovereign Boundary)                │
-│ ─────────────────────────────────────────────────────────── │
-│ Operational Telemetry → MiLM Evaluation → Verdicts → Ledger │
-│ (Deterministic work happens here)                            │
-│ Output: Immutable Audit Ledger                               │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## Architecture Components
-
-### Phase 1: Knowledge Graph Compilation
-
-**Purpose**: Transform regulatory documents into machine-readable rules
-
-**Flow**:
-```
-Regulatory Documents
-        ↓
-   Extract Rules (LLM-assisted)
-        ↓
-   Structure as Triplets (Subject-Relation-Object)
-        ↓
-   Human Expert Validation
-        ↓
-   Create Precedence Rules (for conflicts)
-        ↓
-   Sign Knowledge Graph (cryptographic)
-        ↓
-   Transfer to Sovereign Boundary (one-way only)
-```
-
-**Key Requirements**:
-- Rules must be **explicitly stated** in source documents (no inference)
-- Every rule must have **verbatim traceability** to source clause
-- **Human validation** mandatory before activation
-- **Cryptographic signing** prevents tampering
-- **Version control** for full audit trail
-
-**Output**: Signed Knowledge Graph file
-
-### Phase 2: Runtime Evaluation
-
-**Purpose**: Evaluate operational telemetry against Knowledge Graph in real-time
-
-**Flow**:
-```
-Operational Telemetry
-        ↓
-   Normalize to Standard Record Format
-        ↓
-   MiLM Evaluates Against Knowledge Graph
-        ↓
-   Produce Categorical Verdict
-        ↓
-   Write to Immutable Audit Ledger
-        ↓
-   Optional: Escalate (FLAG or DISCRETIONARY)
-```
-
-**Key Requirements**:
-- All work happens **inside sovereign boundary**
-- **No external network calls** during inference
-- MiLM operates at **temperature zero** (deterministic)
-- Verdicts are **categorical only** (no scores)
-- Every verdict **written to ledger** immediately
-
-**Output**: Immutable Audit Ledger entry
-
----
-
-## Core Components
-
-### 1. Knowledge Graph
-
-**What it is**: Structured representation of compliance obligations
-
-**Structure**:
-```
-Subject-Relation-Object Triplet
-├── Subject: The entity being evaluated (e.g., "Emissions Monitor")
-├── Relation: The compliance obligation (e.g., "Must be within")
-└── Object: The regulatory limit (e.g., "100 ppm")
-
-With metadata:
-├── Source Document: Which regulation this came from
-├── Source Clause: Exact location in regulation
-├── Effective Date: When this rule starts
-├── Status: EXPLICIT (stated) or DISCRETIONARY (ambiguous)
-└── Precedence: Priority if conflicts with other rules
-```
-
-**Validation**:
-- Every rule reviewed by compliance expert
-- Compared against original regulatory document
-- Cross-checked for conflicts
-- Approved before activation
-
-**Versioning**:
-- Each update creates new version (immutable history)
-- Previous versions retained forever
-- Can roll back to any prior version
-- Each version signed and dated
-
-### 2. MiLM (Micro Language Model)
-
-**What it is**: The inference engine that evaluates telemetry
-
-**Characteristics**:
-- **Small** (runs on-premise, not in cloud)
-- **Constrained** (temperature=0, structured output only)
-- **Deterministic** (same input → same output, always)
-- **Bounded** (only accesses Knowledge Graph, not external context)
-
-**Execution**:
-```
-Input: {
-  "telemetry_record": { ... },
-  "relevant_kg_rules": [ ... ],
-  "evaluation_context": { ... }
-}
-        ↓
-MiLM Processing
-        ↓
-Output: {
-  "verdict": "CLEAR" | "FLAG" | "NULL" | "DISCRETIONARY",
-  "matching_rule_id": "kg_rule_12345",
-  "confidence": null (not permitted),
-  "reasoning_trace": "Rule matched because..."
-}
-```
-
-**Key Constraint**: 
-- Output schema strictly validated
-- Non-conforming outputs rejected as NULL verdict
-- No probabilistic scores or confidence intervals
-
-### 3. Data Integration (Sidecar)
-
-**What it is**: Read-only connection to operational telemetry
-
-**Architecture**:
-```
-Primary System (untouched)
-        ↓ (read-only tap)
-Telemetry Stream
-        ↓
-SKI Sidecar
-├── Normalize to standard format
-├── Validate quality
-└── Pass to MiLM
-```
-
-**Requirements**:
-- **Read-only** (never modifies primary systems)
-- **Passive** (primary systems unaware of SKI)
-- **Non-blocking** (if SKI fails, operations continue)
-- **Monitored** (heartbeat signal for gap detection)
-
-**Data Flow**:
-- Raw telemetry enters sidecar
-- Normalized to SKI telemetry record
-- Passed to MiLM for evaluation
-- Raw values **purged after evaluation** (privacy)
-- Only verdict metadata written to ledger
-
-### 4. Immutable Audit Ledger
-
-**What it is**: Tamper-evident record of all verdicts
-
-**Structure**:
-```
-Entry N:
-├── Sequence Number: [Unique, no gaps]
-├── Previous Hash: [Hash of Entry N-1] (chain linkage)
-├── Entry Hash: [Hash of this entry] (tamper detection)
-├── Timestamp: [UTC when evaluated]
-├── Verdict: "CLEAR" | "FLAG" | "NULL" | "DISCRETIONARY"
-├── Rule ID: "kg_rule_12345" (which rule produced this)
-├── Telemetry Reference: "tel_98765" (hash of input, not values)
-├── Knowledge Graph Version: "kg_v2.1_hash_abc123"
-├── MiLM Version: "milm_v1.0"
-└── Optional Escalation: [Human reviewer, decision, timestamp]
-```
-
-**Properties**:
-- **Append-only** (new entries only, no deletions)
-- **Hash-chained** (detects any modification)
-- **Cryptographically verifiable** (no proprietary tools needed)
-- **Audit-grade** (holds up in regulatory inspection)
-
-**Retention**:
-- Kept for full regulatory retention period
-- Backed up off-site
-- Verified annually for integrity
-
----
-
-## Data Flow Diagram
+SKI operates as a **two-phase system** separated by a one-way boundary:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PHASE 1 (Offline)                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Regulatory Documents (PDF, HTML, etc.)                           │
-│           ↓                                                        │
-│  LLM Extraction Pipeline                                          │
-│  ├─ Extract compliance rules                                      │
-│  ├─ Create triplets (S-R-O)                                       │
-│  └─ Flag ambiguous rules → DISCRETIONARY                          │
-│           ↓                                                        │
-│  Human Validation Review                                          │
-│  ├─ Verify rules match source                                     │
-│  ├─ Check for conflicts                                           │
-│  └─ Approve for production                                        │
-│           ↓                                                        │
-│  Knowledge Graph Compilation                                      │
-│  ├─ Organize rules with precedence                                │
-│  ├─ Sign with cryptographic key                                   │
-│  └─ Version and timestamp                                         │
-│           ↓                                                        │
-│  Signed Knowledge Graph File ✓                                    │
-│                                                                     │
+│ PHASE 1 — Offline compilation (outside the sovereign boundary)   │
+│ Regulatory documents → kg-extractor → kg-validator (humans) →    │
+│ signed Knowledge Graph + compiled Tag Registry                   │
+│ Probabilistic work happens here.                                 │
 └─────────────────────────────────────────────────────────────────┘
-              One-way boundary crossing (data diode or media)
+                          │
+              one-way boundary crossing
+              (data diode, physical media,
+               or controlled file transfer)
+                          │
 ┌─────────────────────────────────────────────────────────────────┐
-│                    PHASE 2 (Runtime)                              │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                     │
-│  Operational Telemetry Streams (continuous)                       │
-│  ├─ Process measurements (flow, pressure, temp, etc.)            │
-│  ├─ Transaction data (financial events)                           │
-│  ├─ Event logs (equipment state changes)                          │
-│  └─ Other: Status, alarms, metrics                                │
-│           ↓                                                        │
-│  SKI Sidecar (read-only integration)                              │
-│  ├─ Tap into data streams (never modify)                          │
-│  ├─ Normalize to standard SKI record format                       │
-│  ├─ Validate data quality                                         │
-│  └─ Emit heartbeat (gap detection)                                │
-│           ↓                                                        │
-│  MiLM Inference Engine (on-premise, temperature=0)                │
-│  ├─ Load signed Knowledge Graph                                   │
-│  ├─ Evaluate telemetry against rules                              │
-│  ├─ Produce categorical verdict only                              │
-│  └─ No external network calls permitted                           │
-│           ↓                                                        │
-│  Verdict Generation                                                │
-│  └─ CLEAR | FLAG | NULL | DISCRETIONARY                          │
-│           ↓                                                        │
-│  Immutable Audit Ledger                                           │
-│  ├─ Hash-chained entries                                          │
-│  ├─ Timestamp, verdict, rule ID                                   │
-│  ├─ No raw telemetry values (only metadata)                       │
-│  └─ Signed, versioned, immutable                                  │
-│           ↓                                                        │
-│  Escalation (if needed)                                            │
-│  ├─ FLAG: Notify compliance team (breach detected)               │
-│  ├─ DISCRETIONARY: Route to human expert                          │
-│  └─ NULL: Document in Coverage Register                           │
-│                                                                     │
-│  Output: Audit-ready evidence ledger ✓                            │
-│                                                                     │
+│ PHASE 2 — Runtime evaluation (inside the sovereign boundary)     │
+│ Telemetry → sidecar → SKI Model service → Tag Registry lookup → │
+│ Symbolic Evaluator OR bounded local LLM → verdict → audit ledger │
+│ Deterministic work only. No outbound network calls during        │
+│ inference under the default configuration.                       │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
----
+## Phase 1 — offline compilation
 
-## Security & Boundaries
-
-### Sovereign Boundary
-
-The **sovereign boundary** is the perimeter within which runtime evaluation occurs:
-
-**Inside the boundary (on-premise)**:
-- MiLM inference engine
-- Knowledge Graph (signed)
-- Audit ledger
-- Data sidecar integration
-- No external network connectivity
-
-**Outside the boundary (during compilation only)**:
-- LLM extraction and validation
-- Document repositories
-- External connectivity allowed
-
-**Crossing the boundary**:
-- One-way only (data diode or physical media)
-- Knowledge Graph signed before crossing
-- No data exits during runtime under any circumstances
-
-### Cryptographic Integrity
+**Purpose**: turn regulatory documents into a signed Knowledge Graph
+plus a Tag Registry that the runtime can use for deterministic routing.
 
 ```
-Knowledge Graph Signing:
-  Knowledge Graph File
-         ↓
-  Compute SHA-256 hash
-         ↓
-  Sign with private key
-         ↓
-  Produce Signing Certificate
-         ↓
-  Verified on every MiLM startup
-         ↓
-  If invalid → Shutdown (refuse to operate)
-
-Audit Ledger Chain:
-  Entry N-1 Hash
-         ↓
-  Entry N Content
-         ↓
-  Compute Entry N Hash
-         ↓
-  Include Previous Hash in Entry N+1
-         ↓
-  Verifiable without proprietary tools
+Regulatory documents
+        ↓
+   Extract rules (LLM-assisted, temperature=0, recorded seed)
+        ↓
+   Express as structured predicates  {operator, metric, value, unit}
+        ↓
+   Human expert validation (every rule reviewed)
+        ↓
+   Conflict declarations + precedence
+        ↓
+   Compile the Tag Registry  (telemetry subject → rule id)
+        ↓
+   Sign with Ed25519 over canonical JSON
+        ↓
+   Transfer across the boundary
 ```
 
----
+Key requirements:
 
-## Deployment Modes
+- Rules **explicitly stated** in source documents. Inference beyond the
+  source text is prohibited (B2.1 Anchor Constraint). The `kg-extractor`
+  refuses to emit rules with `confidence: IMPLIED`.
+- **Verbatim traceability** to source clause and document version
+  (`source_document_version`).
+- **Every rule human-validated** (B2.3 Universal Coverage). The
+  `kg-validator` does not ship an `auto_approve_explicit` option.
+- **Cryptographic signing** with Ed25519 over the canonical
+  serialization. Unsigned KGs are rejected at load time.
 
-### Mode 1: On-Premise (Recommended)
-- All components on customer's infrastructure
-- Zero external connectivity during runtime
-- Customer manages all aspects
-- Maximum sovereignty
+## Phase 2 — runtime evaluation
 
-### Mode 2: Air-Gapped On-Premise
-- Isolated network (no internet)
-- Updates via physical media only
-- Maximum security for classified/sensitive
-- Common in defense/critical infrastructure
+```
+Operational telemetry
+        ↓
+   Sidecar (read-only)  ← rejects any record carrying `rule_id`
+        ↓
+   SKI Model service
+        ↓
+   Tag Registry  ←  dictionary lookup; no inference
+        │
+        ├── unmapped → NULL_UNMAPPED (logged to Coverage Register)
+        │
+        ├── Track 1 → Symbolic Evaluator (deterministic predicates)
+        │
+        └── Track 2 → bounded local LLM (Ollama, T=0, seed, JSON-only output)
+        ↓
+   Verdict  ∈  {CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE, DISCRETIONARY}
+        ↓
+   Audit ledger (append-only, hash-chained)
+```
 
-### Mode 3: Managed (Optional, Future)
-- KpiFinity hosts infrastructure
-- Customer retains data ownership
-- Read-only audit ledger access for customer
-- Hybrid model (operational data stays with customer)
+Key requirements:
 
----
+- All work happens **inside the sovereign boundary**.
+- **No outbound network calls during inference** under the default
+  configuration. The `anthropic` backend is opt-in, labelled
+  non-conformant, and logs a warning on every call.
+- **SKI Model at temperature 0 with seeded decoding** and structured
+  JSON output.
+- **Verdicts are categorical only**. No scores, no confidence intervals
+  (B3.1).
+- **Every verdict written to the ledger** before being returned.
 
-## Next Steps
+## Core components
 
-- [Getting Started Guide](./GETTING_STARTED.md) for implementation overview
-- [Knowledge Graph Guide](./KNOWLEDGE_GRAPH.md) for rules structure
-- [Full SKI Framework](https://skiframework.org) for complete specification
+### Knowledge Graph (B2)
 
-Questions? Open an issue or contact hello@kpifinity.com
+```
+{
+  "metadata":               { version, compiled_at, model_file_sha256, ... },
+  "rules": [
+    {
+      "id":                    "energy.so2.lte_100ppm",
+      "subject":               "facility.so2.discharge_ppm",
+      "predicate":             { operator, metric, value, unit },
+      "track":                 "symbolic" | "llm",
+      "confidence":            "EXPLICIT" | "DISCRETIONARY",     /* never IMPLIED */
+      "reasoning":             "...",
+      "source_document":       "...",
+      "source_clause":         "...",
+      "source_document_version": "...",
+      "effective_date":        "YYYY-MM-DD",
+      "sunset_date":           "YYYY-MM-DD" | null,
+      "precedence":            <int>,
+      "conflicts_with":        [<rule ids>]
+    }
+  ],
+  "tag_registry":           { "<subject>": "<rule_id>", ... },
+  "signature":              { algorithm: "ed25519", public_key_pem, value_hex }
+}
+```
+
+`object` is **never** a free-text string. The Symbolic Evaluator
+operates on the structured `predicate` so evaluation is a pure function
+of the AST and the input.
+
+### Tag Registry (B4.3)
+
+A frozen lookup from normalised subject → rule id, compiled during
+Phase 1 and shipped embedded in the signed KG. At runtime, resolving a
+subject is a dict lookup. Runtime tag inference (substring matching,
+embedding similarity, LLM disambiguation) is architecturally
+prohibited. Missing subjects produce `NULL_UNMAPPED`.
+
+### Symbolic Evaluator (Track 1)
+
+Deterministic predicate evaluator. Operators: `lte`, `gte`, `lt`, `gt`,
+`eq`, `range`, `in_set`, `not_in_set`, `exists`. Outputs depend only on
+the predicate AST and the input.
+
+The Symbolic Evaluator handles the **majority** of rules in any
+well-engineered KG. If most of your rules are Track 2, you have likely
+under-specified your predicates.
+
+### SKI Model (Track 2)
+
+Bounded LLM wrapper. Default backend is **Ollama** running a small
+open-weights instruction-tuned model. Operating constraints (B3.4):
+
+- Temperature 0, seeded decoding (`SKI_MODEL_SEED`), `top_k = 1`.
+- Structured-JSON output enforced. Non-conforming output → `DISCRETIONARY`.
+- Model file SHA-256 pinned via `SKI_MODEL_FILE_SHA256`.
+- Determinism canary on a fixed input every `DETERMINISM_CANARY_INTERVAL`
+  seconds. Divergence flips the canary status and Prometheus alert.
+
+### Audit ledger (B5)
+
+Postgres-backed, append-only, hash-chained. Append-only is enforced at
+the database layer (`BEFORE UPDATE / DELETE / TRUNCATE` triggers).
+Every entry stores:
+
+```
+sequence_number, previous_hash, entry_hash, timestamp,
+verdict, telemetry_id, telemetry_hash,
+rule_id, knowledge_graph_version, ski_model_version,
+reasoning, track,
+escalation_status, escalation_notes
+```
+
+`entry_hash = SHA-256(canonical_payload)`. The canonical payload is
+documented in
+[`tools/audit-ledger/src/audit_ledger/canonical.py`](../tools/audit-ledger/src/audit_ledger/canonical.py)
+so third parties can verify the ledger without our code.
+
+There is no `confidence_level` column. Confidence scores are prohibited
+by B3.1 and Axiom 2.
+
+## Cryptographic primitives
+
+- **KG signatures**: Ed25519 (RFC 8032).
+- **Ledger hashes**: SHA-256 over the documented canonical serialization.
+- **TLS in transit**: ≥ TLS 1.2; prefer TLS 1.3.
+
+## Deployment modes
+
+| Mode | Description |
+|---|---|
+| **On-premise** | All components on the customer's infrastructure. Zero external connectivity at runtime. Default. |
+| **Air-gapped on-premise** | Network-isolated; updates via physical media. Common for classified / critical infrastructure. |
+| **Customer-controlled BYOC** | Customer's own cloud account; customer holds keys and admin. *Not* "KpiFinity-hosts-your-data" — that mode does not exist in v2.1 because it contradicts the Sovereignty pillar. |
+
+## Spec section ↔ implementation map
+
+| Spec | Reference implementation |
+|---|---|
+| B2.1 Anchor Constraint | `tools/kg-extractor` refuses `IMPLIED`; `scripts/validate-kg.py` enforces |
+| B2.2 Conflicts & precedence | `predicate`, `precedence`, `conflicts_with` fields; `kg-validator` conflict detector |
+| B2.3 Universal Coverage | `kg-validator` requires human review of every rule |
+| B3.1 No confidence scores | Schema has no `confidence_level`; `Verdict` enum is five members |
+| B3.2 Local Deployability | Ollama backend, default; no required cloud key |
+| B3.4 Determinism Enforcement Controls | Model file SHA-256 pin, fixed seed, canary, structured output |
+| B4.3 Tag Registry | `src/tag_registry/`; pure-lookup at runtime |
+| B4.4 Stateful Evaluation | Buffer + `NULL_STALE` — **partial in v0.1**, completion planned for v0.2 |
+| B5 Audit Ledger | `src/ledger/schema.sql`, `append_only.sql`, real `verify_integrity` and `backup_database` |
+
+## Further reading
+
+- [`KNOWLEDGE_GRAPH.md`](./KNOWLEDGE_GRAPH.md) — KG schema in detail
+- [`CONFORMANCE.md`](./CONFORMANCE.md) — Level 1 / 2 / 3 methodology
+- [`../reference-implementation/README.md`](../reference-implementation/README.md)
+- [`../conformance/README.md`](../conformance/README.md)

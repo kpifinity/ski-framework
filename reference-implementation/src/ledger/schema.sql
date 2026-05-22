@@ -1,51 +1,92 @@
--- SKI Framework Audit Ledger Schema
--- Immutable, hash-chained ledger for recording verdicts
+-- ============================================================================
+-- SKI Framework v2.1 — Audit Ledger Schema
+-- ============================================================================
+-- Append-only, hash-chained ledger of evaluation verdicts.
+--
+-- Notes:
+--  * `confidence_level` was REMOVED in v2.1 — confidence scores are
+--    architecturally prohibited (B3.1 + Axiom 2 Bounded Determinism).
+--  * Verdicts use the five-verdict taxonomy:
+--      CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE, DISCRETIONARY.
+--  * Append-only enforcement lives in 02-append-only.sql (triggers).
+--  * The canonical entry hash is computed by the SKI Model client over the
+--    canonical serialization documented in
+--    src/ski_model/ledger_client.py::canonical_entry_payload.
+-- ============================================================================
 
 CREATE TABLE IF NOT EXISTS ledger_entries (
-    id SERIAL PRIMARY KEY,
+    id BIGSERIAL PRIMARY KEY,
     sequence_number BIGINT UNIQUE NOT NULL,
-    previous_hash VARCHAR(256),
-    entry_hash VARCHAR(256) NOT NULL UNIQUE,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    verdict VARCHAR(50) NOT NULL,  -- CLEAR, FLAG, NULL, DISCRETIONARY
-    telemetry_id VARCHAR(255) NOT NULL,
-    telemetry_hash VARCHAR(256),
-    rule_id VARCHAR(255),
-    knowledge_graph_version VARCHAR(50),
-    milm_version VARCHAR(50),
-    confidence_level VARCHAR(50),
+    previous_hash CHAR(64) NOT NULL,
+    entry_hash CHAR(64) NOT NULL UNIQUE,
+    timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    verdict TEXT NOT NULL CHECK (
+        verdict IN ('CLEAR', 'FLAG', 'NULL_UNMAPPED', 'NULL_STALE', 'DISCRETIONARY')
+    ),
+    telemetry_id TEXT NOT NULL,
+    telemetry_hash CHAR(64) NOT NULL,
+    rule_id TEXT,
+    knowledge_graph_version TEXT,
+    ski_model_version TEXT NOT NULL,
     reasoning TEXT,
-    escalation_status VARCHAR(50),
+    track TEXT CHECK (track IS NULL OR track IN ('symbolic', 'llm')),
+    escalation_status TEXT,
     escalation_notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- Index for efficient queries
-CREATE INDEX idx_verdict_timestamp ON ledger_entries(verdict, timestamp);
-CREATE INDEX idx_telemetry_id ON ledger_entries(telemetry_id);
-CREATE INDEX idx_rule_id ON ledger_entries(rule_id);
-CREATE INDEX idx_sequence ON ledger_entries(sequence_number);
+-- Sequence-number monotonic ordering enforced by application; index ensures
+-- the gap-detection query is fast.
+CREATE INDEX IF NOT EXISTS idx_ledger_sequence ON ledger_entries (sequence_number);
+CREATE INDEX IF NOT EXISTS idx_ledger_verdict_timestamp ON ledger_entries (verdict, timestamp);
+CREATE INDEX IF NOT EXISTS idx_ledger_telemetry_id ON ledger_entries (telemetry_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_rule_id ON ledger_entries (rule_id);
+CREATE INDEX IF NOT EXISTS idx_ledger_kg_version ON ledger_entries (knowledge_graph_version);
 
--- View for compliance reporting
-CREATE VIEW ledger_summary AS
+-- ----------------------------------------------------------------------------
+-- Coverage Register — NULL_UNMAPPED / NULL_STALE entries denormalised for
+-- compliance reporting.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW coverage_register AS
 SELECT
-    DATE_TRUNC('day', timestamp) as date,
+    sequence_number,
+    timestamp,
     verdict,
-    COUNT(*) as count,
-    COUNT(CASE WHEN escalation_status IS NOT NULL THEN 1 END) as escalated
+    telemetry_id,
+    rule_id,
+    knowledge_graph_version,
+    reasoning
+FROM ledger_entries
+WHERE verdict IN ('NULL_UNMAPPED', 'NULL_STALE');
+
+-- ----------------------------------------------------------------------------
+-- Daily verdict roll-up — useful for Grafana dashboards.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW ledger_summary AS
+SELECT
+    DATE_TRUNC('day', timestamp) AS day,
+    verdict,
+    COUNT(*) AS count,
+    COUNT(*) FILTER (WHERE escalation_status IS NOT NULL) AS escalated
 FROM ledger_entries
 GROUP BY DATE_TRUNC('day', timestamp), verdict
-ORDER BY date DESC;
+ORDER BY day DESC;
 
--- View for integrity verification
-CREATE VIEW ledger_integrity AS
+-- ----------------------------------------------------------------------------
+-- Chain-integrity helper view.  This view ONLY checks the previous-hash
+-- linkage; full integrity verification (recomputing entry hashes from
+-- canonical payloads) must use the audit-ledger CLI.
+-- ----------------------------------------------------------------------------
+CREATE OR REPLACE VIEW ledger_chain_linkage AS
 SELECT
     sequence_number,
     entry_hash,
     previous_hash,
+    LAG(entry_hash) OVER (ORDER BY sequence_number) AS expected_previous_hash,
     (
-        LAG(entry_hash) OVER (ORDER BY sequence_number) = previous_hash
-    ) as chain_valid,
+        sequence_number = 1
+        OR LAG(entry_hash) OVER (ORDER BY sequence_number) = previous_hash
+    ) AS chain_link_valid,
     timestamp
 FROM ledger_entries
 ORDER BY sequence_number;

@@ -2,9 +2,12 @@
 
 > **Sovereign Knowledge Intelligence** — An open architecture for deterministic AI compliance monitoring in regulated industries.
 
-[![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by/4.0/)
-[![Version](https://img.shields.io/badge/Version-2.1-blue.svg)](https://skiframework.org)
-[![Status](https://img.shields.io/badge/Status-Open%20Specification-green.svg)](https://skiframework.org)
+> **⚠ STATUS: EARLY ALPHA (v0.1.0-alpha).** The specification is stable at v2.1. The reference implementation and tools in this repository are *proof-of-scaffold* quality and are **not production ready**. Treat this repo as an executable companion to the specification, not a turnkey product. See [CHANGELOG.md](./CHANGELOG.md) for the current scope.
+
+[![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
+[![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
+[![Specification](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
+[![Status](https://img.shields.io/badge/Status-alpha-orange.svg)](./CHANGELOG.md)
 
 ## What is SKI?
 
@@ -12,277 +15,243 @@ SKI is an open-source framework that enables **real-time, deterministic, auditab
 
 Unlike general-purpose AI systems, SKI is purpose-built to solve a specific problem: regulated industries (energy, finance, manufacturing, defense) cannot adopt AI in core operational systems because existing solutions don't satisfy four non-negotiable requirements:
 
-1. **Determinism** — Same input always produces the same verdict, every time
-2. **Sovereignty** — Operational data never leaves the organization's infrastructure
-3. **Auditability** — Every verdict traces directly to a specific regulation
-4. **Human Primacy** — AI supports human judgment, never replaces it
+1. **Determinism** — Same input always produces the same verdict, every time.
+2. **Sovereignty** — Operational data never leaves the organization's infrastructure.
+3. **Auditability** — Every verdict traces directly to a specific regulation.
+4. **Human Primacy** — AI supports human judgment, never replaces it.
 
-SKI solves all four through a two-phase architecture: offline Knowledge Graph compilation (probabilistic) + runtime evaluation (deterministic, deterministic, and air-gap capable).
-
----
-
-## The Problem SKI Solves
-
-Regulated industries generate continuous operational telemetry: emissions readings, transaction flows, equipment performance, compliance measurements. They're required to verify compliance against complex regulatory obligations **in real-time, continuously, with full audit trails**.
-
-Today, this happens through:
-- ❌ Manual review and spreadsheet tracking (incomplete, slow, error-prone)
-- ❌ Traditional rules engines (static, require IT updates, can't keep pace with regulation)
-- ❌ General-purpose AI (probabilistic, can't send data to cloud, creates audit liability)
-
-**SKI fills this gap**: Real-time compliance monitoring that is deterministic, sovereign, auditable, and legally defensible.
+SKI satisfies all four through a two-phase architecture: offline Knowledge Graph compilation (probabilistic) plus runtime evaluation (deterministic, sovereign, and air-gap capable). The runtime is a hybrid of a deterministic **Symbolic Evaluator** (Track 1) and a bounded local **SKI Model** (Track 2) gated by a governed **Tag Registry**.
 
 ---
 
-## Key Features
+## What's in this repository
 
-✅ **Deterministic verdicts** — Identical inputs produce identical verdicts; no probabilistic scoring  
-✅ **Data sovereignty** — All evaluation occurs on-premise; operational data never leaves your infrastructure  
-✅ **Full auditability** — Every verdict traces to a specific Knowledge Graph rule and a specific regulatory clause  
-✅ **Passive monitoring** — Sidecar architecture; doesn't modify operational systems  
-✅ **Automated compliance** — Real-time evaluation against regulatory obligations  
-✅ **Regulatory defensibility** — Immutable audit ledger with full chain of custody  
+This is the **open** half of the SKI ecosystem:
+
+```
+ski-framework/
+├── docs/                          Specification documents (CC BY 4.0)
+├── reference-implementation/      Reference Phase 2 runtime (Apache 2.0)
+│   ├── src/
+│   │   ├── ski_model/             SKI Model service (Track 2 wrapper)
+│   │   ├── symbolic_evaluator/    Symbolic Evaluator (Track 1)
+│   │   ├── tag_registry/          Tag Registry (B4.3)
+│   │   ├── ledger/                Append-only audit ledger schema
+│   │   └── sidecar/               Read-only telemetry intake
+│   ├── docker-compose.yml         Ollama + Postgres + Prometheus + Grafana
+│   └── ...
+├── tools/                         CLI tools (Apache 2.0)
+│   ├── kg-extractor/              Phase 1: extract rules from regulations
+│   ├── kg-validator/              Phase 1: human-expert validation
+│   ├── ski-model-deploy/          Phase 2: deploy and verify a Knowledge Graph
+│   └── audit-ledger/              Verify, export, back up the ledger
+├── examples/                      DEMO-ONLY illustrative KGs and telemetry
+├── conformance/                   SKI conformance test suite (Apache 2.0)
+└── scripts/                       Setup, deploy, cleanup helpers
+```
+
+The **commercial** half (Knowledge Graph libraries for energy, finance, manufacturing, defense; certified MCP connectors; managed implementation services) lives behind [KpiFinity](https://kpifinity.com) and is not present in this repository.
 
 ---
 
-## Architecture at a Glance
+## Quick start
 
-SKI operates in two phases, separated by a security boundary:
-
-### Phase 1: Offline Compilation (Outside sovereign boundary)
-- Regulatory documents → Knowledge Graph (LLM-assisted extraction + human validation)
-- Produces signed, versioned Knowledge Graph
-
-### Phase 2: Runtime Evaluation (Inside sovereign boundary)
-- Operational telemetry → MiLM inference against Knowledge Graph
-- Produces categorical verdicts (CLEAR, FLAG, NULL, DISCRETIONARY)
-- All verdicts written to immutable audit ledger
-
-**Result**: Real-time compliance intelligence with full regulatory defensibility.
-
-See the [full framework specification](https://skiframework.org) for detailed architecture, axioms, pillars, and implementation requirements.
-
----
-
-## Quick Start
-
-### Prerequisites
-- Linux/macOS or Windows with Docker
-- Python 3.9+
-- Basic understanding of your regulatory obligations
-
-### Installation
+> The reference implementation runs entirely **on-premise**. It does not require — and by default does not have — any cloud API key. Inference is performed by a local LLM runtime (Ollama). An optional "demo" backend can call the Anthropic API, but it is **non-conformant** and clearly labelled as such.
 
 ```bash
-# Clone the repository
 git clone https://github.com/kpifinity/ski-framework.git
 cd ski-framework
 
-# Install dependencies
-pip install -r requirements.txt
+# 1. Generate strong secrets and TLS certs, then write .env.
+./scripts/setup.sh
 
-# Run the SKI reference implementation
-docker-compose up -d
+# 2. Pull the small open-weights model used by the reference impl.
+docker compose -f reference-implementation/docker-compose.yml up -d ollama
+docker exec ski-ollama ollama pull qwen2.5:7b-instruct
+
+# 3. Start the full stack.
+docker compose -f reference-implementation/docker-compose.yml up -d
+
+# 4. Send a sample telemetry record (uses the demo KG in examples/).
+python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl
+
+# 5. Verify the audit ledger.
+python scripts/verify-ledger.py
 ```
 
-*(Reference implementation coming in v1.0-RC1; for now, see the [Getting Started Guide](https://skiframework.org/implementation) on skiframework.org)*
+See [reference-implementation/QUICKSTART.md](./reference-implementation/QUICKSTART.md) for the full walkthrough and [reference-implementation/docs/DEPLOYMENT.md](./reference-implementation/docs/DEPLOYMENT.md) for production-track guidance.
 
 ---
 
-## Documentation
+## Architecture at a glance
 
-### Framework Specification
-**→ [Read the full SKI Framework specification](https://skiframework.org)**
+```
+┌──── PHASE 1: COMPILATION (outside sovereign boundary) ────┐
+│  Regulatory docs → kg-extractor → kg-validator (human)    │
+│  → signed Knowledge Graph + Tag Registry                   │
+└────────────────────────────────────────────────────────────┘
+                            │
+                  one-way boundary crossing
+                            │
+┌──── PHASE 2: RUNTIME (inside sovereign boundary) ─────────┐
+│  Telemetry → Sidecar → SKI Model service                   │
+│      │                                                      │
+│      ├── Tag Registry resolves subject → rule               │
+│      ├── Track 1 → Symbolic Evaluator (deterministic)       │
+│      └── Track 2 → bounded local LLM (temperature 0, seed)  │
+│                                                              │
+│  Verdict ∈ { CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE,         │
+│              DISCRETIONARY }                                 │
+│      │                                                      │
+│      └── append-only audit ledger (hash chained)            │
+└────────────────────────────────────────────────────────────┘
+```
 
-This is the authoritative source for:
-- Three axioms and three pillars
-- Knowledge Graph requirements
-- MiLM selection and configuration
-- Data integration requirements
-- System integrity and audit ledger specifications
-- Implementation phases and validation requirements
-- Governance and conformance levels
-
-### Implementation Guide
-**→ [SKI Implementation Documentation](https://skiframework.org/implementation)**
-
-- Phase-by-phase deployment playbooks
-- Knowledge Graph extraction and validation
-- MiLM deployment and configuration
-- Infrastructure setup and hardening
-- Shadow validation and governance setup
-
-### For Professional Support
-**→ [KpiFinity Implementation Services](https://kpifinity.com)**
-
-- Tier 1 Foundational: Single-domain SKI deployments
-- Tier 2 Managed: Multi-domain expansion and governance
-- Tier 3 Assured: Enterprise deployment with third-party audit
+See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full picture.
 
 ---
 
-## Verdicts
+## Verdicts (v2.1)
 
-SKI produces exactly four verdict types. No scores, no confidence intervals, no probabilistic ranges.
+SKI produces exactly five verdict types. No scores, no confidence intervals, no probabilistic ranges (B3.1).
 
 | Verdict | Meaning | Action |
 |---------|---------|--------|
-| **CLEAR** | All applicable rules evaluated; no compliance issue detected | Normal operation; logged to audit ledger |
+| **CLEAR** | Applicable rules evaluated; no compliance issue detected | Normal operation; logged to audit ledger |
 | **FLAG** | A compliance rule has been breached | Escalate to designated human reviewer; create incident |
-| **NULL** | Insufficient data to evaluate; coverage gap logged | Human review required; documented in Coverage Register |
-| **DISCRETIONARY** | Rule applies but requires qualified human judgment to resolve | Route to compliance expert for decision |
+| **NULL_UNMAPPED** | Telemetry subject is not present in the Tag Registry | Document in Coverage Register; expand KG |
+| **NULL_STALE** | Rule matched but its time-window predicate has expired | Investigate upstream freshness; expand KG buffer |
+| **DISCRETIONARY** | Rule applies but requires qualified human judgment | Route to compliance expert for decision |
 
 ---
 
 ## Components
 
-### Framework (Open Source)
-- ✅ Two-phase architecture specification
-- ✅ Knowledge Graph schema and requirements
-- ✅ MiLM configuration and constraints
-- ✅ Data integration and sidecar patterns
-- ✅ Audit ledger specification
-- ✅ Governance and conformance requirements
+### Specification (CC BY 4.0)
+- Two-phase architecture, three axioms, three pillars
+- Knowledge Graph schema and Tag Registry requirements
+- SKI Model selection, configuration, determinism enforcement controls
+- Data integration and sidecar patterns
+- Audit ledger specification with canonical serialization
+- Governance, conformance levels, and audit requirements
 
-### Tools (Open Source)
-- 🔄 Knowledge Graph extraction pipeline *(in development)*
-- 🔄 Human validation framework *(in development)*
-- 🔄 MiLM deployment toolkit *(in development)*
-- 🔄 Audit ledger backend *(in development)*
-- 🔄 MCP integration framework *(in development)*
+### Reference implementation (Apache 2.0, alpha)
+- ✅ Symbolic Evaluator (Track 1)
+- ✅ SKI Model wrapper (Track 2) with Ollama backend
+- ✅ Tag Registry as a first-class governed artifact
+- ✅ Knowledge Graph signature verification (Ed25519)
+- ✅ Append-only audit ledger with database-level triggers
+- ✅ Determinism canary
+- ⏳ Stateful evaluation buffer (NULL_STALE path) — partial
+- ⏳ Kubernetes manifests — planned
 
-### Knowledge Graph Libraries (Proprietary)
-- 📚 Energy sector (environmental discharge, emissions, production thresholds)
-- 📚 Institutional Finance (transaction monitoring, AML, capital adequacy)
-- 📚 Manufacturing (safety, environmental, equipment compliance)
-- 📚 Defense & Critical Infrastructure (specialized compliance domains)
+### Tools (Apache 2.0, alpha)
+- `kg-extractor` — extract rules from regulatory docs (multiple LLM backends)
+- `kg-validator` — every rule is human-reviewed; no auto-approval
+- `ski-model-deploy` — refuses to load unsigned KGs
+- `audit-ledger` — real hash recomputation; real `pg_dump` backup
 
-*(Contact KpiFinity for library licensing and professional services)*
+### Conformance test suite (Apache 2.0)
+- Black-box tests for Level 1 / Level 2 / Level 3 conformance
+- Each test cites the spec section it validates
+- Runnable against any implementation
 
----
-
-## Implementation Maturity Levels
-
-SKI defines three conformance levels that support progressive adoption:
-
-### Level 1: Foundational
-Single regulatory domain, essential governance. Typical deployment: 8-12 weeks, 1-2 person compliance team.
-
-### Level 2: Managed
-Multi-domain deployment, formal governance processes, quarterly reviews. Typical: 16-24 weeks, larger compliance teams.
-
-### Level 3: Assured
-Enterprise-wide deployment, third-party audit preparation, strategic advisory. Typical: 24-40 weeks, full governance infrastructure.
-
-**→ [Learn more about maturity levels](https://skiframework.org/conformance)**
+### Knowledge Graph libraries (proprietary — KpiFinity)
+- Energy, Finance, Manufacturing, Defense — not in this repo.
+- See [KpiFinity](https://kpifinity.com) for licensing and professional services.
 
 ---
 
-## The Business Model
+## Conformance levels
 
-**SKI is an open-source framework** published under CC BY 4.0. You're free to read, implement, and adapt it.
+The framework defines three executable conformance levels. The repository's [`conformance/`](./conformance) directory contains the test suite that decides whether an implementation can claim a given level.
 
-**KpiFinity provides three layers on top of the framework:**
+| Level | Focus | Test scope |
+|---|---|---|
+| **Level 1 Foundational** | Determinism, signature verification, ledger integrity | Single-domain happy path |
+| **Level 2 Managed** | Multi-domain, Tag Registry coverage, NULL_UNMAPPED handling | Multi-KG + Coverage Register |
+| **Level 3 Assured** | Determinism canary, append-only enforcement, third-party verifiability | Tamper-resistance under adversarial inputs |
 
-1. **Pre-built Knowledge Graph libraries** — Sector-specific rule sets (energy, finance, manufacturing, defense) validated by domain experts
-2. **Certified MCP connectors** — Pre-built integrations to operational data sources (Maximo, PI System, SAP, etc.)
-3. **Implementation methodology** — Professional services to deploy SKI, train your team, and establish governance
+See [docs/CONFORMANCE.md](./docs/CONFORMANCE.md) for the methodology and [conformance/README.md](./conformance/README.md) for runnable tests.
 
-→ [Learn more about KpiFinity services](https://kpifinity.com)
+---
+
+## Security
+
+This is a security-relevant project. Please **do not** open public issues for vulnerabilities. Follow the disclosure process in [SECURITY.md](./SECURITY.md).
+
+Hardening defaults are documented in [reference-implementation/SECURITY_DEFAULTS.md](./reference-implementation/SECURITY_DEFAULTS.md):
+- TLS is enabled by default; self-signed certs are generated by `scripts/setup.sh`.
+- Default passwords are absent; the stack refuses to start without operator-supplied secrets.
+- The audit ledger is append-only at the database layer (Postgres triggers prevent UPDATE/DELETE).
+- The reference implementation makes **no outbound network calls** during inference when the default Ollama backend is used.
 
 ---
 
 ## Contributing
 
-We welcome contributions to the SKI Framework reference implementation, tooling, and documentation.
+We welcome contributions. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) and please read the [Code of Conduct](./CODE_OF_CONDUCT.md).
 
-### Ways to Contribute
-- Report issues or suggest improvements via [GitHub Issues](https://github.com/kpifinity/ski-framework/issues)
-- Submit documentation improvements or examples
-- Develop MCP connectors for new data sources
-- Participate in the [SKI Framework community discussions](https://github.com/kpifinity/ski-framework/discussions)
-
-### Development Setup
 ```bash
 git clone https://github.com/kpifinity/ski-framework.git
 cd ski-framework
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
-python -m pytest
+pytest
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for detailed guidelines.
+CI runs ruff, mypy, bandit, pip-audit, and the conformance suite on every pull request. See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
 ---
 
-## License
+## Licensing summary
 
-The SKI Framework specification and all open-source components are published under **Creative Commons Attribution 4.0 International (CC BY 4.0)**.
+| Part | License |
+|---|---|
+| Specification (`docs/`, framework PDF) | CC BY 4.0 — see [LICENSE-docs.md](./LICENSE-docs.md) |
+| Software (Python, Docker, shell, SQL, YAML) | Apache 2.0 — see [LICENSE](./LICENSE) |
+| Knowledge Graph libraries | Proprietary — KpiFinity |
 
-You are free to:
-- ✅ Use, share, and adapt the framework
-- ✅ Use it for commercial purposes
-- ✅ Modify it for your needs
-
-Provided you:
-- ✅ Give attribution to KpiFinity Inc. and skiframework.org
-
-→ [Read the full license](https://creativecommons.org/licenses/by/4.0/)
-
----
-
-## Support & Community
-
-- **Framework questions**: [GitHub Discussions](https://github.com/kpifinity/ski-framework/discussions)
-- **Bug reports**: [GitHub Issues](https://github.com/kpifinity/ski-framework/issues)
-- **Full specification**: [skiframework.org](https://skiframework.org)
-- **Professional implementation**: [kpifinity.com](https://kpifinity.com)
-- **Contact**: hello@kpifinity.com
+CC explicitly recommends against using CC licenses for software, which is why we split. Apache 2.0 includes the explicit patent grant that regulated-industry adopters typically require.
 
 ---
 
 ## Roadmap
 
-### v2.1 (Current — May 2026)
-- ✅ Framework specification complete and published
-- ✅ Architecture documentation with sector examples
-- ✅ Reference implementation (coming June 2026)
-- 🔄 Knowledge Graph extraction tools (June 2026)
-- 🔄 Human validation framework (July 2026)
+### v0.1.0-alpha (this release)
+- Specification at v2.1 ✅
+- Reference implementation: Symbolic Evaluator, SKI Model wrapper (Ollama), Tag Registry, signed-KG loader, append-only ledger ✅
+- Determinism canary ✅
+- Conformance suite: Level 1 tests ✅
+- CI/CD with security scanning ✅
 
-### v2.2 (Q3 2026)
-- 🔄 Regulatory crosswalks (energy, finance, manufacturing, defense)
-- 🔄 MCP connector ecosystem launch
-- 🔄 Audit ledger reference implementation
-- 🔄 Deployment automation (Terraform, Docker)
+### v0.2.0
+- Stateful evaluation buffer with NULL_STALE routing
+- Conformance suite: Level 2 tests
+- Additional LLM backends (vLLM, llama.cpp) behind the same interface
+- Kubernetes manifests
 
-### v3.0 (2027)
-- 🔄 Advanced analytics and intelligence features
-- 🔄 Multi-jurisdictional compliance mapping
-- 🔄 Managed service offering (optional)
+### v0.3.0
+- Conformance suite: Level 3 tests, tamper-resistance benchmarks
+- MCP connector framework
+- Air-gapped deployment playbook
+
+### v1.0
+- Long-term-supported reference implementation
+- Conformance-mark issuance via KpiFinity
 
 ---
 
 ## Citation
 
-If you use or reference the SKI Framework in academic or professional work, please cite:
+A machine-readable citation file is provided ([CITATION.cff](./CITATION.cff)). Human-readable form:
 
-```
-KpiFinity Inc. (2026). SKI Framework: Sovereign Knowledge Intelligence.
-Retrieved from https://skiframework.org
-Published under Creative Commons Attribution 4.0 International License.
-```
+> KpiFinity Inc. (2026). *SKI Framework v2.1: Sovereign Knowledge Intelligence for Regulated Industries.* Retrieved from <https://skiframework.org>. Specification under CC BY 4.0; reference implementation under Apache 2.0.
 
 ---
 
-## About KpiFinity
+## About
 
-KpiFinity Inc. is a Calgary-based technology and consulting firm specializing in AI governance and compliance automation for regulated industries.
+KpiFinity Inc. is a Calgary-based technology and consulting firm specialising in AI governance and compliance automation for regulated industries. → [kpifinity.com](https://kpifinity.com)
 
-We work with energy, financial services, manufacturing, and defense organizations to build compliance intelligence systems that are deterministic, sovereign, and audit-defensible.
-
-→ [Learn more about KpiFinity](https://kpifinity.com)
-
----
-
-**Questions?** Start with the [SKI Framework specification](https://skiframework.org) or reach out to hello@kpifinity.com.
-
+**Questions?** Start with the [specification](https://skiframework.org) or email <hello@kpifinity.com>.

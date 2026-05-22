@@ -9,12 +9,16 @@ alerting:
     - static_configs:
         - targets: []
 
-rule_files: []
+rule_files:
+  - /etc/prometheus/rules/ski-alerts.yml
 
 scrape_configs:
-  - job_name: 'milm'
+  - job_name: 'ski-model'
     static_configs:
-      - targets: ['milm:8000']
+      - targets: ['ski-model:8000']
+    scheme: https
+    tls_config:
+      insecure_skip_verify: true  # demo deployment with self-signed certs
     metrics_path: '/metrics'
 
   - job_name: 'sidecar'
@@ -22,10 +26,10 @@ scrape_configs:
       - targets: ['sidecar:8001']
     metrics_path: '/metrics'
 
+  # Postgres does NOT expose /metrics natively. postgres-exporter does.
   - job_name: 'postgres'
     static_configs:
-      - targets: ['postgres:5432']
-    metrics_path: '/metrics'
+      - targets: ['postgres-exporter:9187']
 
   - job_name: 'prometheus'
     static_configs:

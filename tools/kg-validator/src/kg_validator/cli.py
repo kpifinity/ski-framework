@@ -19,9 +19,13 @@ def main():
 @main.command()
 @click.option("--input", "-i", required=True, help="Input JSON file with extracted rules")
 @click.option("--output", "-o", default=None, help="Output JSON file with validation results")
-@click.option("--auto-approve-explicit", is_flag=True, help="Auto-approve EXPLICIT confidence rules")
-def validate(input: str, output: Optional[str], auto_approve_explicit: bool):
-    """Validate extracted rules (automated checks)"""
+def validate(input: str, output: Optional[str]):
+    """Validate extracted rules (automated checks only — every rule still
+    needs human approval via the interactive-review workflow).
+
+    v2.1: the `--auto-approve-explicit` flag was REMOVED. Per spec B2.3
+    (Universal Coverage), every rule must be reviewed by a qualified human.
+    """
     try:
         click.echo(f"Loading rules from: {input}")
         rules = load_rules(input)
@@ -29,7 +33,7 @@ def validate(input: str, output: Optional[str], auto_approve_explicit: bool):
 
         click.echo("Running validation checks...")
         validator = Validator()
-        result = validator.validate(rules, auto_approve_explicit=auto_approve_explicit)
+        result = validator.validate(rules)
 
         # Print summary
         click.echo(f"\nValidation complete:")
@@ -161,7 +165,7 @@ def report(input: str, validated_rules: Optional[str], output: str):
 
         click.echo("Generating report...")
         validator = Validator()
-        result = validator.validate(rules, auto_approve_explicit=True)
+        result = validator.validate(rules)
 
         generate_html_report(result, output)
         click.echo(f"Report saved to: {output}")

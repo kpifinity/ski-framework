@@ -2,22 +2,19 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
 COPY src/sidecar/requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy sidecar source code
-COPY src/sidecar/ .
+COPY src/sidecar/ ./sidecar/
 
-# Expose health check port
+RUN useradd --create-home --shell /bin/false --uid 10002 ski && \
+    chown -R ski:ski /app
+USER ski
+
 EXPOSE 8001
 
-# Run sidecar
 CMD ["python", "-m", "sidecar.main"]

@@ -1,38 +1,21 @@
-# Creative Commons Attribution 4.0 International
+# SKI Framework — Licensing Summary
 
-This work is licensed under the Creative Commons Attribution 4.0 International License. To view a copy of this license, visit http://creativecommons.org/licenses/by/4.0/ or send a letter to Creative Commons, PO Box 1866, Mountain View, CA 94042, USA.
+The SKI Framework uses a **dual license** so that the right tool is
+licensed under the right instrument:
 
-## You are free to:
+| Part of the repo | License | File |
+|---|---|---|
+| Specification documents (`docs/`, framework PDF, diagrams) | Creative Commons Attribution 4.0 International (CC BY 4.0) | [LICENSE-docs.md](./LICENSE-docs.md) |
+| Software (Python, Dockerfiles, shell, SQL, YAML, the conformance suite) | Apache License 2.0 | [LICENSE](./LICENSE) |
+| Knowledge Graph libraries (energy, finance, manufacturing, defense) | Proprietary — available via [KpiFinity](https://kpifinity.com) | not in this repository |
 
-**Share** — copy and redistribute the material in any medium or format
+We split the license because Creative Commons themselves
+[explicitly recommend against](https://creativecommons.org/faq/#can-i-apply-a-creative-commons-license-to-software)
+using CC licenses for software. CC licenses don't address patent grants
+or the source/object code distinction, both of which matter for adopters
+in regulated industries. Apache 2.0 includes an explicit patent grant
+and is the de facto choice for open-core infrastructure software.
 
-**Adapt** — remix, transform, and build upon the material for any purpose, even commercially.
-
-The licensor cannot revoke these freedoms as long as you follow the license terms.
-
-## Under the following terms:
-
-**Attribution** — You must give appropriate credit, provide a link to the license, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the licensor endorses you or your use.
-
-**No additional restrictions** — You may not apply legal terms or technological measures that legally restrict others from doing anything the license permits.
-
-## Notices:
-
-You do not have to comply with the license for elements of the material in the public domain or where your use is permitted by an applicable exception or limitation.
-
-No warranties are given. The license may not give you all of the permissions necessary for your intended use. For example, other rights such as publicity, privacy, or moral rights may limit how you use the material.
-
----
-
-## Full Legal Text
-
-For the full, legally binding Creative Commons Attribution 4.0 International license text, visit:
-https://creativecommons.org/licenses/by/4.0/legalcode
-
----
-
-**SKI Framework** is published by **KpiFinity Inc.** under Creative Commons Attribution 4.0 International.
-
-When using or adapting the SKI Framework, please attribute:
-- **KpiFinity Inc.** (https://kpifinity.com)
-- **SKI Framework** (https://skiframework.org)
+For the legal text, see [`LICENSE`](./LICENSE) and
+[`LICENSE-docs.md`](./LICENSE-docs.md). Attribution requirements are
+listed in [`NOTICE`](./NOTICE).

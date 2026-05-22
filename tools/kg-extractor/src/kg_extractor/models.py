@@ -1,41 +1,65 @@
-"""
-Data models for KG Extractor
+"""Data models for kg-extractor (v0.1.0-alpha).
+
+v2.1 changes:
+  * `IMPLIED` removed from the confidence enum — the Anchor Constraint
+    (B2.1) prohibits inference beyond source text. Rules a Phase 1
+    extractor cannot defend with a verbatim source quote must be
+    surfaced as `DISCRETIONARY` for human triage, not silently inferred.
+  * Extraction metadata now records the seed, temperature, prompt hash,
+    model name, and model file SHA-256 to make compilation auditable.
 """
 
-from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, Field, model_validator
 
 
 class ConfidenceLevel(str, Enum):
-    """Confidence level of extracted rule"""
+    """Permitted confidence levels for extracted rules.
+
+    Note: `IMPLIED` (present in pre-v2.1 versions) is GONE. See B2.1.
+    """
+
     EXPLICIT = "EXPLICIT"
-    IMPLIED = "IMPLIED"
     DISCRETIONARY = "DISCRETIONARY"
     CONFLICTING = "CONFLICTING"
 
 
 class ComplianceRule(BaseModel):
-    """Extracted compliance rule"""
-    id: str = Field(..., description="Unique rule identifier")
-    subject: str = Field(..., description="Subject of the rule (what is being regulated)")
-    relation: str = Field(..., description="Compliance obligation (relation between subject and object)")
-    object: str = Field(..., description="Constraint or limit (the regulatory requirement)")
-    source_document: str = Field(..., description="Name of source regulatory document")
-    source_clause: str = Field(..., description="Specific clause/section reference")
-    confidence: ConfidenceLevel = Field(..., description="Confidence level of extraction")
-    reasoning: str = Field(..., description="Explanation of how rule was extracted")
-    effective_date: Optional[str] = Field(None, description="Date rule becomes effective")
-    expiration_date: Optional[str] = Field(None, description="Date rule expires")
-    related_rules: List[str] = Field(default_factory=list, description="IDs of related rules")
+    """Extracted compliance rule."""
+
+    id: str
+    subject: str
+    relation: str
+    object: str
+    source_document: str
+    source_clause: str
+    source_document_version: Optional[str] = None
+    confidence: ConfidenceLevel
+    reasoning: str
+    effective_date: Optional[str] = None
+    sunset_date: Optional[str] = None
+    related_rules: List[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _no_implied(self) -> "ComplianceRule":
+        # Defence in depth: even if a serialised payload sneaks in
+        # `confidence: "IMPLIED"`, the enum coercion will already have
+        # raised. This validator exists so the prohibition is also
+        # documented in code.
+        if self.confidence not in (ConfidenceLevel.EXPLICIT, ConfidenceLevel.DISCRETIONARY, ConfidenceLevel.CONFLICTING):
+            raise ValueError(f"Rule {self.id}: prohibited confidence value")
+        return self
 
     class Config:
         use_enum_values = True
 
 
 class ExtractionMetadata(BaseModel):
-    """Metadata about extraction job"""
+    """Metadata about an extraction run — captured for reproducibility audits."""
+
     document_name: str
     document_type: str
     sector: str
@@ -43,31 +67,32 @@ class ExtractionMetadata(BaseModel):
     total_rules_extracted: int
     rules_by_confidence: Dict[str, int]
     extraction_duration_seconds: float
-    model_used: str = "claude-opus-4-6"
+    backend: str                          # "anthropic" | "openai" | "ollama" | ...
+    model_used: str
+    model_file_sha256: Optional[str] = None
+    temperature: float = 0.0
+    seed: Optional[int] = None
+    prompt_sha256: Optional[str] = None
+    extractor_version: str = "0.1.0a0"
 
 
 class ExtractionResult(BaseModel):
-    """Complete extraction result"""
-    rules: List[ComplianceRule] = Field(..., description="Extracted compliance rules")
-    metadata: ExtractionMetadata = Field(..., description="Extraction metadata")
-    warnings: List[str] = Field(default_factory=list, description="Warnings during extraction")
+    rules: List[ComplianceRule] = Field(default_factory=list)
+    metadata: ExtractionMetadata
+    warnings: List[str] = Field(default_factory=list)
 
     def get_rules_by_confidence(self, confidence: ConfidenceLevel) -> List[ComplianceRule]:
-        """Get rules filtered by confidence level"""
         return [r for r in self.rules if r.confidence == confidence]
 
     def get_explicit_rules(self) -> List[ComplianceRule]:
-        """Get only explicitly stated rules"""
         return self.get_rules_by_confidence(ConfidenceLevel.EXPLICIT)
 
     def get_discretionary_rules(self) -> List[ComplianceRule]:
-        """Get rules needing human review"""
         return self.get_rules_by_confidence(ConfidenceLevel.DISCRETIONARY)
 
     def to_json(self) -> Dict[str, Any]:
-        """Convert to JSON-serializable dict"""
         return {
-            "rules": [r.dict() for r in self.rules],
-            "metadata": self.metadata.dict(),
+            "rules": [r.model_dump() for r in self.rules],
+            "metadata": self.metadata.model_dump(),
             "warnings": self.warnings,
         }

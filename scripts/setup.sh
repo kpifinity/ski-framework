@@ -1,170 +1,149 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# SKI Framework — first-run setup script.
+#
+# Generates strong random secrets, self-signed TLS certs, writes a .env
+# file with 0600 permissions, and verifies the host has the prerequisites
+# the reference implementation needs.
+#
+# This script does NOT make any cloud-API calls. It does NOT require an
+# Anthropic, OpenAI, or any other vendor API key.
 
-################################################################################
-# SKI Framework Setup Script
-# Initial deployment setup and configuration
-################################################################################
+set -euo pipefail
 
-set -e
+# ---- pretty-printing --------------------------------------------------------
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+YELLOW=$'\033[1;33m'
+NC=$'\033[0m'
 
-# Colors for output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+print_header() { printf "\n%s===================================================%s\n%s%s%s\n%s===================================================%s\n\n" "$GREEN" "$NC" "$GREEN" "$1" "$NC" "$GREEN" "$NC"; }
+print_success() { printf "%s✓%s %s\n" "$GREEN" "$NC" "$1"; }
+print_error()   { printf "%s✗%s %s\n" "$RED" "$NC" "$1" >&2; }
+print_warning() { printf "%s⚠%s %s\n" "$YELLOW" "$NC" "$1"; }
 
-# Configuration
-REPO_URL="https://github.com/kpifinity/ski-framework.git"
-REPO_DIR="ski-framework"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-################################################################################
-# Helper Functions
-################################################################################
-
-print_header() {
-    echo -e "\n${GREEN}===================================================${NC}"
-    echo -e "${GREEN}$1${NC}"
-    echo -e "${GREEN}===================================================${NC}\n"
-}
-
-print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}✗${NC} $1"
-}
-
-print_warning() {
-    echo -e "${YELLOW}⚠${NC} $1"
-}
-
+# ---- prereqs ----------------------------------------------------------------
 check_command() {
-    if ! command -v "$1" &> /dev/null; then
+    if ! command -v "$1" >/dev/null 2>&1; then
         print_error "$1 is not installed"
         return 1
     fi
     print_success "$1 found"
-    return 0
 }
-
-################################################################################
-# Main Setup
-################################################################################
 
 main() {
-    print_header "SKI Framework Setup"
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    cd "$REPO_ROOT"
 
-    # Check environment
-    print_header "Checking Prerequisites"
+    print_header "SKI Framework setup"
 
-    local all_ok=true
-
-    check_command "docker" || all_ok=false
-    check_command "docker-compose" || all_ok=false
-    check_command "python3" || all_ok=false
-    check_command "git" || all_ok=false
-
-    if [ "$all_ok" = false ]; then
-        print_error "Missing required prerequisites"
-        echo "Please install Docker, Docker Compose, Python 3, and Git"
-        exit 1
-    fi
-
-    # Check disk space
-    print_header "Checking Disk Space"
-    available_space=$(df /tmp | awk 'NR==2 {print $4}')
-    required_space=$((10 * 1024 * 1024))  # 10GB
-
-    if [ "$available_space" -lt "$required_space" ]; then
-        print_warning "Low disk space available"
+    print_header "Checking prerequisites"
+    all_ok=true
+    check_command docker || all_ok=false
+    check_command python3 || all_ok=false
+    check_command openssl || all_ok=false
+    if ! docker compose version >/dev/null 2>&1; then
+        print_error "docker compose v2 is required (try 'docker compose version')"
+        all_ok=false
     else
-        print_success "Sufficient disk space ($(($available_space / 1024 / 1024))GB available)"
+        print_success "docker compose v2 found"
     fi
+    [ "$all_ok" = true ] || { print_error "Missing prerequisites"; exit 1; }
 
-    # Check RAM
-    print_header "Checking Memory"
-    available_ram=$(free -m | awk 'NR==2 {print $7}')
+    env_file="$REPO_ROOT/reference-implementation/.env"
+    env_example="$REPO_ROOT/reference-implementation/.env.example"
+    tls_dir="$REPO_ROOT/reference-implementation/tls"
+    grafana_tls="$tls_dir/grafana"
 
-    if [ "$available_ram" -lt 4096 ]; then
-        print_warning "Less than 4GB free RAM available"
+    print_header "Generating secrets"
+    if [ -f "$env_file" ]; then
+        print_warning ".env already exists at $env_file — not overwriting."
     else
-        print_success "Sufficient RAM (${available_ram}MB available)"
+        cp "$env_example" "$env_file"
+
+        SKI_API_KEY=$(openssl rand -hex 32)
+        POSTGRES_USER="ski_${RANDOM}${RANDOM}"
+        POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-40)
+        GRAFANA_USER="grafana_admin"
+        GRAFANA_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-40)
+
+        # macOS / Linux compatible in-place sed
+        sed_i() { if [ "$(uname)" = "Darwin" ]; then sed -i '' "$@"; else sed -i "$@"; fi; }
+        sed_i "s|^SKI_API_KEY=.*|SKI_API_KEY=${SKI_API_KEY}|" "$env_file"
+        sed_i "s|^POSTGRES_USER=.*|POSTGRES_USER=${POSTGRES_USER}|" "$env_file"
+        sed_i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" "$env_file"
+        sed_i "s|^GRAFANA_USER=.*|GRAFANA_USER=${GRAFANA_USER}|" "$env_file"
+        sed_i "s|^GRAFANA_PASSWORD=.*|GRAFANA_PASSWORD=${GRAFANA_PASSWORD}|" "$env_file"
+
+        chmod 600 "$env_file"
+        print_success "Wrote $env_file (0600)"
+        print_warning "Strong random secrets generated. They are in the .env file only — they will NOT be reprinted."
     fi
 
-    # Setup directories
-    print_header "Creating Directory Structure"
+    print_header "Generating self-signed TLS certificates"
+    mkdir -p "$tls_dir" "$grafana_tls"
+    if [ -f "$tls_dir/ski-model.crt" ]; then
+        print_warning "TLS certs already exist in $tls_dir — not regenerating."
+    else
+        # Local CA
+        openssl req -x509 -newkey rsa:4096 -sha256 -nodes -keyout "$tls_dir/ca.key" \
+            -out "$tls_dir/ca.crt" -days 825 -subj "/CN=ski-local-ca" >/dev/null 2>&1
 
-    mkdir -p data/{ledger,backups,logs}
-    mkdir -p config
-    mkdir -p examples/{knowledge-graphs,telemetry}
+        # SKI Model service cert (CN=ski-model so sidecar SNI matches)
+        openssl req -newkey rsa:4096 -sha256 -nodes -keyout "$tls_dir/ski-model.key" \
+            -out "$tls_dir/ski-model.csr" -subj "/CN=ski-model" >/dev/null 2>&1
+        openssl x509 -req -in "$tls_dir/ski-model.csr" -CA "$tls_dir/ca.crt" \
+            -CAkey "$tls_dir/ca.key" -CAcreateserial -out "$tls_dir/ski-model.crt" \
+            -days 825 -sha256 >/dev/null 2>&1
+        rm -f "$tls_dir/ski-model.csr" "$tls_dir/ca.srl"
 
-    print_success "Directory structure created"
+        # Grafana cert
+        openssl req -newkey rsa:4096 -sha256 -nodes -keyout "$grafana_tls/grafana.key" \
+            -out "$grafana_tls/grafana.csr" -subj "/CN=ski-grafana" >/dev/null 2>&1
+        openssl x509 -req -in "$grafana_tls/grafana.csr" -CA "$tls_dir/ca.crt" \
+            -CAkey "$tls_dir/ca.key" -CAcreateserial -out "$grafana_tls/grafana.crt" \
+            -days 825 -sha256 >/dev/null 2>&1
+        rm -f "$grafana_tls/grafana.csr" "$tls_dir/ca.srl"
 
-    # Setup environment
-    print_header "Setting Up Environment"
+        chmod -R go-rwx "$tls_dir"
+        print_success "Self-signed CA and per-service certs generated under $tls_dir"
+        print_warning "Replace with certs from your own CA before any non-local deployment."
+    fi
 
-    if [ ! -f .env ]; then
-        if [ -f reference-implementation/.env.example ]; then
-            cp reference-implementation/.env.example .env
-            print_success "Created .env from template"
+    print_header "Optional: Python dev environment"
+    if [ -f "$REPO_ROOT/requirements-dev.txt" ]; then
+        if [ -d ".venv" ]; then
+            print_warning "Existing .venv detected — skipping creation."
         else
-            print_warning ".env.example not found"
+            python3 -m venv .venv
+            # shellcheck disable=SC1091
+            . .venv/bin/activate
+            pip install -q -r requirements-dev.txt
+            print_success "Installed dev requirements into .venv"
         fi
-    else
-        print_warning ".env already exists, skipping"
     fi
 
-    # Check API key
-    if [ -z "$ANTHROPIC_API_KEY" ]; then
-        print_warning "ANTHROPIC_API_KEY not set in environment"
-        echo "Please set your API key:"
-        echo "  export ANTHROPIC_API_KEY=sk-..."
-    else
-        print_success "ANTHROPIC_API_KEY is set"
-    fi
+    print_header "Next steps"
+    cat <<EOF
+1. (One time) Pull the local LLM weights into the Ollama volume:
+     docker compose -f reference-implementation/docker-compose.yml up -d ollama
+     docker exec ski-ollama ollama pull qwen2.5:7b-instruct
 
-    # Install Python dependencies
-    print_header "Installing Python Dependencies"
+2. Start the full stack:
+     docker compose -f reference-implementation/docker-compose.yml up -d
 
-    if [ -f requirements.txt ]; then
-        pip3 install -q -r requirements.txt
-        print_success "Python dependencies installed"
-    fi
+3. Verify health (note: HTTPS, self-signed):
+     curl -k https://localhost:8000/api/health
 
-    # Install tools
-    print_header "Installing SKI Tools"
+4. Send a sample telemetry record:
+     python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl
 
-    if [ -d "tools/kg-extractor" ]; then
-        pip3 install -e tools/kg-extractor -q
-        print_success "kg-extractor installed"
-    fi
+5. Verify the audit ledger:
+     python scripts/verify-ledger.py
 
-    if [ -d "tools/kg-validator" ]; then
-        pip3 install -e tools/kg-validator -q
-        print_success "kg-validator installed"
-    fi
-
-    if [ -d "tools/milm-deploy" ]; then
-        pip3 install -e tools/milm-deploy -q
-        print_success "milm-deploy installed"
-    fi
-
-    # Summary
-    print_header "Setup Complete!"
-
-    echo "Next steps:"
-    echo "  1. Set your API key: export ANTHROPIC_API_KEY=sk-..."
-    echo "  2. Configure .env file: nano .env"
-    echo "  3. Start reference implementation: cd reference-implementation && docker-compose up -d"
-    echo "  4. Verify: curl http://localhost:8000/api/health"
-    echo ""
-    echo "For more information:"
-    echo "  - Getting Started: docs/GETTING_STARTED.md"
-    echo "  - Deployment: reference-implementation/docs/DEPLOYMENT.md"
-    echo "  - Tools: tools/<tool>/README.md"
+Read reference-implementation/SECURITY_DEFAULTS.md before any production use.
+EOF
 }
 
-# Run main
 main "$@"

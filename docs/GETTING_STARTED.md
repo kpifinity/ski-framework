@@ -1,141 +1,111 @@
-# Getting Started with SKI Framework
+# Getting started with the SKI Framework
 
-Welcome to the SKI Framework! This guide will help you understand the core concepts and get started with your first implementation.
+> **⚠ STATUS: EARLY ALPHA (v0.1.0-alpha).** The specification is stable
+> at v2.1. The reference implementation and tools are alpha.
+
+This guide orients you to the framework and points to the right next
+document for each role.
 
 ## What is SKI?
 
-SKI (Sovereign Knowledge Intelligence) is an open-source framework for **deterministic AI compliance monitoring** in regulated industries.
+SKI is an open architecture for **deterministic, sovereign, auditable AI
+compliance monitoring**. It is purpose-built for regulated industries —
+energy, finance, manufacturing, defense — that cannot adopt
+general-purpose AI in core operational systems because of four
+non-negotiable requirements: determinism, sovereignty, auditability,
+and human primacy.
 
-Key concepts:
-- **Deterministic**: Same input always produces the same verdict
-- **Sovereign**: Your data stays on your infrastructure
-- **Auditable**: Every verdict traces back to a specific regulation
-- **Open**: Published under CC BY 4.0; free to implement
+The framework defines a **two-phase architecture**:
 
-## Before You Start
+- **Phase 1 — offline compilation.** Regulatory documents are turned
+  into a signed Knowledge Graph through a probabilistic, human-validated
+  process.
+- **Phase 2 — runtime evaluation.** Telemetry is evaluated against the
+  signed Knowledge Graph inside the sovereign boundary, deterministically.
 
-To implement SKI, you should have:
+## Core concepts in five minutes
 
-1. **Understanding of your regulatory obligations**
-   - What regulations apply to your organization?
-   - What compliance requirements must you monitor?
-   - What operational telemetry do you generate?
+1. **Knowledge Graph** — set of structured compliance rules, signed.
+2. **Tag Registry** — compile-time mapping from telemetry subject to
+   rule. Runtime tag inference is architecturally prohibited.
+3. **Symbolic Evaluator (Track 1)** — deterministic predicate evaluator
+   used for the bulk of rules. Outputs `CLEAR` / `FLAG` / `NULL_*`.
+4. **SKI Model (Track 2)** — bounded local LLM for the small fraction of
+   rules that require natural-language interpretation. Temperature 0,
+   seeded, structured output, with a determinism canary.
+5. **Verdicts** — exactly five: `CLEAR`, `FLAG`, `NULL_UNMAPPED`,
+   `NULL_STALE`, `DISCRETIONARY`. No scores, no confidence intervals.
+6. **Audit ledger** — append-only, hash-chained, append-only at the
+   database layer.
 
-2. **Infrastructure requirements**
-   - On-premise compute (Linux/macOS recommended)
-   - Access to operational data streams
-   - Ability to deploy containers (Docker/Kubernetes)
+## Pick a role
 
-3. **Team composition**
-   - **Compliance expert**: Understands regulations and requirements
-   - **Infrastructure engineer**: Manages deployment and monitoring
-   - **Operations lead**: Ensures governance and escalation processes
+### "I want to read the spec."
+Start at [skiframework.org](https://skiframework.org) or
+[`docs/ARCHITECTURE.md`](./ARCHITECTURE.md). The spec is licensed
+CC BY 4.0.
 
-## The SKI Implementation Journey
+### "I want to run the reference implementation."
+Go to [`reference-implementation/QUICKSTART.md`](../reference-implementation/QUICKSTART.md).
+You'll be evaluating sample telemetry against a demo KG in about ten
+minutes. The implementation is Apache 2.0 and runs entirely on-premise.
 
-SKI implementations follow four phases:
+### "I want to bring my own regulations into SKI."
+1. Extract rules with [`tools/kg-extractor`](../tools/kg-extractor/).
+2. Validate them with [`tools/kg-validator`](../tools/kg-validator/).
+3. Sign the resulting KG with your production Ed25519 key.
+4. Deploy via [`tools/ski-model-deploy`](../tools/ski-model-deploy/).
 
-### Phase 1: Discovery & Compilation (4-6 weeks)
-- Identify regulatory obligations to monitor
-- Extract compliance rules into Knowledge Graph
-- Validate extracted rules with domain experts
-- Establish Coverage Register (what's covered, what's not)
+For commercial-grade, regulator-mapped Knowledge Graph libraries for
+energy, finance, manufacturing, and defense, contact
+[KpiFinity](https://kpifinity.com).
 
-### Phase 2: Infrastructure & Integration (3-4 weeks)
-- Deploy MiLM (inference engine) on-premise
-- Connect to operational data sources (read-only sidecar)
-- Set up immutable audit ledger
-- Validate security and sovereignty
+### "I want to claim SKI conformance for my implementation."
+Run the SKI conformance suite under [`conformance/`](../conformance/).
+Each test cites the spec section it validates. See
+[`docs/CONFORMANCE.md`](./CONFORMANCE.md) for the methodology and the
+Level 1 / 2 / 3 progression.
 
-### Phase 3: Shadow Validation (8-12 weeks)
-- Run SKI in parallel with existing compliance processes
-- Compare SKI verdicts to manual reviews
-- Identify and resolve DISCRETIONARY verdicts
-- Build confidence in system accuracy
+### "I'm reviewing this for purchase / regulatory approval."
+The fastest path to a credible assessment:
 
-### Phase 4: Active Governance (ongoing)
-- Activate SKI verdicts in formal compliance processes
-- Establish escalation procedures for FLAGS and DISCRETIONARY verdicts
-- Perform quarterly reviews
-- Manage regulatory changes
+1. Skim the [README's status section](../README.md).
+2. Read [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) for the spec
+   compliance picture.
+3. Read [`reference-implementation/SECURITY_DEFAULTS.md`](../reference-implementation/SECURITY_DEFAULTS.md).
+4. Run the conformance suite against the reference implementation:
+   `pytest conformance -q -m level1`.
+5. Verify the audit ledger end-to-end: `python scripts/verify-ledger.py --strict`.
 
-## Key Concepts
+## What's in the repository
 
-### Knowledge Graph
-A structured representation of your compliance obligations:
-- **Extracted from**: Regulatory documents, internal SOPs
-- **Validated by**: Compliance experts
-- **Used for**: Evaluating operational telemetry
-- **Owned by**: Your organization
+```
+ski-framework/
+├── README.md
+├── docs/
+│   ├── GETTING_STARTED.md          ← you are here
+│   ├── ARCHITECTURE.md             Specification: architecture
+│   ├── KNOWLEDGE_GRAPH.md          Specification: KG format
+│   └── CONFORMANCE.md              Specification: conformance methodology
+├── reference-implementation/       Apache 2.0 — runs entirely on-premise
+├── tools/                          Apache 2.0
+│   ├── kg-extractor/               Phase 1: extract rules
+│   ├── kg-validator/               Phase 1: human validation
+│   ├── ski-model-deploy/           Phase 2: deploy signed KGs
+│   └── audit-ledger/               Verify, export, back up the ledger
+├── conformance/                    Apache 2.0 — runnable spec tests
+├── examples/                       DEMO ONLY — never production
+└── scripts/                        Operational helpers
+```
 
-### MiLM (Micro Language Model)
-The inference engine that runs on your infrastructure:
-- Operates at temperature zero (deterministic)
-- Evaluates telemetry against Knowledge Graph
-- Produces categorical verdicts (CLEAR, FLAG, NULL, DISCRETIONARY)
-- Never sends data outside your boundary
+The proprietary Knowledge Graph libraries (Energy, Finance,
+Manufacturing, Defense) live in a private KpiFinity repository and are
+not present here. See [CONTRIBUTING.md](../CONTRIBUTING.md) for the
+open/proprietary boundary.
 
-### Verdicts
-SKI produces exactly four verdict types:
+## Next steps
 
-| Verdict | Meaning | Example |
-|---------|---------|---------|
-| **CLEAR** | Compliant; no issue detected | Emissions within regulatory limit |
-| **FLAG** | Non-compliant; breach detected | Emissions exceed limit |
-| **NULL** | No data to evaluate | Data stream offline |
-| **DISCRETIONARY** | Ambiguous; requires human judgment | Gray area in regulation |
-
-### Audit Ledger
-An immutable record of all verdicts:
-- Hash-chained (tamper-evident)
-- Includes: timestamp, verdict, rule, telemetry reference
-- Retained for regulatory period
-- Produces audit-grade evidence
-
-## Next Steps
-
-### For Framework Understanding
-Read the [full SKI Framework specification](https://skiframework.org)
-
-### For Implementation Planning
-1. Identify your regulatory obligations
-2. Define your scope (which regulations, which processes)
-3. Assess your current compliance processes
-4. Plan your team and timeline
-
-### For Technical Setup
-See [ARCHITECTURE.md](./ARCHITECTURE.md) for technical architecture details
-
-### For Professional Support
-[KpiFinity provides three tiers of implementation support](https://kpifinity.com):
-- **Tier 1 Foundational**: Single regulatory domain, 8-12 weeks
-- **Tier 2 Managed**: Multi-domain expansion, 16-24 weeks  
-- **Tier 3 Assured**: Enterprise deployment with audit, 24-40 weeks
-
-## Common Questions
-
-**Q: Do we need to move to the cloud?**
-No. SKI is designed to run entirely on-premise. Data never leaves your infrastructure.
-
-**Q: How long does implementation take?**
-4-6 months typically (all four phases). This includes time for regulatory experts to validate rules.
-
-**Q: Can we start with just one regulatory domain?**
-Yes! Start narrow, prove success, then expand. This is the recommended approach.
-
-**Q: What if our regulation is ambiguous?**
-SKI produces DISCRETIONARY verdicts for ambiguous cases. These escalate to human experts for decision.
-
-**Q: Who owns the Knowledge Graph?**
-Your organization owns and maintains the Knowledge Graph. It lives on your infrastructure.
-
-## Getting Help
-
-- **Framework questions**: [GitHub Discussions](https://github.com/kpifinity/ski-framework/discussions)
-- **Bug reports**: [GitHub Issues](https://github.com/kpifinity/ski-framework/issues)
-- **Implementation help**: [KpiFinity](https://kpifinity.com)
-- **Technical details**: [Full SKI Framework specification](https://skiframework.org)
-
----
-
-Ready? Start with the [ARCHITECTURE.md](./ARCHITECTURE.md) guide or contact KpiFinity for implementation support.
+- Read the architecture: [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+- Run the reference implementation: [`../reference-implementation/QUICKSTART.md`](../reference-implementation/QUICKSTART.md)
+- Run the conformance suite: [`../conformance/README.md`](../conformance/README.md)
+- Talk to KpiFinity: [kpifinity.com](https://kpifinity.com)

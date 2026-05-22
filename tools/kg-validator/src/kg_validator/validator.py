@@ -33,17 +33,14 @@ class Validator:
     def validate(
         self,
         rules: List[ComplianceRule],
-        auto_approve_explicit: bool = False,
     ) -> ValidationResult:
         """
-        Perform automated validation of rules
+        Perform automated validation of rules.
 
-        Args:
-            rules: List of extracted rules to validate
-            auto_approve_explicit: Auto-approve rules marked EXPLICIT
-
-        Returns:
-            ValidationResult with validation findings
+        v2.1: the `auto_approve_explicit` flag was REMOVED. Per spec B2.3
+        (Universal Coverage), every rule must be human-reviewed. Even an
+        opt-in auto-approval defaults the operator toward non-conformance,
+        so the option is gone.
         """
         start_time = time.time()
         self.current_session_start = start_time
@@ -53,12 +50,11 @@ class Validator:
         conflicts = ConflictDetector.detect_conflicts(rules)
         duplicates = ConflictDetector.detect_duplicates(rules)
 
-        # Process rules
+        # Process rules — every rule goes into the pending-review pool.
+        # Human approval happens via interactive_review() or a downstream
+        # workflow tool; nothing in this codepath auto-approves.
         for rule in rules:
-            if auto_approve_explicit and rule.confidence == "EXPLICIT":
-                self._approve_rule(rule, "Auto-approved: EXPLICIT confidence level")
-            else:
-                self._add_pending_rule(rule)
+            self._add_pending_rule(rule)
 
         # Create validation result
         metadata = ValidationMetadata(
@@ -190,8 +186,11 @@ class Validator:
         """
         start_time = time.time()
 
-        # Run automated checks first
-        result = self.validate(rules, auto_approve_explicit=True)
+        # Run automated checks first. v2.1: no auto-approval — `validate`
+        # itself just records issues and leaves the approval decision to
+        # the human reviewer. This method represents the (CLI-mediated)
+        # human review pass.
+        result = self.validate(rules)
 
         # For DISCRETIONARY rules, flag them
         for rule in rules:
