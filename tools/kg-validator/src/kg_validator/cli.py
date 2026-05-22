@@ -36,7 +36,7 @@ def validate(input: str, output: Optional[str]):
         result = validator.validate(rules)
 
         # Print summary
-        click.echo(f"\nValidation complete:")
+        click.echo("\nValidation complete:")
         click.echo(f"  Approved: {result.metadata.total_approved}")
         click.echo(f"  Rejected: {result.metadata.total_rejected}")
         click.echo(f"  Flagged: {result.metadata.total_flagged}")
@@ -73,7 +73,7 @@ def review(input: str, output: Optional[str]):
         validator = Validator()
         result = validator.interactive_review(rules)
 
-        click.echo(f"\nReview complete:")
+        click.echo("\nReview complete:")
         click.echo(f"  Approved: {result.metadata.total_approved}")
         click.echo(f"  Rejected: {result.metadata.total_rejected}")
         click.echo(f"  Flagged: {result.metadata.total_flagged}")

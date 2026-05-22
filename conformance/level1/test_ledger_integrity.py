@@ -8,7 +8,6 @@ chain forward would pass it.
 
 from __future__ import annotations
 
-import hashlib
 from pathlib import Path
 
 import pytest

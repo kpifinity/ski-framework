@@ -15,7 +15,6 @@ Phase 1 extractor for the SKI Framework. Key v2.1 changes:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import time
@@ -184,7 +183,7 @@ class Extractor:
                     effective_date=rule_data.get("effective_date"),
                     sunset_date=rule_data.get("sunset_date"),
                 )
-            except ValueError as exc:
+            except ValueError:
                 # Pydantic / enum coercion failure → skip with a warning.
                 continue
             if validate_rule(rule):

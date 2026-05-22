@@ -7,7 +7,6 @@ Test Knowledge Graph - Validate Knowledge Graph schema and structure
 import json
 import sys
 import argparse
-from pathlib import Path
 
 
 def validate_rule(rule):

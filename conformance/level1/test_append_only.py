@@ -27,7 +27,7 @@ def test_append_only_triggers_present_in_schema(repo_root: Path) -> None:
 @pytest.mark.level1
 @pytest.mark.requires_ledger
 def test_live_update_is_refused(require_ledger: str) -> None:
-    sqlalchemy = pytest.importorskip("sqlalchemy")
+    pytest.importorskip("sqlalchemy")
     from sqlalchemy import create_engine, text
 
     engine = create_engine(require_ledger)

@@ -36,10 +36,10 @@ def extract(file: str, sector: str, output: Optional[str], document_type: str):
         output_data = result.to_json()
 
         # Print summary
-        click.echo(f"\nExtraction complete:")
+        click.echo("\nExtraction complete:")
         click.echo(f"  Total rules: {result.metadata.total_rules_extracted}")
         click.echo(f"  Duration: {result.metadata.extraction_duration_seconds:.2f} seconds")
-        click.echo(f"  Confidence breakdown:")
+        click.echo("  Confidence breakdown:")
 
         for confidence, count in result.metadata.rules_by_confidence.items():
             click.echo(f"    {confidence}: {count}")

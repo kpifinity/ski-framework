@@ -2,9 +2,8 @@
 Tests for KG Extractor
 """
 
-import json
 import pytest
-from kg_extractor import Extractor
+
 from kg_extractor.models import ComplianceRule, ConfidenceLevel
 from kg_extractor.utils import chunk_text, validate_rule
 

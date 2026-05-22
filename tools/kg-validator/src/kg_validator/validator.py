@@ -2,9 +2,8 @@
 Core validation logic
 """
 
-import json
 import time
-from typing import List, Dict, Optional
+from typing import List, Optional
 from datetime import datetime
 
 from .models import (
@@ -17,7 +16,7 @@ from .models import (
     ValidationStatus,
 )
 from .conflict_detector import ConflictDetector
-from .utils import load_rules, validate_rule_fields
+from .utils import validate_rule_fields
 
 
 class Validator:

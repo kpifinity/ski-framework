@@ -12,7 +12,6 @@ The extractor refuses to talk to runtime endpoints.
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 from dataclasses import dataclass
 from typing import Optional, Protocol

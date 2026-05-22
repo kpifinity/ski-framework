@@ -37,7 +37,7 @@ def main() -> int:
     print(f"Entry hash recomputed:        {result.entry_hash_verified_count} / {result.hash_verification_total}")
     print(f"Sequence continuity:          {result.chain_continuity}")
     print(f"Timestamp ordering:           {result.timestamp_ordering}")
-    print(f"\nRecommendation:")
+    print("\nRecommendation:")
     print(f"  {result.recommendation}")
 
     if result.issues:

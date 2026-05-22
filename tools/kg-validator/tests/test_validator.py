@@ -3,9 +3,10 @@ Tests for KG Validator
 """
 
 import pytest
+
 from kg_validator import Validator
-from kg_validator.models import ComplianceRule, ConfidenceLevel
 from kg_validator.conflict_detector import ConflictDetector
+from kg_validator.models import ComplianceRule
 
 
 class TestConflictDetection:
