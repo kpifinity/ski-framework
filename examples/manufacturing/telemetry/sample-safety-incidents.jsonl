@@ -1,0 +1,5 @@
+{"id": "tel_m_001", "timestamp": "2026-05-22T10:00:00Z", "subject": "equipment.machine_guard.status", "measurement": {"guard_engaged": true}}
+{"id": "tel_m_002", "timestamp": "2026-05-22T10:05:00Z", "subject": "equipment.machine_guard.status", "measurement": {"guard_engaged": false}}
+{"id": "tel_m_003", "timestamp": "2026-05-22T10:10:00Z", "subject": "workplace.noise.dba_8h_twa", "measurement": {"dba_8h_twa": {"value": 78, "unit": "dBA"}}}
+{"id": "tel_m_004", "timestamp": "2026-05-22T10:15:00Z", "subject": "workplace.noise.dba_8h_twa", "measurement": {"dba_8h_twa": {"value": 92, "unit": "dBA"}}}
+{"id": "tel_m_005", "timestamp": "2026-05-22T10:20:00Z", "subject": "maintenance.lockout_tagout", "measurement": {"loto_applied": false}}

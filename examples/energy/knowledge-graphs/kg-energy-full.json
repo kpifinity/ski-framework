@@ -1,0 +1,6 @@
+{
+  "_deprecated": true,
+  "_message": "This file is intentionally retained as a stub. The previous content claimed '47 rules, full Clean Air Act mapping' and was effectively a production-quality KG given away under CC BY 4.0 — undercutting the proprietary KpiFinity Energy KG library and creating compliance liability if anyone deployed it. The DEMO-quality replacement (5 illustrative rules, structured predicates, DEMO_UNSIGNED) lives at examples/energy/knowledge-graphs/kg-energy-demo.json. The production Energy KG library is available via https://kpifinity.com.",
+  "rules": [],
+  "tag_registry": {}
+}

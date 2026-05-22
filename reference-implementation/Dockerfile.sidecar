@@ -1,0 +1,20 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY src/sidecar/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY src/sidecar/ ./sidecar/
+
+RUN useradd --create-home --shell /bin/false --uid 10002 ski && \
+    chown -R ski:ski /app
+USER ski
+
+EXPOSE 8001
+
+CMD ["python", "-m", "sidecar.main"]

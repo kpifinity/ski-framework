@@ -1,0 +1,81 @@
+{
+  "metadata": {
+    "name": "Energy Sector - Sample Knowledge Graph",
+    "version": "v1.0",
+    "sector": "energy",
+    "description": "Simplified sample Knowledge Graph for environmental compliance in oil & gas operations",
+    "created": "2026-05-21T10:00:00Z",
+    "signing_certificate": "sample-cert.pem",
+    "regulatory_framework": "Clean Air Act, Clean Water Act"
+  },
+  "rules": [
+    {
+      "id": "rule_001",
+      "subject": "Facility discharge",
+      "relation": "must_be_within",
+      "object": "100 ppm sulfur dioxide",
+      "source_document": "Clean Air Act Section 112",
+      "source_clause": "112(b)(1)",
+      "confidence": "EXPLICIT",
+      "reasoning": "The regulation explicitly states facilities producing sulfur dioxide must maintain discharge levels below 100 ppm at all times",
+      "effective_date": "2020-01-01",
+      "expiration_date": null
+    },
+    {
+      "id": "rule_002",
+      "subject": "Sulfur dioxide emissions monitoring",
+      "relation": "must_occur_every",
+      "object": "15 minutes",
+      "source_document": "Clean Air Act Section 112",
+      "source_clause": "112(b)(1)",
+      "confidence": "EXPLICIT",
+      "reasoning": "Regulation requires continuous monitoring with measurements taken at 15-minute intervals",
+      "effective_date": "2020-01-01",
+      "expiration_date": null
+    },
+    {
+      "id": "rule_003",
+      "subject": "Nitrogen oxide emissions",
+      "relation": "must_not_exceed",
+      "object": "75 ppm during standard operating hours",
+      "source_document": "State Regulation Chapter 3",
+      "source_clause": "3.2.1",
+      "confidence": "EXPLICIT",
+      "reasoning": "State regulation limits nitrogen oxide emissions to 75 ppm during operating hours (6 AM to 10 PM)",
+      "effective_date": "2021-06-01",
+      "expiration_date": null
+    },
+    {
+      "id": "rule_004",
+      "subject": "Wastewater discharge pH",
+      "relation": "must_be_between",
+      "object": "6.0 and 8.5",
+      "source_document": "Clean Water Act Section 303",
+      "source_clause": "303(d)",
+      "confidence": "EXPLICIT",
+      "reasoning": "Water quality standards require pH between 6.0 and 8.5 for aquatic life protection",
+      "effective_date": "2020-01-01",
+      "expiration_date": null
+    },
+    {
+      "id": "rule_005",
+      "subject": "Monthly compliance report",
+      "relation": "must_be_submitted_by",
+      "object": "the 15th of the following month",
+      "source_document": "Regulatory Authority Guidance",
+      "source_clause": "Section 5.1",
+      "confidence": "EXPLICIT",
+      "reasoning": "Facility operators must submit monthly compliance reports to regulatory authority by established deadline",
+      "effective_date": "2020-01-01",
+      "expiration_date": null
+    }
+  ],
+  "precedence_rules": [
+    {
+      "rule_id_1": "rule_003",
+      "rule_id_2": "rule_001",
+      "precedence": "state_over_federal",
+      "explanation": "State regulations take precedence when more stringent than federal requirements"
+    }
+  ]
+}

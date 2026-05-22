@@ -1,0 +1,55 @@
+# Prometheus alert rules — SKI-specific runtime invariants.
+# Each alert maps directly to a v2.1 specification requirement.
+
+groups:
+  - name: ski-determinism
+    interval: 30s
+    rules:
+      - alert: SKIDeterminismCanaryFailed
+        # Maps to: B3.4 Determinism Enforcement Controls
+        expr: ski_canary_status{status="FAILED"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "SKI Model determinism canary FAILED"
+          description: "The fixed-input canary returned a non-identical result. Stop processing telemetry and audit the model artefacts and runtime environment."
+
+  - name: ski-sovereignty
+    interval: 30s
+    rules:
+      - alert: SKIKnowledgeGraphSignatureFailed
+        # Maps to: Phase 1 → Phase 2 boundary, KG signature requirement
+        expr: ski_kg_signature_verified == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Loaded KG is unsigned or signature failed verification"
+          description: "Refuse to evaluate any telemetry until a signed KG is loaded."
+
+  - name: ski-ledger
+    interval: 60s
+    rules:
+      - alert: SKILedgerSequenceGap
+        # Maps to: B5.2 Audit Ledger hash-chain integrity
+        expr: increase(ski_ledger_sequence_gaps_total[15m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Audit ledger sequence gap detected"
+          description: "A gap in the sequence_number column was observed. Investigate immediately — this is an integrity-class incident."
+
+  - name: ski-heartbeat
+    interval: 30s
+    rules:
+      - alert: SKISidecarHeartbeatLost
+        # Maps to: Sidecar gap-detection requirement
+        expr: time() - ski_sidecar_last_telemetry_timestamp > 300
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Sidecar has not received telemetry for >5 minutes"
+          description: "Investigate the upstream telemetry source and the sidecar→model connectivity."
