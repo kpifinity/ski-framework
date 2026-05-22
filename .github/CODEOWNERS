@@ -1,0 +1,28 @@
+# SKI Framework — code ownership
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Catch-all — at least one KpiFinity reviewer is required on every PR.
+*                                       @kpifinity/maintainers
+
+# Specification documents — spec stewards must review.
+/docs/                                  @kpifinity/spec-stewards
+
+# Reference implementation — runtime maintainers must review.
+/reference-implementation/              @kpifinity/runtime-maintainers
+/reference-implementation/src/ledger/   @kpifinity/runtime-maintainers @kpifinity/security
+/reference-implementation/src/ski_model/ @kpifinity/runtime-maintainers
+
+# Audit ledger tool — security reviewer required.
+/tools/audit-ledger/                    @kpifinity/runtime-maintainers @kpifinity/security
+
+# Conformance suite — spec stewards + runtime maintainers both sign off.
+/conformance/                           @kpifinity/spec-stewards @kpifinity/runtime-maintainers
+
+# CI and release tooling.
+/.github/                               @kpifinity/maintainers @kpifinity/security
+
+# Licensing — owner sign-off required for any license change.
+/LICENSE                                @kpifinity/owners
+/LICENSE.md                             @kpifinity/owners
+/LICENSE-docs.md                        @kpifinity/owners
+/NOTICE                                 @kpifinity/owners

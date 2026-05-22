@@ -1,110 +1,67 @@
-# SKI Framework Tools
+# SKI Framework — tools
 
-This directory contains **open-source tooling** for implementing the SKI Framework. These tools help with Knowledge Graph creation, validation, deployment, and management.
+> **⚠ STATUS: EARLY ALPHA.** All four tools are at v0.1.0-alpha. See the
+> repo root `README.md` for the project-wide status banner.
 
-## What Goes Here
+Open-source tooling for implementing the SKI Framework. All four tools
+are Apache 2.0 licensed and run on-premise without any required cloud
+API key. (The kg-extractor's optional `anthropic` and `openai` backends
+are for Phase 1 compilation only and must not be used at runtime.)
 
-Tools for:
-- **Knowledge Graph extraction** — Extract compliance rules from regulatory documents
-- **Knowledge Graph validation** — Validate and test Knowledge Graphs
-- **MiLM deployment** — Deploy and configure the inference engine
-- **Audit ledger management** — Create, verify, and manage audit ledgers
-- **Data integration** — Build MCP connectors and sidecar integrations
-- **Utilities** — Helper tools for operators and developers
+## What lives here
 
-## Current Tools
+| Tool | Phase | Purpose |
+|---|---|---|
+| [`kg-extractor/`](./kg-extractor/) | Phase 1 (compilation) | Extract structured compliance rules from regulatory documents. Refuses to emit `IMPLIED` rules. Records seed + prompt SHA-256 for reproducibility audits. |
+| [`kg-validator/`](./kg-validator/) | Phase 1 (compilation) | Run automated checks over extracted rules. No auto-approval — every rule still requires human review (B2.3). |
+| [`ski-model-deploy/`](./ski-model-deploy/) | Phase 2 (runtime) | Verify a signed Knowledge Graph and deploy the SKI Model stack. Signature verification is mandatory; there is no override. |
+| [`audit-ledger/`](./audit-ledger/) | Phase 2 (runtime) | Verify, export, report on, and back up the append-only audit ledger. Real `pg_dump` backup; real entry-hash recomputation in `verify`. |
 
-*Coming in v1.0-RC1*
+(Pre-v2.1 docs referred to `milm-deploy`; the renamed `ski-model-deploy`
+is its successor.)
 
-- `kg-extractor/` — LLM-assisted Knowledge Graph extraction pipeline
-- `kg-validator/` — Human validation framework for extracted rules
-- `milm-deploy/` — MiLM deployment toolkit
-- `audit-ledger/` — Immutable audit ledger reference implementation
+## Tool structure
 
-## Development
-
-Each tool is:
-- **Self-contained** — Has its own README and requirements
-- **Well-documented** — Includes examples and usage guides
-- **Tested** — Includes test suite
-- **Licensed** — Published under CC BY 4.0
-
-### Structure of a Tool
+Every tool follows the same skeleton:
 
 ```
 tool-name/
-├── README.md           (Usage guide)
-├── requirements.txt    (Dependencies)
-├── setup.py           (Installation)
-├── src/               (Source code)
-├── tests/             (Test suite)
-└── examples/          (Usage examples)
+├── README.md            Usage guide
+├── requirements.txt     Pinned dependencies
+├── setup.py             Apache-2.0 classifier
+├── src/<package>/       Source code
+└── tests/               Pytest suite
 ```
 
-## Using a Tool
+## Installation
 
 ```bash
-# Install
-pip install -r tool-name/requirements.txt
-
-# Use
-python -m tool_name [arguments]
-
-# Test
-pytest tool-name/tests/
+pip install -e tools/kg-extractor \
+              -e tools/kg-validator \
+              -e tools/ski-model-deploy \
+              -e tools/audit-ledger
 ```
 
-## Contributing a Tool
+All four expose console scripts: `kg-extractor`, `kg-validator`,
+`ski-model-deploy`, `audit-ledger`. Each accepts `--help`.
 
-To contribute a new tool:
+## Contributing a new tool
 
-1. Create a folder in `tools/` with a clear name
-2. Follow the structure above
-3. Write comprehensive README
-4. Include tests
-5. Submit pull request
+Follow the structure above. The skeleton must include:
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
+1. A README that includes the EARLY ALPHA banner and an open/proprietary
+   note.
+2. Pinned `requirements.txt` and `setup.py` with the Apache-2.0
+   classifier.
+3. Tests under `tests/` runnable via `pytest`.
+4. A docstring on every public entry point that cites the spec section
+   it serves.
 
-## Tool Categories
+See [`../CONTRIBUTING.md`](../CONTRIBUTING.md) for the broader flow.
 
-### Extraction & Validation
-- Extract rules from regulatory documents (LLM-assisted)
-- Validate extracted rules against source documents
-- Manage human review and approval process
-- Handle conflicts and precedence
+## Licensing
 
-### Deployment & Operations
-- Deploy MiLM on-premise infrastructure
-- Configure inference engine
-- Manage Knowledge Graph versions
-- Monitor system health
-
-### Integration & Connectivity
-- MCP server implementations
-- Data sidecar integration patterns
-- Telemetry normalization
-- Event streaming
-
-### Analysis & Reporting
-- Audit ledger verification
-- Verdict analysis and reporting
-- Coverage analysis
-- Compliance dashboards
-
-## Roadmap
-
-- **v1.0-RC1 (June 2026)**: Knowledge Graph extraction and validation tools
-- **v1.0 (July 2026)**: MiLM deployment toolkit
-- **v1.1 (August 2026)**: MCP connector ecosystem
-- **v1.2 (September 2026)**: Advanced analytics and reporting
-
-## Support
-
-- **Questions?** Open an issue or discussion
-- **Bug report?** File an issue with reproduction steps
-- **Want to contribute?** See [CONTRIBUTING.md](../CONTRIBUTING.md)
-
----
-
-For the full SKI Framework specification, see [SKI Framework](https://skiframework.org)
+Apache 2.0 — see [`../LICENSE`](../LICENSE) and [`../NOTICE`](../NOTICE).
+The pre-built Knowledge Graph libraries (Energy, Finance, Manufacturing,
+Defense) are proprietary and not in this repo; see
+[KpiFinity](https://kpifinity.com).

@@ -1,52 +1,6 @@
 {
-  "metadata": {
-    "name": "Manufacturing Sector - Safety and Environmental Compliance",
-    "version": "v1.0",
-    "sector": "manufacturing",
-    "description": "Knowledge Graph for OSHA safety and environmental compliance in manufacturing facilities",
-    "created": "2026-05-21T10:00:00Z",
-    "regulatory_framework": "OSHA, EPA Environmental Standards"
-  },
-  "rules": [
-    {
-      "id": "m001",
-      "subject": "Workplace injury",
-      "relation": "must_be_reported_within",
-      "object": "24 hours if hospitalization required",
-      "source_document": "29 CFR 1904.39",
-      "source_clause": "Recording and Reporting",
-      "confidence": "EXPLICIT",
-      "reasoning": "OSHA requires immediate reporting of serious injuries"
-    },
-    {
-      "id": "m002",
-      "subject": "Chemical storage",
-      "relation": "must_be_properly_labeled_with",
-      "object": "GHS labels and SDS available",
-      "source_document": "29 CFR 1200",
-      "source_clause": "Hazard Communication",
-      "confidence": "EXPLICIT",
-      "reasoning": "Hazard Communication Standard requires proper chemical labeling and documentation"
-    },
-    {
-      "id": "m003",
-      "subject": "Equipment maintenance",
-      "relation": "must_include_documented",
-      "object": "Preventive maintenance schedule",
-      "source_document": "29 CFR 1910.22(a)(1)",
-      "source_clause": "General Duty Clause",
-      "confidence": "EXPLICIT",
-      "reasoning": "OSHA requires documented equipment maintenance programs"
-    },
-    {
-      "id": "m004",
-      "subject": "Air quality in facility",
-      "relation": "must_not_exceed",
-      "object": "OSHA PEL (Permissible Exposure Limit)",
-      "source_document": "29 CFR 1910 Subpart Z",
-      "source_clause": "Occupational Health Standards",
-      "confidence": "EXPLICIT",
-      "reasoning": "Chemical exposure must be monitored and kept below OSHA limits"
-    }
-  ]
+  "_deprecated": true,
+  "_message": "Replaced by kg-manufacturing-demo.json. See examples/README.md.",
+  "rules": [],
+  "tag_registry": {}
 }

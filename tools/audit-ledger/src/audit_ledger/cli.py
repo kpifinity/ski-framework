@@ -1,395 +1,221 @@
-"""
-Command-line interface for Audit Ledger Tool
+"""CLI for the audit-ledger tool.
+
+v2.1 changes:
+  * Five-verdict taxonomy in `--verdict-filter` (NULL → NULL_UNMAPPED, NULL_STALE).
+  * `verify` reports entry-hash recomputation separately from chain
+    linkage — these are different integrity checks.
+  * `backup` actually invokes `pg_dump` and verifies with `pg_restore --list`.
 """
 
+from __future__ import annotations
+
+from typing import Optional
+
 import click
-import os
-from datetime import datetime
-from tabulate import tabulate
+
 from .ledger import Ledger
-from .models import ExportResult
+
+
+VERDICT_CHOICES = ["CLEAR", "FLAG", "NULL_UNMAPPED", "NULL_STALE", "DISCRETIONARY"]
 
 
 @click.group()
-@click.version_option(version="1.0.0")
-def main():
-    """Audit Ledger Tool - Manage SKI Framework compliance ledger"""
-    pass
+@click.version_option(version="0.1.0a0")
+def main() -> None:
+    """audit-ledger — manage SKI Framework compliance ledger."""
 
 
 @main.command()
-@click.option(
-    "--ledger-db",
-    required=True,
-    help="PostgreSQL connection string (e.g., postgresql://user:pass@localhost/ledger)",
-    envvar="LEDGER_DB"
-)
-@click.option(
-    "--verbose",
-    is_flag=True,
-    help="Show detailed verification output"
-)
-@click.option(
-    "--check-timestamps",
-    is_flag=True,
-    help="Verify timestamp ordering"
-)
-@click.option(
-    "--output",
-    help="Write results to file"
-)
-def verify(ledger_db, verbose, check_timestamps, output):
-    """Verify ledger integrity and hash chain validity"""
-    try:
-        ledger = Ledger(ledger_db)
-        result = ledger.verify_integrity(verbose=verbose)
+@click.option("--ledger-db", required=True, envvar="LEDGER_DSN", help="PostgreSQL connection string.")
+@click.option("--verbose", is_flag=True)
+@click.option("--output", help="Write a plain-text summary to file.")
+def verify(ledger_db: str, verbose: bool, output: Optional[str]) -> None:
+    """Verify ledger integrity: chain linkage AND entry-hash recomputation."""
+    ledger = Ledger(ledger_db)
+    result = ledger.verify_integrity(verbose=verbose)
 
-        # Format output
-        output_lines = []
-        output_lines.append("Ledger Integrity Verification")
-        output_lines.append("=" * 40)
-        output_lines.append(f"Total entries: {result.total_entries}")
-        output_lines.append(f"Chain integrity: {'✓ VERIFIED' if result.chain_continuity else '✗ BROKEN'}")
-        output_lines.append(f"Hash verification: ✓ {result.hash_verification_count}/{result.hash_verification_total} valid")
-        output_lines.append(f"Timestamp order: {'✓ VALID' if result.timestamp_ordering else '✗ INVALID'}")
-        output_lines.append(f"Data consistency: {'✓ VALID' if result.data_consistency else '✗ INVALID'}")
-        output_lines.append("")
-        output_lines.append("Verdict Distribution:")
-        for verdict, count in result.verdict_distribution.items():
-            output_lines.append(f"  {verdict}: {count}")
-        output_lines.append("")
-        output_lines.append(f"Status: {'✓ VALID' if result.is_valid else '✗ INVALID'}")
-        output_lines.append(f"Recommendation: {result.recommendation}")
+    lines = [
+        "Ledger integrity verification",
+        "=" * 40,
+        f"Total entries:                {result.total_entries}",
+        f"Sequence range:               {result.sequence_range}",
+        f"Time range:                   {result.time_range}",
+        f"Sequence continuity:          {'OK' if result.chain_continuity else 'FAIL'}",
+        f"Timestamp ordering:           {'OK' if result.timestamp_ordering else 'FAIL'}",
+        f"Chain linkage verified:       {result.chain_link_verified_count} / {result.hash_verification_total}",
+        f"Entry-hash recomputation:     {result.entry_hash_verified_count} / {result.hash_verification_total}",
+        "",
+        "Verdict distribution:",
+    ]
+    for v in VERDICT_CHOICES:
+        lines.append(f"  {v}: {result.verdict_distribution.get(v, 0)}")
 
-        output_text = "\n".join(output_lines)
-        click.echo(output_text)
+    lines += [
+        "",
+        f"Overall: {'PASS' if result.is_valid else 'FAIL'}",
+        f"Recommendation: {result.recommendation}",
+    ]
 
-        if output:
-            with open(output, "w") as f:
-                f.write(output_text)
-            click.echo(f"\nResults written to {output}")
+    if result.issues:
+        lines.append("")
+        lines.append("Issues:")
+        for issue in result.issues:
+            lines.append(
+                f"  [{issue.severity}] {issue.issue_type} @ seq={issue.sequence_number}: {issue.description}"
+            )
 
-    except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
-        raise click.Exit(1)
-
-
-@main.command()
-@click.option(
-    "--source",
-    required=True,
-    help="PostgreSQL connection string",
-    envvar="LEDGER_DB"
-)
-@click.option(
-    "--output",
-    required=True,
-    help="Output file path"
-)
-@click.option(
-    "--format",
-    type=click.Choice(["json", "csv", "jsonl"]),
-    default="json",
-    help="Output format (default: json)"
-)
-@click.option(
-    "--fields",
-    help="Comma-separated field names to include"
-)
-@click.option(
-    "--date-range",
-    help="Start,end dates (YYYY-MM-DD,YYYY-MM-DD)"
-)
-@click.option(
-    "--verdict-filter",
-    type=click.Choice(["CLEAR", "FLAG", "NULL", "DISCRETIONARY"]),
-    help="Filter by verdict"
-)
-@click.option(
-    "--rule-id",
-    help="Filter by rule ID"
-)
-@click.option(
-    "--limit",
-    type=int,
-    help="Maximum entries to export"
-)
-def export(source, output, format, fields, date_range, verdict_filter, rule_id, limit):
-    """Export ledger entries for analysis"""
-    try:
-        ledger = Ledger(source)
-
-        # Parse date range
-        start_date = None
-        end_date = None
-        if date_range:
-            parts = date_range.split(",")
-            start_date = parts[0] if len(parts) > 0 else None
-            end_date = parts[1] if len(parts) > 1 else None
-
-        # Parse fields
-        field_list = None
-        if fields:
-            field_list = [f.strip() for f in fields.split(",")]
-
-        result = ledger.export_entries(
-            output_file=output,
-            format=format,
-            start_date=start_date,
-            end_date=end_date,
-            verdict_filter=verdict_filter,
-            rule_id_filter=rule_id,
-            fields=field_list,
-            limit=limit,
-        )
-
-        click.echo(f"Exported {result.entry_count} entries to {output}")
-        click.echo(f"File size: {result.size_bytes} bytes")
-        click.echo(f"Format: {result.file_format}")
-
-    except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
-        raise click.Exit(1)
-
-
-@main.command()
-@click.option(
-    "--source",
-    required=True,
-    help="PostgreSQL connection string",
-    envvar="LEDGER_DB"
-)
-@click.option(
-    "--output",
-    required=True,
-    help="Output HTML file path"
-)
-@click.option(
-    "--start-date",
-    required=True,
-    help="Report start date (YYYY-MM-DD)"
-)
-@click.option(
-    "--end-date",
-    required=True,
-    help="Report end date (YYYY-MM-DD)"
-)
-@click.option(
-    "--include-verdicts",
-    is_flag=True,
-    help="Include verdict summary"
-)
-@click.option(
-    "--include-violations",
-    is_flag=True,
-    help="Include violation details"
-)
-@click.option(
-    "--include-timeline",
-    is_flag=True,
-    help="Include timeline visualization"
-)
-@click.option(
-    "--title",
-    default="Compliance Report",
-    help="Report title"
-)
-@click.option(
-    "--organization",
-    default="Organization",
-    help="Organization name"
-)
-def report(source, output, start_date, end_date, include_verdicts,
-           include_violations, include_timeline, title, organization):
-    """Generate compliance report from ledger data"""
-    try:
-        ledger = Ledger(source)
-        result = ledger.generate_report(
-            start_date=start_date,
-            end_date=end_date,
-            include_verdicts=include_verdicts,
-            include_violations=include_violations,
-            include_timeline=include_timeline,
-            organization=organization
-        )
-
-        # Generate HTML report
-        html = _generate_html_report(result, title)
-
+    out = "\n".join(lines)
+    click.echo(out)
+    if output:
         with open(output, "w") as f:
-            f.write(html)
-
-        click.echo(f"Report generated: {output}")
-        click.echo(f"Organization: {organization}")
-        click.echo(f"Period: {start_date} to {end_date}")
-        click.echo(f"Total verdicts: {result.total_entries_analyzed}")
-
-    except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
-        raise click.Exit(1)
+            f.write(out + "\n")
+    if not result.is_valid:
+        raise SystemExit(1)
 
 
 @main.command()
-@click.option(
-    "--source",
-    required=True,
-    help="PostgreSQL connection string",
-    envvar="LEDGER_DB"
-)
-@click.option(
-    "--output",
-    required=True,
-    help="Output file path"
-)
-@click.option(
-    "--compress",
-    is_flag=True,
-    help="Gzip compress the backup"
-)
-@click.option(
-    "--verify",
-    is_flag=True,
-    help="Verify backup integrity"
-)
-def backup(source, output, compress, verify):
-    """Create backup of ledger database"""
-    try:
-        ledger = Ledger(source)
-        result = ledger.backup_database(
-            output_file=output,
-            compress=compress,
-            verify=verify
-        )
+@click.option("--source", required=True, envvar="LEDGER_DSN")
+@click.option("--output", required=True)
+@click.option("--format", "out_format", type=click.Choice(["json", "csv", "jsonl"]), default="json")
+@click.option("--fields")
+@click.option("--date-range", help='"YYYY-MM-DD,YYYY-MM-DD"')
+@click.option("--verdict-filter", type=click.Choice(VERDICT_CHOICES))
+@click.option("--rule-id")
+@click.option("--limit", type=int)
+def export(
+    source: str,
+    output: str,
+    out_format: str,
+    fields: Optional[str],
+    date_range: Optional[str],
+    verdict_filter: Optional[str],
+    rule_id: Optional[str],
+    limit: Optional[int],
+) -> None:
+    """Export ledger entries for analysis."""
+    ledger = Ledger(source)
+    start_date = end_date = None
+    if date_range:
+        parts = [s.strip() or None for s in date_range.split(",")]
+        start_date = parts[0] if parts else None
+        end_date = parts[1] if len(parts) > 1 else None
+    field_list = [s.strip() for s in fields.split(",")] if fields else None
 
-        click.echo(f"Backup created: {output}")
-        click.echo(f"Backup date: {result.backup_date}")
-        click.echo(f"Compressed: {result.compressed}")
-        click.echo(f"Verified: {result.verified}")
-
-    except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
-        raise click.Exit(1)
-
-
-def _generate_html_report(result, title):
-    """Generate HTML report"""
-    html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>{title}</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; }}
-            .header {{ border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }}
-            .section {{ margin-bottom: 30px; }}
-            .section h2 {{ background-color: #f0f0f0; padding: 10px; }}
-            table {{ border-collapse: collapse; width: 100%; margin-top: 10px; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-            th {{ background-color: #f0f0f0; }}
-            .verdict-clear {{ color: green; }}
-            .verdict-flag {{ color: red; }}
-            .verdict-discretionary {{ color: orange; }}
-            .verdict-null {{ color: gray; }}
-        </style>
-    </head>
-    <body>
-        <div class="header">
-            <h1>{title}</h1>
-            <p><strong>Organization:</strong> {result.organization}</p>
-            <p><strong>Period:</strong> {result.start_date.date()} to {result.end_date.date()}</p>
-            <p><strong>Generated:</strong> {result.report_date}</p>
-        </div>
-
-        <div class="section">
-            <h2>Verdict Summary</h2>
-            <table>
-                <tr>
-                    <th>Verdict</th>
-                    <th>Count</th>
-                    <th>Percentage</th>
-                </tr>
-                <tr>
-                    <td class="verdict-clear">CLEAR</td>
-                    <td>{result.verdict_summary.clear}</td>
-                    <td>{result.verdict_summary.clear_percent:.1f}%</td>
-                </tr>
-                <tr>
-                    <td class="verdict-flag">FLAG</td>
-                    <td>{result.verdict_summary.flag}</td>
-                    <td>{result.verdict_summary.flag_percent:.1f}%</td>
-                </tr>
-                <tr>
-                    <td class="verdict-discretionary">DISCRETIONARY</td>
-                    <td>{result.verdict_summary.discretionary}</td>
-                    <td>{result.verdict_summary.discretionary_percent:.1f}%</td>
-                </tr>
-                <tr>
-                    <td class="verdict-null">NULL</td>
-                    <td>{result.verdict_summary.null}</td>
-                    <td>{result.verdict_summary.null_percent:.1f}%</td>
-                </tr>
-            </table>
-        </div>
-
-        <div class="section">
-            <h2>Analysis</h2>
-            <p><strong>Total Entries Analyzed:</strong> {result.total_entries_analyzed}</p>
-            <p><strong>Compliance Status:</strong>
-                {('✓ COMPLIANT' if result.verdict_summary.flag == 0 else '⚠ ISSUES DETECTED')}
-            </p>
-        </div>
-
-        <div class="section">
-            <p><em>Generated by SKI Framework Audit Ledger Tool</em></p>
-        </div>
-    </body>
-    </html>
-    """
-    return html
+    result = ledger.export_entries(
+        output_file=output,
+        format=out_format,
+        start_date=start_date,
+        end_date=end_date,
+        verdict_filter=verdict_filter,
+        rule_id_filter=rule_id,
+        fields=field_list,
+        limit=limit,
+    )
+    click.echo(f"Exported {result.entry_count} entries → {output}")
+    click.echo(f"Size: {result.size_bytes} bytes  SHA-256: {result.checksum}")
 
 
-@main.group()
-def examples():
-    """Show example commands"""
-    pass
+@main.command()
+@click.option("--source", required=True, envvar="LEDGER_DSN")
+@click.option("--output", required=True)
+@click.option("--start-date", required=True)
+@click.option("--end-date", required=True)
+@click.option("--include-violations/--no-include-violations", default=True)
+@click.option("--organization", default="Organization")
+def report(source: str, output: str, start_date: str, end_date: str, include_violations: bool, organization: str) -> None:
+    """Generate an HTML compliance report from ledger data."""
+    ledger = Ledger(source)
+    result = ledger.generate_report(
+        start_date=start_date,
+        end_date=end_date,
+        include_violations=include_violations,
+        organization=organization,
+    )
+    with open(output, "w") as f:
+        f.write(_html_report(result, "Compliance report"))
+    click.echo(f"Report written to {output}")
+    click.echo(f"Period: {start_date} → {end_date}")
+    click.echo(f"Total entries analysed: {result.total_entries_analyzed}")
 
 
-@examples.command()
-def verify_ledger():
-    """Example: Verify ledger integrity"""
-    click.echo("""
-    audit-ledger verify \\
-        --ledger-db postgresql://user:pass@localhost/ski_ledger \\
-        --verbose
-    """)
+@main.command()
+@click.option("--source", required=True, envvar="LEDGER_DSN")
+@click.option("--output", "--out", required=True, help="pg_dump custom-format output path.")
+@click.option("--compress/--no-compress", default=False)
+@click.option("--verify/--no-verify", default=True, help="Run `pg_restore --list` after dump.")
+def backup(source: str, output: str, compress: bool, verify: bool) -> None:
+    """Create a real backup via pg_dump. No stub."""
+    ledger = Ledger(source)
+    result = ledger.backup_database(output_file=output, compress=compress, verify=verify)
+    click.echo(f"Backup created:    {result.backup_file}")
+    click.echo(f"Backup date:       {result.backup_date}")
+    click.echo(f"Size:              {result.size_bytes} bytes")
+    click.echo(f"Compressed:        {result.compressed}")
+    click.echo(f"Verified:          {result.verified}")
+    click.echo(f"SHA-256:           {result.checksum}")
+    if result.verification_status:
+        click.echo(f"Verification:      {result.verification_status}")
 
 
-@examples.command()
-def export_violations():
-    """Example: Export violations"""
-    click.echo("""
-    audit-ledger export \\
-        --source postgresql://user:pass@localhost/ski_ledger \\
-        --output violations.json \\
-        --format json \\
-        --verdict-filter FLAG
-    """)
+# ---------------------------------------------------------------------------
+# HTML report (5-verdict)
+# ---------------------------------------------------------------------------
 
 
-@examples.command()
-def generate_report():
-    """Example: Generate monthly report"""
-    click.echo("""
-    audit-ledger report \\
-        --source postgresql://user:pass@localhost/ski_ledger \\
-        --start-date 2026-05-01 \\
-        --end-date 2026-05-31 \\
-        --output may-report.html \\
-        --include-verdicts \\
-        --include-violations \\
-        --organization "Acme Corp"
-    """)
+def _html_report(result, title: str) -> str:
+    vs = result.verdict_summary
+    rows = [
+        ("CLEAR", vs.clear, vs.clear_percent, "verdict-clear"),
+        ("FLAG", vs.flag, vs.flag_percent, "verdict-flag"),
+        ("NULL_UNMAPPED", vs.null_unmapped, vs.null_unmapped_percent, "verdict-null"),
+        ("NULL_STALE", vs.null_stale, vs.null_stale_percent, "verdict-null"),
+        ("DISCRETIONARY", vs.discretionary, vs.discretionary_percent, "verdict-discretionary"),
+    ]
+    rows_html = "\n".join(
+        f'<tr><td class="{cls}">{name}</td><td>{count}</td><td>{pct:.1f}%</td></tr>'
+        for name, count, pct, cls in rows
+    )
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>{title}</title>
+<style>
+body{{font-family:system-ui,Arial,sans-serif;margin:20px;}}
+.header{{border-bottom:2px solid #333;padding-bottom:10px;margin-bottom:20px;}}
+.section{{margin-bottom:30px;}}
+.section h2{{background-color:#f0f0f0;padding:10px;}}
+table{{border-collapse:collapse;width:100%;margin-top:10px;}}
+th,td{{border:1px solid #ddd;padding:8px;text-align:left;}}
+th{{background-color:#f0f0f0;}}
+.verdict-clear{{color:green;}}
+.verdict-flag{{color:red;}}
+.verdict-discretionary{{color:orange;}}
+.verdict-null{{color:gray;}}
+</style></head><body>
+<div class="header">
+  <h1>{title}</h1>
+  <p><strong>Organization:</strong> {result.organization}</p>
+  <p><strong>Period:</strong> {result.start_date.date()} to {result.end_date.date()}</p>
+  <p><strong>Generated:</strong> {result.report_date}</p>
+</div>
+<div class="section">
+  <h2>Verdict summary</h2>
+  <table>
+    <tr><th>Verdict</th><th>Count</th><th>Percent</th></tr>
+    {rows_html}
+  </table>
+</div>
+<div class="section">
+  <h2>Analysis</h2>
+  <p><strong>Total entries analysed:</strong> {result.total_entries_analyzed}</p>
+  <p><strong>Compliance status:</strong>
+    {('CLEAR' if vs.flag == 0 else 'BREACHES DETECTED')}
+  </p>
+</div>
+<div class="section">
+  <p><em>Generated by audit-ledger (SKI Framework v2.1).</em></p>
+</div>
+</body></html>
+"""
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

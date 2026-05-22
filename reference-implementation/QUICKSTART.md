@@ -1,169 +1,137 @@
-# SKI Framework Reference Implementation - Quick Start
+# Quick start
 
-Get SKI Framework running in 5 minutes.
+> **⚠ STATUS: EARLY ALPHA.** Reference implementation only; not production ready.
 
-## Step 1: Prerequisites
+This walks you through running the SKI Framework reference implementation
+on a single machine. No cloud API key is required. Total time: ~10 minutes
+the first time, ~2 minutes thereafter.
 
-```bash
-# Verify you have Docker and Docker Compose
-docker --version
-docker-compose --version
+## Prerequisites
 
-# You need:
-- Docker & Docker Compose
-- 4GB RAM available
-- Anthropic API key (get one at https://console.anthropic.com)
-```
+| Tool | Version | Notes |
+|---|---|---|
+| Docker Engine | 24+ | |
+| Docker Compose | v2 | `docker compose version` must succeed |
+| Python | 3.9 – 3.12 | for the helper scripts |
+| openssl | any | used to generate strong secrets and self-signed certs |
+| 8 GB free disk | | Ollama model files |
+| 8 GB RAM | | for the 7B model; less if you swap to phi3.5 |
 
-## Step 2: Clone and Configure
-
-```bash
-git clone https://github.com/kpifinity/ski-framework.git
-cd reference-implementation
-
-cp .env.example .env
-
-# Edit .env and add your API key:
-# ANTHROPIC_API_KEY=sk-...
-nano .env  # or use your editor
-```
-
-## Step 3: Start Services
+## Step 1 — Generate secrets and TLS certs
 
 ```bash
-docker-compose up -d
-
-# Wait 30 seconds for services to initialize
-sleep 30
-
-# Verify all services are running
-docker-compose ps
+./scripts/setup.sh
 ```
 
-## Step 4: Test the System
+This:
+
+- writes `reference-implementation/.env` with mode 0600 (no defaults);
+- generates a 32-byte random `SKI_API_KEY`;
+- generates strong Postgres and Grafana passwords;
+- generates a self-signed CA and per-service certs under
+  `reference-implementation/tls/`.
+
+The secrets exist only in the `.env` file. They are not echoed to your
+terminal and won't be regenerated unless you delete `.env`.
+
+## Step 2 — Pull the local LLM weights
 
 ```bash
-# 1. Check health
-curl http://localhost:8000/api/health
-
-# 2. Load sample Knowledge Graph
-curl -X POST http://localhost:8000/api/kg/load \
-  -H "Content-Type: application/json" \
-  -d @examples/knowledge-graphs/sample-energy-kg.json
-
-# 3. Submit sample telemetry
-curl -X POST http://localhost:8000/api/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "telemetry_id": "tel_001",
-    "timestamp": "2026-05-21T10:00:00Z",
-    "subject": "Facility discharge",
-    "measurement": "85 ppm sulfur dioxide"
-  }'
-
-# 4. Get verdict
-curl http://localhost:8000/api/verdicts
+docker compose -f reference-implementation/docker-compose.yml up -d ollama
+docker exec ski-ollama ollama pull qwen2.5:7b-instruct
 ```
 
-## Step 5: View Dashboards
+Other small open-weights options:
 
-Open in your browser:
-- **Grafana** (dashboards): http://localhost:3000
-  - Username: admin
-  - Password: admin
+- `mistral:7b-instruct`
+- `phi3.5:3.8b-mini-instruct` (smallest; lower quality)
 
-- **Prometheus** (metrics): http://localhost:9090
+Update `SKI_MODEL_NAME` in `.env` if you change models, and refresh
+`SKI_MODEL_FILE_SHA256` to pin the exact artefact.
 
-- **pgAdmin** (database): http://localhost:5050
-  - Email: admin@example.com
-  - Password: admin
-
----
-
-## What You Have Running
-
-| Service | Purpose | Port | Status |
-|---------|---------|------|--------|
-| MiLM | Inference engine | 8000 | http://localhost:8000/api/health |
-| Sidecar | Data integration | 8001 | http://localhost:8001/health |
-| PostgreSQL | Audit ledger | 5432 | Internal only |
-| Kafka | Telemetry broker | 9092 | Internal only |
-| Prometheus | Metrics | 9090 | http://localhost:9090 |
-| Grafana | Dashboards | 3000 | http://localhost:3000 |
-
----
-
-## Common Commands
+## Step 3 — Start the stack
 
 ```bash
-# View logs
-docker-compose logs -f milm
-
-# Check database
-docker exec -it ski-ledger-db psql -U ski -d ski_ledger
-
-# Query verdicts
-SELECT * FROM ledger_entries ORDER BY timestamp DESC LIMIT 10;
-
-# Stop everything
-docker-compose down
-
-# Restart services
-docker-compose restart
+./scripts/deploy.sh
 ```
 
----
+The script waits up to 90s for `/api/health` to return 200. The default
+profile starts:
 
-## Next Steps
+- `ollama` (local LLM runtime)
+- `ski-model` (the SKI Model service, port 8000 / TLS)
+- `sidecar` (telemetry intake)
+- `postgres` + `postgres-exporter`
+- `prometheus` (port 9090)
+- `grafana` (port 3000 / TLS)
 
-1. **Use your own Knowledge Graph**
-   ```bash
-   cp /path/to/validated-kg.json examples/knowledge-graphs/kg.json
-   docker-compose restart milm
-   ```
+Kafka and pgAdmin are opt-in via compose profiles `kafka` and `pgadmin`.
 
-2. **Connect your data source**
-   - Edit `.env` to change `TELEMETRY_SOURCE`
-   - Configure Kafka, HTTP, or file input
+## Step 4 — Smoke test
 
-3. **Monitor verdicts**
-   - Check Grafana dashboard at http://localhost:3000
+```bash
+# All four checks should report OK.
+python scripts/test-connection.py --insecure
 
-4. **Review audit ledger**
-   - Connect to PostgreSQL via pgAdmin
+# Replay the demo telemetry. (The KG is unsigned for demo purposes, so
+# either set KG_REQUIRE_SIGNATURE=false on the ski-model container or
+# sign it with your own Ed25519 key.)
+python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl --insecure
 
-5. **For production deployment**
-   - See [DEPLOYMENT.md](./docs/DEPLOYMENT.md) for detailed guidance
+# Inspect the verdicts.
+python scripts/check-verdicts.py --insecure --limit 10
 
----
+# Verify the audit ledger end-to-end (recomputes every entry hash).
+python scripts/verify-ledger.py
+```
+
+Expected verdict mix for the energy demo:
+
+- `CLEAR` for in-range measurements
+- `FLAG` for breaches (SO₂ above 100 ppm, pH outside 6.0–8.5)
+- `NULL_UNMAPPED` for the `facility.unknown.metric` record
+- `DISCRETIONARY` for the spill event (routed to Track 2)
+
+## Step 5 — Dashboards
+
+- Grafana: <https://localhost:3000> (user/password from `.env`)
+- Prometheus: <http://localhost:9090>
+
+Self-signed certs will trigger a browser warning. For non-local use,
+replace `reference-implementation/tls/` with certs from your own CA.
+
+## Common commands
+
+```bash
+# Tail logs
+docker compose -f reference-implementation/docker-compose.yml logs -f ski-model sidecar
+
+# Stop the stack (state preserved in volumes)
+docker compose -f reference-implementation/docker-compose.yml down
+
+# Stop and remove all volumes (DESTROYS the audit ledger — confirm policy)
+docker compose -f reference-implementation/docker-compose.yml down -v
+```
 
 ## Troubleshooting
 
-**Services won't start?**
-```bash
-docker-compose down
-docker-compose up -d
-docker-compose logs
-```
+See [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md). Common gotchas:
 
-**Port already in use?**
-```bash
-# Change ports in docker-compose.yml and restart
-```
+- *SKI Model refuses to start with "KG signature verification FAILED"* —
+  expected for the demo KG. Either sign your KG or set
+  `KG_REQUIRE_SIGNATURE=false` (non-conformant; demo only).
+- *Determinism canary reports FAILED* — your inference backend is
+  producing non-deterministic output. Most often the seed isn't being
+  passed through. See [`docs/CONCURRENCY.md`](./docs/CONCURRENCY.md).
+- *Sidecar can't reach the SKI Model* — TLS verification with the
+  self-signed cert. Either set `SKI_MODEL_CA_CERT` to the path of
+  `tls/ca.crt` (already wired in the compose file), or use `--insecure`
+  in your own client.
 
-**MiLM won't respond?**
-```bash
-# Check API key is set
-echo $ANTHROPIC_API_KEY
+## Next steps
 
-# Check logs
-docker logs milm-service
-```
-
----
-
-For detailed documentation, see:
-- [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) — Full deployment guide
-- [docs/CUSTOMIZATION.md](./docs/CUSTOMIZATION.md) — How to customize
-- [docs/TROUBLESHOOTING.md](./docs/TROUBLESHOOTING.md) — Common issues
-- [README.md](../reference-implementation/README.md) — Architecture overview
+- [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) — full deployment guide
+- [`docs/CUSTOMIZATION.md`](./docs/CUSTOMIZATION.md) — bring your own KG,
+  swap backends, wire to your telemetry source
+- [`../conformance/README.md`](../conformance/README.md) — run the
+  conformance suite against this deployment

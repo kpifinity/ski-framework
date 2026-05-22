@@ -1,8 +1,6 @@
-{"id": "trans_001", "timestamp": "2026-05-21T10:30:00Z", "customer_id": "CUST_101", "transaction_type": "wire_transfer", "amount": 8500, "currency": "USD", "has_business_purpose": true, "customer_verified": true, "pep_flagged": false, "rule_id": "f001"}
-{"id": "trans_002", "timestamp": "2026-05-21T11:15:00Z", "customer_id": "CUST_102", "transaction_type": "wire_transfer", "amount": 15000, "currency": "USD", "has_business_purpose": false, "customer_verified": true, "pep_flagged": false, "rule_id": "f001"}
-{"id": "trans_003", "timestamp": "2026-05-21T12:00:00Z", "customer_id": "CUST_103", "transaction_type": "account_opening", "days_to_cip_completion": 25, "customer_name": "John Smith", "customer_verified": true, "rule_id": "f002"}
-{"id": "trans_004", "timestamp": "2026-05-21T13:30:00Z", "customer_id": "CUST_104", "transaction_type": "account_opening", "days_to_cip_completion": 35, "customer_name": "Jane Doe", "customer_verified": false, "rule_id": "f002"}
-{"id": "trans_005", "timestamp": "2026-05-21T14:00:00Z", "customer_id": "CUST_105", "transaction_type": "suspicious_activity", "description": "Multiple deposits over weekend", "amount_total": 45000, "num_transactions": 6, "days_since_detection": 5, "rule_id": "f003"}
-{"id": "trans_006", "timestamp": "2026-05-21T14:45:00Z", "customer_id": "CUST_106", "transaction_type": "wire_transfer", "amount": 5000, "currency": "USD", "originator_info": "Complete", "beneficiary_info": "Complete", "rule_id": "f004"}
-{"id": "trans_007", "timestamp": "2026-05-21T15:30:00Z", "customer_id": "CUST_107", "transaction_type": "wire_transfer", "amount": 3500, "currency": "USD", "originator_info": "Partial", "beneficiary_info": "Complete", "rule_id": "f004"}
-{"id": "trans_008", "timestamp": "2026-05-21T16:00:00Z", "customer_id": "CUST_108", "transaction_type": "account_opening", "pep_status": "PEP", "enhanced_due_diligence_completed": true, "beneficial_owner_verified": true, "rule_id": "f005"}
+{"id": "tel_f_001", "timestamp": "2026-05-22T10:00:00Z", "subject": "transaction.wire.large", "measurement": {"amount_usd": 12000, "has_business_purpose": true}}
+{"id": "tel_f_002", "timestamp": "2026-05-22T10:05:00Z", "subject": "transaction.wire.large", "measurement": {"amount_usd": 25000, "has_business_purpose": false}}
+{"id": "tel_f_003", "timestamp": "2026-05-22T10:10:00Z", "subject": "transaction.account_opening.cip", "measurement": {"days_to_cip_completion": 22}}
+{"id": "tel_f_004", "timestamp": "2026-05-22T10:15:00Z", "subject": "transaction.account_opening.cip", "measurement": {"days_to_cip_completion": 41}}
+{"id": "tel_f_005", "timestamp": "2026-05-22T10:20:00Z", "subject": "transaction.suspicious_activity.review", "measurement": {"suspicious_activity": {"pattern": "structured_cash_deposits", "amount_total_usd": 45000}}}
+{"id": "tel_f_006", "timestamp": "2026-05-22T10:25:00Z", "subject": "transaction.card.unknown_metric", "measurement": {"x": 1}}

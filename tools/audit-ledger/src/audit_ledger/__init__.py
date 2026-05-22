@@ -1,19 +1,16 @@
-"""
-Audit Ledger Tool for SKI Framework
+"""audit-ledger — verify, export, report, and back up the SKI Framework audit ledger."""
 
-Manage and verify the immutable audit ledger for compliance monitoring.
-"""
-
-from .models import (
-    LedgerEntry,
-    VerificationResult,
-    ExportResult,
-    BackupResult,
-    ReportResult,
-)
+from .canonical import canonical_entry_payload
 from .ledger import Ledger
+from .models import (
+    BackupResult,
+    ExportResult,
+    LedgerEntry,
+    ReportResult,
+    VerificationResult,
+)
 
-__version__ = "1.0.0"
+__version__ = "0.1.0a0"
 __all__ = [
     "Ledger",
     "LedgerEntry",
@@ -21,4 +18,5 @@ __all__ = [
     "ExportResult",
     "BackupResult",
     "ReportResult",
+    "canonical_entry_payload",
 ]

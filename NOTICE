@@ -1,0 +1,47 @@
+SKI Framework
+Copyright 2026 KpiFinity Inc.
+
+This product includes software developed at KpiFinity Inc.
+(https://kpifinity.com) and contributed to by the SKI Framework
+community.
+
+Licensing
+---------
+
+* Software (Python source, Dockerfiles, shell scripts, SQL, YAML
+  configuration, conformance test suite) is licensed under the Apache
+  License, Version 2.0. See LICENSE.
+
+* Specification documents (everything under docs/, the framework PDF,
+  architectural diagrams) are licensed under Creative Commons Attribution
+  4.0 International. See LICENSE-docs.md.
+
+Trademarks
+----------
+
+"SKI Framework" and "Sovereign Knowledge Intelligence" are trademarks of
+KpiFinity Inc. The Apache 2.0 license does not grant rights to use those
+trademarks. See https://skiframework.org/trademark for usage guidance.
+
+Third-party components
+----------------------
+
+This repository includes references to third-party software that ships
+as runtime dependencies. The Apache 2.0 license does not impose any
+additional obligations on those components; see each project's own
+license for details. Notable runtime dependencies include:
+
+  * Ollama         (MIT)
+  * FastAPI        (MIT)
+  * uvicorn        (BSD-3-Clause)
+  * SQLAlchemy     (MIT)
+  * Pydantic       (MIT)
+  * cryptography   (Apache-2.0 or BSD)
+  * httpx          (BSD-3-Clause)
+  * PostgreSQL     (PostgreSQL License)
+  * Prometheus     (Apache-2.0)
+  * Grafana        (AGPL-3.0)
+
+If any third-party component is later embedded in source form rather than
+referenced as a runtime dependency, this NOTICE file must be updated to
+reflect that component's license obligations.

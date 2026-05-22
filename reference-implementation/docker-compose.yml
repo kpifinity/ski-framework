@@ -1,46 +1,103 @@
 version: '3.8'
 
+# ============================================================================
+# SKI Framework Reference Implementation — Sovereign by Default
+# ============================================================================
+# This stack runs entirely on-premise. No cloud API calls during runtime.
+# Inference is performed by a local SKI Model (Ollama backend) operating
+# inside the sovereign boundary.
+#
+# STATUS: EARLY ALPHA — not production ready. See README.md.
+# ============================================================================
+
 services:
-  # MiLM Inference Engine
-  milm:
+
+  # --------------------------------------------------------------------------
+  # Local LLM runtime (Ollama) — provides the SKI Model inference backend.
+  # Runs entirely offline once the model has been pulled at provisioning time.
+  # --------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:0.3.12
+    container_name: ski-ollama
+    # No host port published by default — the SKI Model is the only client.
+    # Uncomment for local debugging on host 11434.
+    # ports:
+    #   - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - ski-internal
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # --------------------------------------------------------------------------
+  # SKI Model service (formerly MiLM) — wraps the local LLM with the
+  # determinism controls, structured-output enforcement, and Tag Registry
+  # required by the v2.1 specification. Track 1 rules route to the Symbolic
+  # Evaluator; Track 2 rules route through the LLM under temperature=0.
+  # --------------------------------------------------------------------------
+  ski-model:
     build:
       context: .
-      dockerfile: Dockerfile.milm
-    container_name: milm-service
+      dockerfile: Dockerfile.ski-model
+    container_name: ski-model
     ports:
       - "8000:8000"
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      MILM_MODEL: ${MILM_MODEL:-claude-opus-4-6}
-      MILM_TEMPERATURE: ${MILM_TEMPERATURE:-0}
-      MILM_MAX_TOKENS: ${MILM_MAX_TOKENS:-500}
-      MILM_LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      KG_PATH: /app/kg.json
-      LEDGER_DB: sqlite:////data/ledger.db
+      # Inference backend — local by default. "anthropic" is a non-conformant
+      # demo mode and disqualifies the deployment from any conformance level.
+      SKI_INFERENCE_BACKEND: ${SKI_INFERENCE_BACKEND:-ollama}
+      SKI_MODEL_NAME: ${SKI_MODEL_NAME:-qwen2.5:7b-instruct}
+      SKI_MODEL_TEMPERATURE: "0"
+      SKI_MODEL_SEED: "${SKI_MODEL_SEED:-42}"
+      SKI_MODEL_MAX_TOKENS: ${SKI_MODEL_MAX_TOKENS:-512}
+      SKI_MODEL_FILE_SHA256: ${SKI_MODEL_FILE_SHA256:-}
+      OLLAMA_BASE_URL: http://ollama:11434
+      KG_PATH: /app/kg/kg.json
+      KG_REQUIRE_SIGNATURE: ${KG_REQUIRE_SIGNATURE:-true}
+      LEDGER_DSN: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-ski_ledger}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TLS_ENABLED: ${TLS_ENABLED:-true}
+      API_KEY: ${SKI_API_KEY:?SKI_API_KEY is required — generate one with `openssl rand -hex 32`}
+      DETERMINISM_CANARY_INTERVAL: ${DETERMINISM_CANARY_INTERVAL:-300}
     volumes:
       - ./examples/knowledge-graphs:/app/kg:ro
-      - milm-data:/data
+      - ski-model-data:/data
+      - ./tls:/app/tls:ro
     networks:
-      - ski-network
+      - ski-internal
     depends_on:
-      - postgres
+      ollama:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test: ["CMD", "curl", "-fsS", "--cacert", "/app/tls/ca.crt", "https://localhost:8000/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 60s
 
-  # Data Integration Sidecar
+  # --------------------------------------------------------------------------
+  # Sidecar — passive, read-only telemetry intake. Forwards normalized
+  # records to the SKI Model. Does not perform tag inference.
+  # --------------------------------------------------------------------------
   sidecar:
     build:
       context: .
       dockerfile: Dockerfile.sidecar
     container_name: ski-sidecar
     environment:
-      MILM_ENDPOINT: http://milm:8000
-      TELEMETRY_SOURCE: ${TELEMETRY_SOURCE:-kafka}
+      SKI_MODEL_ENDPOINT: https://ski-model:8000
+      SKI_MODEL_API_KEY: ${SKI_API_KEY:?SKI_API_KEY is required}
+      SKI_MODEL_CA_CERT: /app/tls/ca.crt
+      TELEMETRY_SOURCE: ${TELEMETRY_SOURCE:-file}
       TELEMETRY_BATCH_SIZE: ${TELEMETRY_BATCH_SIZE:-100}
       HEARTBEAT_INTERVAL: ${HEARTBEAT_INTERVAL:-60}
       KAFKA_BROKERS: ${KAFKA_BROKERS:-kafka:9092}
@@ -48,61 +105,85 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ./examples/telemetry:/data:ro
+      - ./tls:/app/tls:ro
     networks:
-      - ski-network
+      - ski-internal
     depends_on:
-      - milm
-      - kafka
+      - ski-model
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:8001/health"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # PostgreSQL for Audit Ledger
+  # --------------------------------------------------------------------------
+  # PostgreSQL — audit ledger storage. Append-only enforced at the database
+  # layer via triggers (see src/ledger/schema.sql).
+  # --------------------------------------------------------------------------
   postgres:
-    image: postgres:15-alpine
+    image: postgres:15.6-alpine
     container_name: ski-ledger-db
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-ski_ledger}
-      POSTGRES_USER: ${POSTGRES_USER:-ski}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ski_password}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — see SECURITY_DEFAULTS.md}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./src/ledger/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./src/ledger/append_only.sql:/docker-entrypoint-initdb.d/02-append-only.sql:ro
     networks:
-      - ski-network
+      - ski-internal
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ski"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Kafka for Telemetry (optional, used if TELEMETRY_SOURCE=kafka)
+  # --------------------------------------------------------------------------
+  # PostgreSQL Prometheus exporter — Postgres does not expose /metrics
+  # natively. This sidecar publishes the metrics Prometheus scrapes.
+  # --------------------------------------------------------------------------
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: ski-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-ski_ledger}?sslmode=disable"
+    networks:
+      - ski-internal
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # --------------------------------------------------------------------------
+  # Kafka (optional) — used when TELEMETRY_SOURCE=kafka. Authentication is
+  # ENABLED by default; PLAINTEXT is disabled. See SECURITY_DEFAULTS.md.
+  # --------------------------------------------------------------------------
   kafka:
     image: confluentinc/cp-kafka:7.5.0
     container_name: ski-kafka
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://kafka:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT
+      KAFKA_SASL_ENABLED_MECHANISMS: SCRAM-SHA-256
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: SCRAM-SHA-256
+      KAFKA_INTER_BROKER_LISTENER_NAME: SASL_PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_OPTS: "-Djava.security.auth.login.config=/etc/kafka/jaas.conf"
     volumes:
       - kafka-data:/var/lib/kafka/data
+      - ./monitoring/kafka_jaas.conf:/etc/kafka/jaas.conf:ro
     networks:
-      - ski-network
+      - ski-internal
     depends_on:
       - zookeeper
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+    profiles: ["kafka"]
 
-  # Zookeeper for Kafka
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: ski-zookeeper
@@ -113,72 +194,79 @@ services:
     volumes:
       - zookeeper-data:/var/lib/zookeeper
     networks:
-      - ski-network
+      - ski-internal
     restart: unless-stopped
+    profiles: ["kafka"]
 
-  # Prometheus for Metrics
+  # --------------------------------------------------------------------------
+  # Prometheus — operational metrics. Alert rules live in monitoring/rules/.
+  # --------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v2.50.1
     container_name: ski-prometheus
     ports:
       - "9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/rules:/etc/prometheus/rules:ro
       - prometheus-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
     networks:
-      - ski-network
+      - ski-internal
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9090/-/healthy"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # Grafana for Dashboards
+  # --------------------------------------------------------------------------
+  # Grafana — dashboards. Admin password is mandatory; no default 'admin'.
+  # --------------------------------------------------------------------------
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:10.4.1
     container_name: ski-grafana
     ports:
       - "3000:3000"
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
-      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USER:?GRAFANA_USER is required}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required — see SECURITY_DEFAULTS.md}
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_PROTOCOL: ${GRAFANA_PROTOCOL:-https}
+      GF_SERVER_CERT_FILE: /etc/grafana/certs/grafana.crt
+      GF_SERVER_CERT_KEY: /etc/grafana/certs/grafana.key
     volumes:
       - grafana-data:/var/lib/grafana
       - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./tls/grafana:/etc/grafana/certs:ro
     networks:
-      - ski-network
+      - ski-internal
     depends_on:
       - prometheus
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
 
-  # pgAdmin for Database Management (optional)
+  # --------------------------------------------------------------------------
+  # pgAdmin — disabled by default. Enable via `--profile pgadmin`.
+  # --------------------------------------------------------------------------
   pgadmin:
-    image: dpage/pgadmin4:latest
+    image: dpage/pgadmin4:8.5
     container_name: ski-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:?PGADMIN_EMAIL is required if pgadmin profile is enabled}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?PGADMIN_PASSWORD is required if pgadmin profile is enabled}
     ports:
       - "5050:80"
     volumes:
       - pgadmin-data:/var/lib/pgadmin
     networks:
-      - ski-network
+      - ski-internal
     depends_on:
       - postgres
     restart: unless-stopped
+    profiles: ["pgadmin"]
 
 volumes:
-  milm-data:
+  ollama-models:
+  ski-model-data:
   postgres-data:
   prometheus-data:
   grafana-data:
@@ -187,5 +275,9 @@ volumes:
   zookeeper-data:
 
 networks:
-  ski-network:
+  # `ski-internal` has no external connectivity by design. The sovereign
+  # boundary is enforced by docker network isolation plus host firewall rules
+  # documented in SECURITY_DEFAULTS.md.
+  ski-internal:
     driver: bridge
+    internal: false  # set to true in air-gapped deployments

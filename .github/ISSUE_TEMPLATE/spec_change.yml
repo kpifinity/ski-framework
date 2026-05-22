@@ -1,0 +1,30 @@
+name: Specification change proposal
+description: Propose a change to the SKI Framework specification (under docs/).
+labels: ["spec", "triage"]
+body:
+  - type: textarea
+    id: section
+    attributes:
+      label: Affected sections
+      description: List spec section IDs (e.g. B2.1, B3.4) and document paths.
+    validations:
+      required: true
+  - type: textarea
+    id: change
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: rationale
+    attributes:
+      label: Rationale
+    validations:
+      required: true
+  - type: textarea
+    id: migration
+    attributes:
+      label: Migration notes for adopters
+      description: What changes for implementers between the current spec version and the proposed one?
+    validations:
+      required: true

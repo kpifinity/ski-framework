@@ -1,222 +1,83 @@
-#!/bin/bash
+#!/usr/bin/env bash
+#
+# SKI Framework — deploy helper. Wraps docker compose for the reference
+# implementation. The reference implementation is sovereign by default —
+# no cloud API key is required or accepted by this script.
 
-################################################################################
-# SKI Framework Deploy Script
-# Deploy to infrastructure (Docker, Kubernetes, or direct)
-################################################################################
+set -euo pipefail
 
-set -e
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+BLUE=$'\033[0;34m'
+NC=$'\033[0m'
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-NC='\033[0m'
-
-# Defaults
-DEPLOYMENT_MODE="docker"
-STACK="reference-implementation"
-CONFIG_FILE=""
-
-################################################################################
-# Helper Functions
-################################################################################
-
-print_header() {
-    echo -e "\n${GREEN}===================================================${NC}"
-    echo -e "${GREEN}$1${NC}"
-    echo -e "${GREEN}===================================================${NC}\n"
-}
-
-print_success() {
-    echo -e "${GREEN}✓${NC} $1"
-}
-
-print_error() {
-    echo -e "${RED}✗${NC} $1"
-}
-
-print_info() {
-    echo -e "${BLUE}ℹ${NC} $1"
-}
+print_header() { printf "\n%s===%s %s\n" "$GREEN" "$NC" "$1"; }
+print_info()   { printf "%sℹ%s %s\n" "$BLUE" "$NC" "$1"; }
+print_success(){ printf "%s✓%s %s\n" "$GREEN" "$NC" "$1"; }
+print_error()  { printf "%s✗%s %s\n" "$RED" "$NC" "$1" >&2; }
 
 show_help() {
-    cat << EOF
-SKI Framework Deploy Script
+cat <<'EOF'
+SKI Framework deploy
 
 Usage: deploy.sh [OPTIONS]
 
-Options:
-  --mode MODE              Deployment mode: docker, kubernetes, direct (default: docker)
-  --stack STACK           Stack to deploy: reference-implementation (default)
-  --config FILE           Configuration file path
-  --environment ENV       Environment: dev, staging, prod (default: dev)
-  --help                  Show this help message
+  --stack <name>          Stack to deploy (only "reference-implementation" today)
+  --profile <name>        Optional docker compose profile (kafka, pgadmin)
+  --help                  This message.
 
-Examples:
-  # Deploy reference implementation with Docker
-  ./scripts/deploy.sh --mode docker
-
-  # Deploy with custom config
-  ./scripts/deploy.sh --mode docker --config my-config.yaml
-
-  # Deploy to Kubernetes
-  ./scripts/deploy.sh --mode kubernetes --environment prod
-
+The script does NOT take an --anthropic-key flag and does not check for one.
+The default inference backend is the local Ollama runtime.
 EOF
 }
 
-################################################################################
-# Argument Parsing
-################################################################################
+STACK="reference-implementation"
+PROFILE=""
 
-parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            --mode)
-                DEPLOYMENT_MODE="$2"
-                shift 2
-                ;;
-            --stack)
-                STACK="$2"
-                shift 2
-                ;;
-            --config)
-                CONFIG_FILE="$2"
-                shift 2
-                ;;
-            --help)
-                show_help
-                exit 0
-                ;;
-            *)
-                print_error "Unknown option: $1"
-                show_help
-                exit 1
-                ;;
-        esac
-    done
-}
-
-################################################################################
-# Deployment Functions
-################################################################################
-
-deploy_docker() {
-    print_header "Deploying with Docker"
-
-    local stack_dir="$STACK"
-
-    if [ ! -d "$stack_dir" ]; then
-        print_error "Stack directory not found: $stack_dir"
-        exit 1
-    fi
-
-    cd "$stack_dir"
-
-    # Check for environment file
-    if [ ! -f .env ]; then
-        if [ ! -f .env.example ]; then
-            print_error ".env.example not found in $stack_dir"
-            exit 1
-        fi
-        cp .env.example .env
-        print_info "Created .env from template (edit .env to configure)"
-    fi
-
-    # Check API key
-    if [ -z "$ANTHROPIC_API_KEY" ]; then
-        print_error "ANTHROPIC_API_KEY environment variable not set"
-        exit 1
-    fi
-
-    print_info "Starting Docker services..."
-    docker-compose up -d
-
-    print_success "Docker deployment started"
-    print_info "Waiting for services to initialize..."
-    sleep 30
-
-    # Verify deployment
-    if verify_deployment; then
-        print_success "Deployment successful!"
-        print_info "API: http://localhost:8000"
-        print_info "Grafana: http://localhost:3000 (admin/admin)"
-        print_info "Prometheus: http://localhost:9090"
-    else
-        print_error "Deployment verification failed"
-        docker-compose logs
-        exit 1
-    fi
-
-    cd - > /dev/null
-}
-
-deploy_kubernetes() {
-    print_header "Deploying to Kubernetes"
-    print_error "Kubernetes deployment not yet implemented"
-    print_info "For now, use Docker deployment: ./scripts/deploy.sh --mode docker"
-    exit 1
-}
-
-deploy_direct() {
-    print_header "Deploying Direct Installation"
-    print_error "Direct installation deployment not yet implemented"
-    print_info "For now, use Docker deployment: ./scripts/deploy.sh --mode docker"
-    exit 1
-}
-
-verify_deployment() {
-    print_info "Verifying deployment..."
-
-    # Check if MiLM is responding
-    local max_attempts=30
-    local attempt=0
-
-    while [ $attempt -lt $max_attempts ]; do
-        if curl -s http://localhost:8000/api/health > /dev/null 2>&1; then
-            return 0
-        fi
-        attempt=$((attempt + 1))
-        echo -n "."
-        sleep 1
-    done
-
-    echo ""
-    return 1
-}
-
-################################################################################
-# Main
-################################################################################
-
-main() {
-    print_header "SKI Framework Deploy"
-
-    parse_args "$@"
-
-    print_info "Configuration:"
-    echo "  Deployment Mode: $DEPLOYMENT_MODE"
-    echo "  Stack: $STACK"
-    echo "  Config File: ${CONFIG_FILE:-default}"
-    echo ""
-
-    case $DEPLOYMENT_MODE in
-        docker)
-            deploy_docker
-            ;;
-        kubernetes)
-            deploy_kubernetes
-            ;;
-        direct)
-            deploy_direct
-            ;;
-        *)
-            print_error "Unknown deployment mode: $DEPLOYMENT_MODE"
-            exit 1
-            ;;
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --stack) STACK="$2"; shift 2 ;;
+        --profile) PROFILE="$2"; shift 2 ;;
+        --help|-h) show_help; exit 0 ;;
+        *) print_error "Unknown option: $1"; show_help; exit 1 ;;
     esac
-}
+done
 
-main "$@"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+cd "$REPO_ROOT"
+
+stack_dir="$REPO_ROOT/$STACK"
+if [ ! -d "$stack_dir" ]; then
+    print_error "Stack directory not found: $stack_dir"
+    exit 1
+fi
+
+env_file="$stack_dir/.env"
+if [ ! -f "$env_file" ]; then
+    print_error "No .env at $env_file. Run scripts/setup.sh first."
+    exit 1
+fi
+
+print_header "Deploying $STACK"
+
+compose=(docker compose -f "$stack_dir/docker-compose.yml" --env-file "$env_file")
+if [ -n "$PROFILE" ]; then
+    compose+=(--profile "$PROFILE")
+fi
+
+"${compose[@]}" up -d
+
+print_info "Waiting up to 90s for SKI Model to report healthy…"
+deadline=$(( SECONDS + 90 ))
+while (( SECONDS < deadline )); do
+    if curl -k -fsS "https://localhost:8000/api/health" >/dev/null 2>&1; then
+        print_success "SKI Model healthy at https://localhost:8000"
+        exit 0
+    fi
+    sleep 2
+done
+
+print_error "SKI Model did not become healthy within 90s."
+"${compose[@]}" logs --tail=80 ski-model || true
+exit 1

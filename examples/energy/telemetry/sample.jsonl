@@ -1,0 +1,8 @@
+{"id": "tel_e_001", "timestamp": "2026-05-22T10:00:00Z", "subject": "facility.so2.discharge_ppm", "measurement": {"so2_ppm": {"value": 85, "unit": "ppm"}}}
+{"id": "tel_e_002", "timestamp": "2026-05-22T10:05:00Z", "subject": "facility.so2.discharge_ppm", "measurement": {"so2_ppm": {"value": 110, "unit": "ppm"}}}
+{"id": "tel_e_003", "timestamp": "2026-05-22T10:10:00Z", "subject": "facility.wastewater.ph", "measurement": {"ph": {"value": 7.2, "unit": "pH"}}}
+{"id": "tel_e_004", "timestamp": "2026-05-22T10:15:00Z", "subject": "facility.wastewater.ph", "measurement": {"ph": {"value": 5.4, "unit": "pH"}}}
+{"id": "tel_e_005", "timestamp": "2026-05-22T10:20:00Z", "subject": "facility.pm.mg_per_m3", "measurement": {"pm_mg_per_m3": {"value": 42, "unit": "mg/m3"}}}
+{"id": "tel_e_006", "timestamp": "2026-05-22T10:25:00Z", "subject": "facility.nox.discharge_ppm", "measurement": {"nox_ppm": {"value": 60, "unit": "ppm"}}}
+{"id": "tel_e_007", "timestamp": "2026-05-22T10:30:00Z", "subject": "facility.unknown.metric", "measurement": {"x": 1}}
+{"id": "tel_e_008", "timestamp": "2026-05-22T10:35:00Z", "subject": "facility.spill.event", "measurement": {"spill_event": {"volume_l": 200, "substance": "diesel"}}}

@@ -1,370 +1,171 @@
-# SKI Framework Reference Implementation - Deployment Guide
+# Deployment guide
 
-## Quick Start (5 minutes)
+> **⚠ STATUS: EARLY ALPHA.** Production deployment guidance is preliminary.
 
-### Prerequisites
-- Docker & Docker Compose (v1.29+)
-- 4GB RAM minimum
-- 10GB disk space
-- Anthropic API key
+This document covers the docker-compose deployment in detail. For
+Kubernetes, see [`KUBERNETES.md`](./KUBERNETES.md). For local laptop
+exploration, the [`../QUICKSTART.md`](../QUICKSTART.md) is faster.
 
-### Step 1: Clone and Setup
+## Prerequisites
 
-```bash
-git clone https://github.com/kpifinity/ski-framework.git
-cd reference-implementation
+See [`../QUICKSTART.md#prerequisites`](../QUICKSTART.md#prerequisites).
+The reference implementation does **not** require an Anthropic, OpenAI,
+or any other vendor API key. Inference is local.
 
-# Copy environment template
-cp .env.example .env
+## Deployment modes
 
-# Edit .env and add your API key
-export ANTHROPIC_API_KEY=sk-your-key-here
-```
+| Mode | Status | Use for |
+|---|---|---|
+| Single-node docker-compose | supported | Demo, PoC, single-team production |
+| Air-gapped docker-compose | supported, requires pre-staged image+model | Classified / sovereign deployments |
+| Kubernetes | planned for v0.2 | Multi-node production |
+| Managed (BYOC) | planned | Customer-controlled cloud account, not KpiFinity-hosted |
 
-### Step 2: Load Knowledge Graph
+The previously-documented "KpiFinity hosts your data" managed mode was
+removed in v0.1.0-alpha because it contradicts the Sovereignty pillar.
 
-```bash
-# MiLM will automatically load from examples/knowledge-graphs/sample-energy-kg.json
-# Or copy your own validated Knowledge Graph:
-cp /path/to/validated-kg.json examples/knowledge-graphs/kg.json
-```
-
-### Step 3: Start the Stack
+## Single-node docker-compose
 
 ```bash
-# Start all services
-docker-compose up -d
-
-# Wait for services to initialize (~30 seconds)
-docker-compose ps
-
-# Should see all containers in "Up" state
+./scripts/setup.sh
+docker compose -f reference-implementation/docker-compose.yml up -d ollama
+docker exec ski-ollama ollama pull qwen2.5:7b-instruct
+./scripts/deploy.sh
 ```
 
-### Step 4: Verify Deployment
+To enable optional services:
 
 ```bash
-# Health check
-curl http://localhost:8000/api/health
+# Kafka telemetry source (default is file)
+docker compose -f reference-implementation/docker-compose.yml --profile kafka up -d
 
-# Load Knowledge Graph (if not auto-loaded)
-curl -X POST http://localhost:8000/api/kg/load \
-  -H "Content-Type: application/json" \
-  -d @examples/knowledge-graphs/sample-energy-kg.json
-
-# Submit sample telemetry
-curl -X POST http://localhost:8000/api/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{
-    "telemetry_id": "tel_001",
-    "timestamp": "2026-05-21T10:00:00Z",
-    "subject": "Facility discharge",
-    "measurement": "85 ppm sulfur dioxide"
-  }'
-
-# Expected response: Verdict with CLEAR, FLAG, NULL, or DISCRETIONARY
+# pgAdmin (NOT recommended outside dev)
+docker compose -f reference-implementation/docker-compose.yml --profile pgadmin up -d
 ```
 
-### Step 5: View Dashboard
+## Loading your Knowledge Graph
 
-- **Grafana**: http://localhost:3000 (admin/admin)
-- **Prometheus**: http://localhost:9090
-- **pgAdmin**: http://localhost:5050 (admin@example.com/admin)
-
----
-
-## Deployment Modes
-
-### Mode 1: Local Docker (Recommended)
-
-**Best for:** Development, testing, proof-of-concept
+For non-conformant local demos:
 
 ```bash
-docker-compose up -d
+cp /path/to/your-kg.json reference-implementation/examples/knowledge-graphs/kg.json
+docker compose -f reference-implementation/docker-compose.yml restart ski-model
 ```
 
-Services in this mode:
-- ✅ MiLM (CPU only, works on any machine)
-- ✅ PostgreSQL (local audit ledger)
-- ✅ Kafka (telemetry source)
-- ✅ Prometheus + Grafana (monitoring)
-
-**Advantages:**
-- Single command to start
-- Full featured
-- Easy to modify and experiment
-- Self-contained
-
-**Limitations:**
-- Single node
-- Shared resources
-- No high availability
-
-### Mode 2: Production on Kubernetes (Future)
-
-See [KUBERNETES.md](./KUBERNETES.md) for Kubernetes deployment.
-
----
-
-## Configuration
-
-### Environment Variables
-
-Edit `.env` before running `docker-compose up`:
+For real (signed) Knowledge Graphs, use `ski-model-deploy`:
 
 ```bash
-# Anthropic API
-ANTHROPIC_API_KEY=sk-your-api-key
-
-# MiLM configuration
-MILM_MODEL=claude-opus-4-6
-MILM_TEMPERATURE=0
-MILM_MAX_TOKENS=500
-
-# Database
-POSTGRES_PASSWORD=change-me
-
-# Data source
-TELEMETRY_SOURCE=kafka  # or http, file
-
-# Monitoring
-GRAFANA_PASSWORD=change-me
+ski-model-deploy load-kg \
+  --kg /path/to/signed-kg.json \
+  --endpoint https://localhost:8000 \
+  --api-key "$SKI_API_KEY"
 ```
 
-### Custom Configuration
+`ski-model-deploy` will refuse to upload an unsigned KG. There is no
+flag to override this; if you need to test with an unsigned KG, set
+`KG_REQUIRE_SIGNATURE=false` on the server side (and accept that this
+disqualifies the deployment from any conformance level).
 
-To use your own Knowledge Graph:
+## Telemetry sources
+
+### File (default)
+
+`TELEMETRY_SOURCE=file`. The sidecar reads JSONL from
+`/data/sample.jsonl` (mounted from `examples/telemetry/`).
+
+### HTTP
+
+`TELEMETRY_SOURCE=http`. POST records to `http://localhost:8001/api/telemetry`:
 
 ```bash
-# Copy your validated Knowledge Graph
-cp /path/to/validated-kg.json examples/knowledge-graphs/kg.json
-
-# Or change the path in docker-compose.yml:
-# volumes:
-#   - ./examples/knowledge-graphs/your-kg.json:/app/kg.json:ro
+curl -sS http://localhost:8001/api/telemetry -H 'content-type: application/json' -d '{
+  "id": "tel_1",
+  "timestamp": "2026-05-22T10:00:00Z",
+  "subject": "facility.so2.discharge_ppm",
+  "measurement": {"so2_ppm": {"value": 85, "unit": "ppm"}}
+}'
 ```
 
----
+Records containing a `rule_id` field are rejected — producers must not
+pre-route.
 
-## Data Sources
+### Kafka
 
-### Kafka (Default)
+`TELEMETRY_SOURCE=kafka` and bring up the Kafka profile. SASL/SCRAM is
+enabled. Update `monitoring/kafka_jaas.conf` with strong credentials
+before any non-local use.
 
-Telemetry flows: Your System → Kafka → Sidecar → MiLM
+## Monitoring
+
+| Surface | URL | Notes |
+|---|---|---|
+| Grafana | <https://localhost:3000> | TLS by default; admin password in `.env` |
+| Prometheus | <http://localhost:9090> | Includes SKI alert rules |
+| SKI Model health | <https://localhost:8000/api/health> | Requires `x-api-key` |
+| Determinism canary | <https://localhost:8000/api/canary> | Requires `x-api-key` |
+
+The SKI-specific alerts shipped under `monitoring/rules/ski-alerts.yml`:
+
+- `SKIDeterminismCanaryFailed` (critical)
+- `SKIKnowledgeGraphSignatureFailed` (critical)
+- `SKILedgerSequenceGap` (critical)
+- `SKISidecarHeartbeatLost` (warning)
+
+Wire these to Alertmanager / PagerDuty / OpsGenie via your standard
+operational tooling.
+
+## Audit ledger
+
+The ledger is append-only at the database layer. To explore it:
 
 ```bash
-# Send test message to Kafka
-docker exec ski-kafka kafka-console-producer.sh \
-  --broker-list localhost:9092 \
-  --topic operational-data
+docker exec -it ski-ledger-db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"
 
-# Paste JSON and press Enter:
-{"id": "tel_001", "timestamp": "2026-05-21T10:00:00Z", "subject": "Facility discharge", "measurement": "85 ppm"}
+\d ledger_entries
+SELECT verdict, count(*) FROM ledger_entries GROUP BY verdict;
+SELECT * FROM coverage_register LIMIT 10;
 ```
 
-### HTTP (Alternative)
+To verify integrity end-to-end (chain linkage + entry-hash recomputation):
 
 ```bash
-# Configure in .env:
-TELEMETRY_SOURCE=http
-
-# Send telemetry via HTTP:
-curl -X POST http://localhost:8001/api/telemetry \
-  -H "Content-Type: application/json" \
-  -d '{"id": "tel_001", "subject": "...", "measurement": "..."}'
+python scripts/verify-ledger.py --strict
 ```
 
-### File (Development)
+To back the ledger up (real `pg_dump`, not a stub):
 
 ```bash
-# Configure in .env:
-TELEMETRY_SOURCE=file
-
-# Edit examples/telemetry/sample-data.jsonl
-# Sidecar will process line-by-line
+audit-ledger backup --dsn "$LEDGER_DSN" --out ledger-2026-05-22.dump --verify
 ```
 
----
+Retention is **your responsibility under documented policy**. The
+included `scripts/cleanup.sh` refuses to touch `data/backups/` or
+`data/ledger/`.
 
-## Monitoring & Observability
-
-### Prometheus Metrics
-
-Available at: http://localhost:9090
-
-Key metrics:
-- `milm_verdicts_total` — Total verdicts produced
-- `milm_evaluation_duration_ms` — Evaluation latency
-- `sidecar_telemetry_received_total` — Telemetry received
-- `ledger_entries_total` — Audit ledger size
-
-### Grafana Dashboards
-
-Available at: http://localhost:3000
-
-Pre-configured dashboards:
-- SKI System Overview
-- MiLM Performance
-- Audit Ledger
-- Data Integration
-
-### Logs
+## Running the conformance suite against this deployment
 
 ```bash
-# View logs for MiLM
-docker logs milm-service -f
-
-# View logs for sidecar
-docker logs ski-sidecar -f
-
-# View database logs
-docker logs ski-ledger-db -f
+pytest ../conformance/ -q -m level1 \
+  --ski-endpoint https://localhost:8000 \
+  --api-key "$SKI_API_KEY" \
+  --ledger-dsn "$LEDGER_DSN"
 ```
 
----
+A green run means this deployment satisfies SKI Level 1 conformance. See
+[`../conformance/README.md`](../../conformance/README.md) for the full
+test scope and how to publish a result badge.
 
-## Operations
+## Production-track checklist
 
-### Stop Deployment
-
-```bash
-docker-compose down
-```
-
-### Restart Services
-
-```bash
-# Restart all
-docker-compose restart
-
-# Restart specific service
-docker-compose restart milm
-```
-
-### View Database
-
-```bash
-# Connect to PostgreSQL
-docker exec -it ski-ledger-db psql -U ski -d ski_ledger
-
-# Query audit ledger
-SELECT * FROM ledger_entries ORDER BY timestamp DESC LIMIT 10;
-
-# Check integrity
-SELECT * FROM ledger_integrity WHERE chain_valid = false;
-```
-
-### Backup Ledger
-
-```bash
-# Backup database
-docker exec ski-ledger-db pg_dump -U ski ski_ledger > ledger-backup.sql
-
-# Backup volume
-docker run --rm \
-  -v ski-reference-implementation_milm-data:/data \
-  -v $(pwd):/backup \
-  alpine tar czf /backup/milm-data-backup.tar.gz /data
-```
-
-### Health Checks
-
-```bash
-# Quick health check
-curl http://localhost:8000/api/health
-
-# Detailed status
-curl http://localhost:8000/api/status
-
-# Database health
-docker exec ski-ledger-db pg_isready -U ski
-```
-
----
-
-## Troubleshooting
-
-### "Port already in use"
-
-```bash
-# Find what's using port 8000
-lsof -i :8000
-
-# Use different ports:
-# Edit docker-compose.yml and change port mappings
-```
-
-### "Connection refused" when calling API
-
-```bash
-# Wait for services to start
-docker-compose logs -f milm
-
-# Check service is running
-docker-compose ps
-
-# Verify MiLM health
-curl http://localhost:8000/api/health
-```
-
-### "Knowledge Graph not loaded"
-
-```bash
-# Check if file exists
-ls -la examples/knowledge-graphs/kg.json
-
-# Load manually
-curl -X POST http://localhost:8000/api/kg/load \
-  -H "Content-Type: application/json" \
-  -d @examples/knowledge-graphs/sample-energy-kg.json
-
-# Check logs
-docker logs milm-service | grep -i "knowledge"
-```
-
-### "Sidecar not receiving telemetry"
-
-```bash
-# Check Kafka connectivity
-docker exec ski-kafka kafka-broker-api-versions.sh --bootstrap-server localhost:9092
-
-# Check topic exists
-docker exec ski-kafka kafka-topics.sh \
-  --list --bootstrap-server localhost:9092
-
-# Create topic if missing
-docker exec ski-kafka kafka-topics.sh \
-  --create --topic operational-data \
-  --bootstrap-server localhost:9092 \
-  --partitions 1 --replication-factor 1
-```
-
-### "Database connection error"
-
-```bash
-# Check PostgreSQL is running
-docker-compose logs postgres
-
-# Reset database
-docker-compose down
-docker volume rm reference-implementation_postgres-data
-docker-compose up -d postgres
-```
-
----
-
-## Next Steps
-
-1. **Load your Knowledge Graph** — Replace sample-energy-kg.json with your validated rules
-2. **Connect your data source** — Configure Kafka/HTTP/file telemetry source
-3. **Monitor verdicts** — Check http://localhost:3000 for real-time dashboard
-4. **Review audit ledger** — Access PostgreSQL via pgAdmin at http://localhost:5050
-5. **Scale for production** — See KUBERNETES.md for production deployment
-
----
-
-## Support
-
-- **Issues?** Check [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
-- **Customization?** See [CUSTOMIZATION.md](./CUSTOMIZATION.md)
-- **Questions?** Open an issue on GitHub
+- [ ] Replace self-signed `tls/` certs with certs from your own CA.
+- [ ] Move `SKI_API_KEY`, `POSTGRES_PASSWORD`, `GRAFANA_PASSWORD` into
+      your secrets manager (Vault, AWS SM, GCP SM, …).
+- [ ] Set `SKI_MODEL_FILE_SHA256` to the SHA-256 of the model file you
+      actually run.
+- [ ] Document your hardware baseline (CPU model, instruction set
+      extensions, OS/kernel, Ollama version, model version).
+- [ ] Sign your KG with your production Ed25519 key.
+- [ ] Configure Alertmanager / PagerDuty for the SKI alert rules.
+- [ ] Decide retention policy for the audit ledger and document it.
+- [ ] Wire `audit-ledger backup` into a scheduled job.
+- [ ] Run the conformance suite as part of every deployment promotion.

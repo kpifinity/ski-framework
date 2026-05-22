@@ -1,284 +1,187 @@
-# SKI Framework Reference Implementation
+# SKI Framework reference implementation
 
-This directory contains a **complete, working reference implementation** of the SKI Framework. It demonstrates how all components work together in a real deployment.
+> **⚠ STATUS: EARLY ALPHA (v0.1.0-alpha).** This is a proof-of-scaffold
+> reference, not a production deployment. The repository's top-level
+> README explains the project status; this document explains what's
+> inside the reference implementation specifically.
 
-## What Goes Here
+This directory contains a **working, sovereign-by-default** reference
+implementation of SKI Framework v2.1. It demonstrates how the Symbolic
+Evaluator, SKI Model wrapper, Tag Registry, audit ledger, and sidecar
+fit together. It runs entirely on-premise (Ollama backend) and makes
+no outbound network calls during inference in its default configuration.
 
-A full SKI deployment including:
-- **MiLM inference engine** — The runtime evaluation component
-- **Data integration layer** — Connecting to operational telemetry
-- **Immutable audit ledger** — Tamper-evident verdict logging
-- **Configuration & orchestration** — Deployment and management
-- **Monitoring & observability** — Health checks and alerting
-- **Documentation** — How to customize and extend
+## What's inside
+
+```
+reference-implementation/
+├── docker-compose.yml             Ollama + SKI Model + sidecar + Postgres +
+│                                  postgres_exporter + Prometheus + Grafana
+├── Dockerfile.ski-model           Runs as non-root (UID 10001)
+├── Dockerfile.sidecar             Runs as non-root (UID 10002)
+├── .env.example                   No defaults for secrets; stack refuses to
+│                                  start without operator-supplied values
+├── SECURITY_DEFAULTS.md           What is hardened vs. deferred
+├── src/
+│   ├── ski_model/                 SKI Model service (Track 2 wrapper)
+│   │   ├── server.py              FastAPI app with lifespan handler
+│   │   ├── backends.py            Ollama (default); Anthropic demo backend
+│   │   ├── kg_loader.py           Ed25519 signature verification
+│   │   ├── ledger_client.py       Append-only hash-chained writes
+│   │   ├── canary.py              Determinism canary (B3.4)
+│   │   └── verdicts.py            Five-verdict taxonomy (v2.1)
+│   ├── symbolic_evaluator/        Track 1 — deterministic predicate evaluation
+│   ├── tag_registry/              Subject→rule lookup (B4.3)
+│   ├── ledger/
+│   │   ├── schema.sql             ledger_entries (no confidence_level)
+│   │   └── append_only.sql        UPDATE/DELETE/TRUNCATE triggers
+│   └── sidecar/                   Read-only telemetry intake (httpx.AsyncClient)
+├── monitoring/
+│   ├── prometheus.yml             Scrapes postgres_exporter (not Postgres)
+│   ├── rules/ski-alerts.yml       SKI-specific alert rules
+│   └── kafka_jaas.conf            Kafka SASL/SCRAM
+├── examples/
+│   ├── knowledge-graphs/          Demo KG (unsigned; non-conformant)
+│   └── telemetry/                 Demo telemetry (no rule_id)
+└── docs/
+    ├── DEPLOYMENT.md              How to deploy
+    ├── QUICKSTART.md
+    ├── CONCURRENCY.md             Why workers=1 is enforced
+    ├── CUSTOMIZATION.md           Swap backends; bring your own KG
+    ├── TROUBLESHOOTING.md
+    ├── API.md                     /api/health, /api/kg/load, /api/evaluate, …
+    └── KUBERNETES.md              Notes; manifests planned for v0.2
+```
 
 ## Architecture
 
 ```
-Reference Implementation
-├── docker-compose.yml        (Full stack deployment)
-├── .env.example             (Configuration template)
-├── src/
-│   ├── milm/               (Inference engine)
-│   ├── sidecar/            (Data integration)
-│   ├── ledger/             (Audit ledger)
-│   ├── config/             (Configuration)
-│   └── monitoring/         (Health & observability)
-├── tests/                  (Test suite)
-├── docs/
-│   ├── DEPLOYMENT.md       (How to deploy)
-│   ├── CUSTOMIZATION.md    (How to customize)
-│   └── TROUBLESHOOTING.md  (Common issues)
-└── examples/
-    ├── knowledge-graphs/   (Sample Knowledge Graphs)
-    └── telemetry/         (Sample telemetry data)
+   ┌──────────┐   subject + measurement   ┌─────────────────────────────┐
+   │  Sidecar │ ────────────────────────▶ │        SKI Model            │
+   └──────────┘                           │ ┌─────────────────────────┐ │
+                                          │ │      Tag Registry       │ │ pure lookup
+                                          │ └────────────┬────────────┘ │
+                                          │              │              │
+                                          │  ┌───────────┴───────────┐  │
+                                          │  ▼                       ▼  │
+                                          │ ┌──────────────┐  ┌─────────┴────────┐
+                                          │ │  Symbolic    │  │  Ollama-backed   │
+                                          │ │  Evaluator   │  │  SKI Model       │
+                                          │ │  (Track 1)   │  │  (Track 2, T=0)  │
+                                          │ └──────┬───────┘  └────────┬─────────┘
+                                          │        │                   │         │
+                                          │        ▼                   ▼         │
+                                          │   verdict ∈ {CLEAR, FLAG, NULL_*,    │
+                                          │              DISCRETIONARY}          │
+                                          └─────────────┬────────────────────────┘
+                                                        │
+                                                        ▼
+                                         ┌──────────────────────────────┐
+                                         │  Append-only audit ledger    │
+                                         │  (Postgres + triggers)       │
+                                         └──────────────────────────────┘
 ```
 
-## Quick Start
-
-### 1. Prerequisites
-- Docker & Docker Compose
-- Python 3.9+
-- 2GB RAM, 10GB disk space
-- Linux/macOS (or Windows with WSL2)
-
-### 2. Deploy Locally
+## Quick start
 
 ```bash
-# Clone and navigate
-git clone https://github.com/kpifinity/ski-framework.git
-cd reference-implementation
+# 1. Generate secrets and TLS certs, write .env (0600).
+./scripts/setup.sh
 
-# Copy configuration
-cp .env.example .env
+# 2. Pull the local LLM weights into Ollama.
+docker compose -f reference-implementation/docker-compose.yml up -d ollama
+docker exec ski-ollama ollama pull qwen2.5:7b-instruct
 
-# Start the full stack
-docker-compose up -d
+# 3. Start the full stack.
+./scripts/deploy.sh
 
-# Verify it's running
-docker-compose ps
+# 4. Smoke test.
+python scripts/test-connection.py --insecure
+python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl --insecure
+python scripts/check-verdicts.py --insecure --limit 5
 ```
 
-### 3. Test with Sample Data
-
-```bash
-# Load sample Knowledge Graph
-python scripts/load-kg.py examples/knowledge-graphs/energy-sample.json
-
-# Send sample telemetry
-python scripts/send-telemetry.py examples/telemetry/sample-data.json
-
-# Check verdicts
-python scripts/check-verdicts.py
-
-# Verify audit ledger
-python scripts/verify-ledger.py
-```
-
-### 4. View Results
-
-```bash
-# Check audit ledger
-curl http://localhost:8000/api/ledger
-
-# View verdicts
-curl http://localhost:8000/api/verdicts
-
-# Check system status
-curl http://localhost:8000/api/health
-```
-
-## Key Components
-
-### MiLM Service
-**What it does**: Evaluates telemetry against Knowledge Graph
-- Temperature = 0 (deterministic)
-- Structured output validation
-- No external API calls
-- Runs on-premise only
-
-**Configuration**: `src/milm/config.yaml`
-
-### Data Sidecar
-**What it does**: Integrates with operational telemetry
-- Read-only connection to data sources
-- Normalizes telemetry format
-- Heartbeat for gap detection
-- No modification of primary systems
-
-**Configuration**: `src/sidecar/config.yaml`
-
-### Audit Ledger
-**What it does**: Records all verdicts immutably
-- Hash-chained entries
-- Tamper detection
-- Verifiable without proprietary tools
-- Cryptographically signed
-
-**Storage**: SQLite (default) or PostgreSQL (production)
-
-### Monitoring
-**What it does**: Tracks system health
-- MiLM performance metrics
-- Data integration heartbeat
-- Ledger integrity checks
-- Resource utilization
-
-**Dashboard**: Available at `http://localhost:8080`
+See [`docs/QUICKSTART.md`](./QUICKSTART.md) for the full walkthrough.
 
 ## Configuration
 
-### Environment Variables (.env)
+All runtime configuration is via environment variables documented in
+[`.env.example`](./.env.example). Highlights:
+
+| Variable | Default | Notes |
+|---|---|---|
+| `SKI_INFERENCE_BACKEND` | `ollama` | Use `anthropic` only as opt-in non-conformant demo. |
+| `SKI_MODEL_NAME` | `qwen2.5:7b-instruct` | Must be pulled into the Ollama volume. |
+| `SKI_MODEL_FILE_SHA256` | empty | Set to pin a specific model artefact (B3.4). |
+| `SKI_MODEL_SEED` | `42` | Deterministic decoding requires a fixed seed. |
+| `KG_REQUIRE_SIGNATURE` | `true` | Setting to `false` is non-conformant. |
+| `SKI_API_KEY` | required | Generate via `openssl rand -hex 32`; `setup.sh` does this for you. |
+| `TLS_ENABLED` | `true` | Self-signed certs generated by `setup.sh`. |
+| `SKI_MODEL_WORKERS` | `1` (enforced) | See [`docs/CONCURRENCY.md`](./docs/CONCURRENCY.md). |
+| `DETERMINISM_CANARY_INTERVAL` | `300` (s) | Set to `0` only in tests. |
+
+## Components
+
+### SKI Model (`src/ski_model/`)
+The runtime inference service. Routes telemetry through the Tag Registry,
+then either the Symbolic Evaluator or the Ollama-backed bounded LLM.
+Writes every verdict to the audit ledger. Refuses to load unsigned KGs by
+default. Single-worker by enforcement.
+
+### Symbolic Evaluator (`src/symbolic_evaluator/`)
+Deterministic predicate evaluator for Track 1 rules: `lte`, `gte`, `lt`,
+`gt`, `eq`, `range`, `in_set`, `not_in_set`, `exists`. No LLM. Unit
+mismatches surface as `DISCRETIONARY` rather than silently coerced.
+
+### Tag Registry (`src/tag_registry/`)
+Immutable mapping from normalised subject string → KG rule, compiled from
+the signed KG. Runtime tag inference is architecturally impossible: this
+is a dict lookup. Missing subjects → `NULL_UNMAPPED`.
+
+### Audit ledger (`src/ledger/`)
+Postgres-backed, append-only at the database layer via `BEFORE UPDATE`,
+`BEFORE DELETE`, and `BEFORE TRUNCATE` triggers. Hash-chained entries.
+Canonical serialization documented in
+`tools/audit-ledger/src/audit_ledger/canonical.py` so third parties can
+verify integrity without our code.
+
+### Sidecar (`src/sidecar/`)
+Read-only telemetry intake. Uses `httpx.AsyncClient` with retries, the
+FastAPI lifespan context manager (no deprecated `@app.on_event`), and
+emits a heartbeat for gap detection.
+
+## What's NOT yet in this release
+
+- Stateful evaluation buffer / `NULL_STALE` routing (Block 3 #12 partial)
+- Production Kubernetes manifests
+- Vault / AWS Secrets Manager integration code
+- Additional backends (vLLM, llama.cpp) — Ollama only today
+
+These are tracked in the project [CHANGELOG](../CHANGELOG.md) under
+`[Unreleased]`.
+
+## Test it
 
 ```bash
-# Inference
-MILM_TEMPERATURE=0
-MILM_MODEL=claude-3-haiku
-MILM_MAX_TOKENS=500
-
-# Data Integration
-TELEMETRY_SOURCE=kafka        # kafka, http, file, etc.
-TELEMETRY_BATCH_SIZE=100
-HEARTBEAT_INTERVAL=60
-
-# Ledger
-LEDGER_BACKEND=sqlite         # sqlite, postgresql
-LEDGER_PATH=/data/ledger.db
-LEDGER_HASH_ALGORITHM=sha256
-
-# Monitoring
-PROMETHEUS_PORT=9090
-LOG_LEVEL=INFO
+pip install -r ../requirements-dev.txt
+pytest -q
+pytest ../conformance -q -m level1
 ```
 
-See `.env.example` for all options.
+## Hardening
 
-## Customization
+Before any production-track use, read
+[`SECURITY_DEFAULTS.md`](./SECURITY_DEFAULTS.md). Replace the self-signed
+certs from `setup.sh` with certs from your own CA, route secrets through
+your secrets manager, and document your hardware baseline.
 
-### Use Your Own Knowledge Graph
+## Where to go next
 
-```bash
-# Export your Knowledge Graph to JSON
-python scripts/export-kg.py your-kg.json
-
-# Load into reference implementation
-python scripts/load-kg.py your-kg.json
-
-# Verify it loaded
-python scripts/validate-kg.py
-```
-
-### Connect Your Data Source
-
-1. **Update telemetry source** in `.env`
-2. **Configure data mapping** in `src/sidecar/telemetry_schema.yaml`
-3. **Test connection** with `python scripts/test-connection.py`
-4. **Monitor integration** in dashboard
-
-See [CUSTOMIZATION.md](docs/CUSTOMIZATION.md) for details.
-
-### Extend the System
-
-The reference implementation is a starting point. You can:
-- Add custom MCP connectors
-- Implement alternative ledger backends
-- Build custom monitoring dashboards
-- Add additional evaluation logic
-
-All code is modular and extensible.
-
-## Testing
-
-```bash
-# Run full test suite
-pytest tests/
-
-# Test specific components
-pytest tests/unit/test_milm.py
-pytest tests/integration/test_sidecar.py
-pytest tests/integration/test_ledger.py
-
-# Test with coverage
-pytest --cov=src tests/
-
-# Performance testing
-pytest tests/performance/
-```
-
-## Production Deployment
-
-The reference implementation is suitable for:
-- ✅ Learning and development
-- ✅ Proof of concepts
-- ✅ Small-scale deployments (<10K verdicts/day)
-
-For production at scale:
-- 🔧 Use a managed database (PostgreSQL)
-- 🔧 Deploy with Kubernetes
-- 🔧 Implement backup/redundancy
-- 🔧 Set up proper monitoring
-- 🔧 Work with KpiFinity for optimization
-
-See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for production guidance.
-
-## Troubleshooting
-
-Common issues and solutions are in [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md):
-- Container startup failures
-- Data integration issues
-- Ledger verification errors
-- Performance problems
-- Configuration issues
-
-## API Reference
-
-```bash
-# Load Knowledge Graph
-POST /api/kg/load
-  body: Knowledge Graph JSON
-
-# Submit telemetry
-POST /api/telemetry
-  body: Telemetry record
-
-# Get verdicts
-GET /api/verdicts?limit=100
-
-# Get audit ledger
-GET /api/ledger?start=0&limit=100
-
-# Verify ledger integrity
-GET /api/ledger/verify
-
-# System health
-GET /api/health
-```
-
-See [docs/API.md](docs/API.md) for full reference.
-
-## Roadmap
-
-- **v1.0 (July 2026)**: Basic reference implementation
-- **v1.1 (August 2026)**: Kubernetes deployment
-- **v1.2 (September 2026)**: Advanced monitoring
-- **v1.3 (October 2026)**: Multi-node federation
-
-## Contributing
-
-To improve the reference implementation:
-1. Fork and create a branch
-2. Make your changes
-3. Add tests
-4. Submit a pull request
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for guidelines.
-
-## Support
-
-- **Questions?** Open an issue
-- **Found a bug?** Report it with reproduction steps
-- **Need production help?** Contact [KpiFinity](https://kpifinity.com)
-
----
-
-For more details, see the full [SKI Framework specification](https://skiframework.org)
+- [`QUICKSTART.md`](./QUICKSTART.md) — 5-minute walkthrough
+- [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) — full deployment guide
+- [`docs/API.md`](./docs/API.md) — REST surface
+- [`docs/CUSTOMIZATION.md`](./docs/CUSTOMIZATION.md) — swapping backends,
+  bringing your own KG, integrating with telemetry sources
+- [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md)
+- [`../conformance/README.md`](../conformance/README.md) — running the
+  conformance suite against this deployment

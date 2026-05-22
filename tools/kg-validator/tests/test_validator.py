@@ -137,14 +137,17 @@ class TestValidation:
             reasoning="Test",
         )
 
+        # v2.1: auto-approval has been removed. EXPLICIT rules go into
+        # the pending-review pool just like every other rule (B2.3).
         validator = Validator()
-        result = validator.validate([rule], auto_approve_explicit=True)
+        result = validator.validate([rule])
 
-        assert result.metadata.total_approved == 1
-        assert len(result.approved_rules) == 1
+        # No rule is approved automatically; downstream interactive
+        # review must approve.
+        assert len(result.approved_rules) == 0
 
-    def test_discretionary_rules_not_auto_approved(self):
-        """DISCRETIONARY rules should not auto-approve"""
+    def test_discretionary_rules_are_flagged_for_review(self):
+        """DISCRETIONARY rules must be flagged for human review (no auto-approval)."""
         rule = ComplianceRule(
             id="1",
             subject="Facility",
@@ -157,9 +160,9 @@ class TestValidation:
         )
 
         validator = Validator()
-        result = validator.validate([rule], auto_approve_explicit=False)
+        result = validator.validate([rule])
 
-        # Should be flagged, not approved
+        # Should be flagged via issues, not auto-approved.
         assert len(result.approved_rules) == 0
         assert len(result.issues) > 0
 

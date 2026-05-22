@@ -44,17 +44,21 @@ def _extract_from_txt(file_path: str) -> str:
 
 
 def _extract_from_pdf(file_path: str) -> str:
-    """Extract text from PDF file"""
+    """Extract text from PDF file.
+
+    Uses `pypdf` (the maintained successor to PyPDF2). PyPDF2 has known
+    CVEs (CVE-2023-36464, CVE-2022-24859) and is deprecated.
+    """
     try:
-        import PyPDF2
+        from pypdf import PdfReader
     except ImportError:
-        raise ImportError("PyPDF2 required for PDF extraction. Install with: pip install PyPDF2")
+        raise ImportError("pypdf required for PDF extraction. Install with: pip install pypdf")
 
     text = []
     with open(file_path, "rb") as f:
-        reader = PyPDF2.PdfReader(f)
+        reader = PdfReader(f)
         for page in reader.pages:
-            text.append(page.extract_text())
+            text.append(page.extract_text() or "")
 
     return "\n".join(text)
 

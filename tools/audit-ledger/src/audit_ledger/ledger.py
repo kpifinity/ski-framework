@@ -1,181 +1,308 @@
-"""
-Core Ledger class for managing audit ledger
+"""Audit Ledger — read, verify, export, report, back up.
+
+v2.1 changes:
+  * `verify_integrity()` now recomputes the entry hash from the canonical
+    payload — it is no longer a chain-linkage-only check.
+  * `backup_database()` actually invokes `pg_dump`; no more stubs.
+  * `ConfidenceLevel` removed from data model (B3.1).
+  * Five-verdict taxonomy.
+  * Canonical serialization documented in
+    `audit_ledger.canonical.canonical_entry_payload` so third parties can
+    re-verify without our code.
 """
 
+from __future__ import annotations
+
+import csv
+import gzip
 import hashlib
 import json
+import os
+import shlex
+import shutil
+import subprocess
 from datetime import datetime
-from typing import List, Optional, Dict, Tuple, Any
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-import csv
+from typing import Any, Iterable, List, Optional, Tuple
 
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import sessionmaker
+
+from .canonical import canonical_entry_payload
 from .models import (
-    LedgerEntry,
-    VerificationResult,
-    ExportResult,
     BackupResult,
+    ExportResult,
+    IntegrityIssue,
     ReportResult,
     VerdictSummary,
+    VerificationResult,
     ViolationSummary,
-    IntegrityIssue,
-    VerdictType,
 )
 
 
+GENESIS_HASH = "0" * 64
+
+
 class Ledger:
-    """Manage and verify SKI Framework audit ledger"""
+    """Manage and verify the SKI Framework audit ledger."""
 
     def __init__(self, connection_string: str):
-        """Initialize ledger connection"""
         self.connection_string = connection_string
-        self.engine = create_engine(connection_string)
+        self.engine: Engine = create_engine(connection_string)
         self.Session = sessionmaker(bind=self.engine)
 
-    def verify_integrity(self, verbose: bool = False) -> VerificationResult:
-        """
-        Verify ledger integrity and hash chain validity
+    # ------------------------------------------------------------------
+    # verify_integrity — REAL hash recomputation, not chain-linkage only.
+    # ------------------------------------------------------------------
 
-        Checks:
-        1. Chain continuity (no gaps in sequence)
-        2. Hash verification (each entry's hash matches content)
-        3. Timestamp ordering (chronological validity)
-        4. Data consistency (valid references)
+    def verify_integrity(self, verbose: bool = False) -> VerificationResult:
+        """Verify ledger integrity.
+
+        For every entry, this method recomputes the entry hash from the
+        canonical payload and compares against the stored entry_hash. This
+        catches tampering with any field, not just the previous_hash.
         """
         session = self.Session()
         try:
-            # Get all entries sorted by sequence
-            query = text("""
-                SELECT id, sequence_number, previous_hash, entry_hash, timestamp,
-                       verdict, telemetry_id, rule_id
-                FROM ledger_entries
-                ORDER BY sequence_number ASC
-            """)
-            result = session.execute(query)
-            entries = result.fetchall()
+            rows = session.execute(
+                text(
+                    """
+                    SELECT id, sequence_number, previous_hash, entry_hash, timestamp,
+                           verdict, telemetry_id, telemetry_hash, rule_id,
+                           knowledge_graph_version, ski_model_version, reasoning, track
+                    FROM ledger_entries
+                    ORDER BY sequence_number ASC
+                    """
+                )
+            ).all()
 
-            if not entries:
+            if not rows:
                 return VerificationResult(
                     is_valid=True,
                     total_entries=0,
                     sequence_range=(0, 0),
                     time_range=(None, None),
                     chain_continuity=True,
-                    hash_verification_count=0,
+                    chain_link_verified_count=0,
+                    entry_hash_verified_count=0,
                     hash_verification_total=0,
                     timestamp_ordering=True,
                     data_consistency=True,
                     verification_date=datetime.now(),
-                    recommendation="Empty ledger - nothing to verify"
+                    recommendation="Ledger is empty — nothing to verify.",
                 )
 
-            issues = []
-            warnings = []
-            prev_hash = "0" * 64  # Genesis block
+            issues: List[IntegrityIssue] = []
+            warnings: List[str] = []
+            prev_hash = GENESIS_HASH
             prev_timestamp = None
-            valid_hashes = 0
-            total_hashes = len(entries)
-            sequence_valid = True
-            timestamps_valid = True
-
-            # Check sequence continuity
             expected_seq = 1
-            for entry in entries:
-                sequence_num = entry[1]
-                if sequence_num != expected_seq:
+            chain_link_verified = 0
+            entry_hash_verified = 0
+            timestamps_valid = True
+            sequence_valid = True
+
+            for row in rows:
+                (
+                    entry_id,
+                    seq,
+                    stored_prev,
+                    stored_hash,
+                    timestamp,
+                    verdict,
+                    tid,
+                    thash,
+                    rule_id,
+                    kg_version,
+                    ski_model_version,
+                    reasoning,
+                    track,
+                ) = row
+
+                # 1. Sequence continuity
+                if seq != expected_seq:
                     sequence_valid = False
                     issues.append(
                         IntegrityIssue(
                             issue_type="SEQUENCE_GAP",
                             sequence_number=expected_seq,
-                            description=f"Expected sequence {expected_seq}, found {sequence_num}",
-                            severity="CRITICAL"
+                            description=f"Expected sequence {expected_seq}, found {seq}",
+                            severity="CRITICAL",
+                            suggested_action="Investigate ingestion path; this should be impossible with append-only triggers active.",
                         )
                     )
-                    break
-                expected_seq += 1
+                expected_seq = seq + 1
 
-            # Check hash chain and timestamps
-            for i, entry in enumerate(entries):
-                entry_id = entry[0]
-                sequence_num = entry[1]
-                entry_previous_hash = entry[2]
-                entry_hash = entry[3]
-                timestamp = entry[4]
-
-                # Check previous hash matches
-                if entry_previous_hash != prev_hash:
+                # 2. Chain linkage (previous_hash matches prior entry_hash)
+                if stored_prev == prev_hash:
+                    chain_link_verified += 1
+                else:
                     issues.append(
                         IntegrityIssue(
                             issue_type="HASH_MISMATCH",
-                            sequence_number=sequence_num,
-                            description=f"Hash chain broken at entry {entry_id}",
-                            severity="CRITICAL"
+                            sequence_number=seq,
+                            description=(
+                                f"previous_hash mismatch at entry {entry_id} "
+                                f"(stored={stored_prev[:12]}…, expected={prev_hash[:12]}…)"
+                            ),
+                            severity="CRITICAL",
                         )
                     )
-                else:
-                    valid_hashes += 1
 
-                # Check timestamp ordering
-                if prev_timestamp and timestamp < prev_timestamp:
+                # 3. Entry hash recomputation — the real integrity check.
+                timestamp_iso = (
+                    timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
+                )
+                payload = canonical_entry_payload(
+                    sequence_number=int(seq),
+                    previous_hash=str(stored_prev),
+                    timestamp_iso=timestamp_iso,
+                    verdict=str(verdict),
+                    telemetry_id=str(tid),
+                    telemetry_hash=str(thash),
+                    rule_id=rule_id,
+                    kg_version=kg_version,
+                    ski_model_version=str(ski_model_version),
+                    reasoning=reasoning,
+                    track=track,
+                )
+                recomputed = hashlib.sha256(payload).hexdigest()
+                if recomputed == stored_hash:
+                    entry_hash_verified += 1
+                else:
+                    issues.append(
+                        IntegrityIssue(
+                            issue_type="ENTRY_HASH_MISMATCH",
+                            sequence_number=seq,
+                            description=(
+                                f"Recomputed entry hash does not match stored hash at "
+                                f"sequence {seq} (stored={stored_hash[:12]}…, "
+                                f"recomputed={recomputed[:12]}…). Entry content has been tampered with."
+                            ),
+                            severity="CRITICAL",
+                            suggested_action="Treat as a confirmed integrity incident; do not use this ledger for regulatory reporting.",
+                        )
+                    )
+
+                # 4. Timestamp ordering
+                if prev_timestamp is not None and timestamp < prev_timestamp:
                     timestamps_valid = False
                     issues.append(
                         IntegrityIssue(
                             issue_type="TIMESTAMP_ORDER",
-                            sequence_number=sequence_num,
-                            description=f"Timestamp out of order at entry {entry_id}",
-                            severity="CRITICAL"
+                            sequence_number=seq,
+                            description=f"Timestamp non-monotonic at entry {entry_id}",
+                            severity="CRITICAL",
                         )
                     )
 
-                prev_hash = entry_hash
+                prev_hash = stored_hash
                 prev_timestamp = timestamp
 
-            # Get verdict distribution
-            verdict_query = text("""
-                SELECT verdict, COUNT(*) as count
-                FROM ledger_entries
-                GROUP BY verdict
-            """)
-            verdict_result = session.execute(verdict_query)
-            verdict_dist = {row[0]: row[1] for row in verdict_result}
+            # Verdict distribution
+            verdict_rows = session.execute(
+                text("SELECT verdict, COUNT(*) FROM ledger_entries GROUP BY verdict")
+            ).all()
+            verdict_dist = {r[0]: int(r[1]) for r in verdict_rows}
 
-            # Calculate verdict percentages
-            total = sum(verdict_dist.values())
-            verdict_dist_percent = {
-                k: (v / total * 100) if total > 0 else 0
-                for k, v in verdict_dist.items()
-            }
-
-            # Determine recommendation
-            if len(issues) == 0:
-                recommendation = "✓ Ledger integrity confirmed. Safe for regulatory reporting."
-            elif len([i for i in issues if i.severity == "CRITICAL"]) > 0:
-                recommendation = "✗ Critical issues detected. Ledger integrity compromised."
+            critical_count = sum(1 for i in issues if i.severity == "CRITICAL")
+            if critical_count == 0:
+                recommendation = (
+                    "All integrity checks passed: chain linkage, entry hash recomputation, "
+                    "sequence continuity, and timestamp ordering. Safe for regulatory reporting."
+                )
             else:
-                recommendation = "⚠ Minor issues detected. Review and address."
-
-            time_range = (entries[0][4], entries[-1][4]) if entries else (None, None)
-            sequence_range = (entries[0][1], entries[-1][1]) if entries else (0, 0)
+                recommendation = (
+                    f"{critical_count} CRITICAL integrity issue(s) detected. "
+                    "DO NOT use this ledger for regulatory reporting until investigated."
+                )
 
             return VerificationResult(
-                is_valid=len([i for i in issues if i.severity == "CRITICAL"]) == 0,
-                total_entries=len(entries),
-                sequence_range=sequence_range,
-                time_range=time_range,
+                is_valid=critical_count == 0,
+                total_entries=len(rows),
+                sequence_range=(int(rows[0][1]), int(rows[-1][1])),
+                time_range=(rows[0][4], rows[-1][4]),
                 chain_continuity=sequence_valid,
-                hash_verification_count=valid_hashes,
-                hash_verification_total=total_hashes,
+                chain_link_verified_count=chain_link_verified,
+                entry_hash_verified_count=entry_hash_verified,
+                hash_verification_total=len(rows),
                 timestamp_ordering=timestamps_valid,
                 data_consistency=len(issues) == 0,
-                issues=[str(i.description) for i in issues],
+                issues=issues,
                 warnings=warnings,
                 verification_date=datetime.now(),
                 verdict_distribution=verdict_dist,
-                recommendation=recommendation
+                recommendation=recommendation,
             )
         finally:
             session.close()
+
+    # ------------------------------------------------------------------
+    # backup_database — REAL pg_dump invocation, no more stub.
+    # ------------------------------------------------------------------
+
+    def backup_database(
+        self,
+        output_file: str,
+        compress: bool = False,
+        verify: bool = True,
+    ) -> BackupResult:
+        """Create a real backup using pg_dump."""
+        if not self.connection_string.startswith(("postgresql://", "postgresql+")):
+            raise RuntimeError(
+                "backup_database currently only supports PostgreSQL "
+                f"(connection_string starts with {self.connection_string[:20]!r})"
+            )
+        if shutil.which("pg_dump") is None:
+            raise RuntimeError(
+                "`pg_dump` is not on PATH. Install postgresql-client (or use the "
+                "ski-postgres image which bundles it) before running backups."
+            )
+
+        # Translate to libpq DSN for pg_dump.
+        dsn = self.connection_string.replace("postgresql+psycopg://", "postgresql://", 1)
+        cmd = ["pg_dump", "--format=custom", "--no-owner", "--no-privileges", "--file", output_file, dsn]
+        subprocess.run(cmd, check=True)
+
+        if compress:
+            with open(output_file, "rb") as src, gzip.open(output_file + ".gz", "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            os.remove(output_file)
+            output_file = output_file + ".gz"
+
+        size = os.path.getsize(output_file)
+        checksum = _sha256_file(output_file)
+
+        verification_status: Optional[str] = None
+        if verify:
+            # `pg_restore --list` parses the dump's table of contents; it
+            # fails on a corrupt archive.
+            try:
+                subprocess.run(
+                    ["pg_restore", "--list", output_file] if not compress
+                    else ["pg_restore", "--list", output_file],
+                    check=True,
+                    stdout=subprocess.DEVNULL,
+                )
+                verification_status = "pg_restore --list succeeded"
+            except subprocess.CalledProcessError as exc:
+                verification_status = f"verification FAILED: {exc}"
+
+        return BackupResult(
+            backup_date=datetime.now(),
+            source_db=_redact(self.connection_string),
+            backup_file=output_file,
+            compressed=compress,
+            size_bytes=size,
+            verified=verify,
+            verification_status=verification_status,
+            checksum=checksum,
+            encryption_used=False,
+        )
+
+    # ------------------------------------------------------------------
+    # export_entries
+    # ------------------------------------------------------------------
 
     def export_entries(
         self,
@@ -188,113 +315,53 @@ class Ledger:
         fields: Optional[List[str]] = None,
         limit: Optional[int] = None,
     ) -> ExportResult:
-        """Export ledger entries to file"""
         session = self.Session()
         try:
-            # Build query
-            query_parts = ["SELECT * FROM ledger_entries WHERE 1=1"]
-            params = {}
-
+            parts = ["SELECT * FROM ledger_entries WHERE 1=1"]
+            params: dict[str, Any] = {}
             if start_date:
-                query_parts.append("AND timestamp >= :start_date")
+                parts.append("AND timestamp >= :start_date")
                 params["start_date"] = start_date
-
             if end_date:
-                query_parts.append("AND timestamp <= :end_date")
+                parts.append("AND timestamp <= :end_date")
                 params["end_date"] = end_date
-
             if verdict_filter:
-                query_parts.append("AND verdict = :verdict")
+                parts.append("AND verdict = :verdict")
                 params["verdict"] = verdict_filter
-
             if rule_id_filter:
-                query_parts.append("AND rule_id = :rule_id")
+                parts.append("AND rule_id = :rule_id")
                 params["rule_id"] = rule_id_filter
-
-            query_parts.append("ORDER BY sequence_number ASC")
-
+            parts.append("ORDER BY sequence_number ASC")
             if limit:
-                query_parts.append(f"LIMIT {limit}")
+                parts.append(f"LIMIT {int(limit)}")
+            result = session.execute(text(" ".join(parts)), params)
+            rows = result.mappings().all()
 
-            query = text(" ".join(query_parts))
-            result = session.execute(query, params)
-            entries = result.fetchall()
-
-            # Export based on format
             if format == "json":
-                self._export_json(entries, output_file, fields)
-            elif format == "csv":
-                self._export_csv(entries, output_file, fields)
+                _write_json(rows, output_file, fields)
             elif format == "jsonl":
-                self._export_jsonl(entries, output_file, fields)
-
-            # Get file size
-            import os
-            size = os.path.getsize(output_file)
+                _write_jsonl(rows, output_file, fields)
+            elif format == "csv":
+                _write_csv(rows, output_file, fields)
+            else:
+                raise ValueError(f"Unknown export format: {format}")
 
             return ExportResult(
                 export_date=datetime.now(),
-                entry_count=len(entries),
+                entry_count=len(rows),
                 file_path=output_file,
                 file_format=format,
-                date_range=(start_date, end_date) if start_date or end_date else None,
-                filters={
-                    "verdict": verdict_filter,
-                    "rule_id": rule_id_filter
-                },
-                size_bytes=size
+                date_range=(start_date, end_date) if (start_date or end_date) else None,
+                filters={"verdict": verdict_filter, "rule_id": rule_id_filter},
+                size_bytes=os.path.getsize(output_file),
+                checksum=_sha256_file(output_file),
             )
         finally:
             session.close()
 
-    def _export_json(self, entries: List, output_file: str, fields: Optional[List[str]]):
-        """Export entries to JSON"""
-        data = {
-            "export_date": datetime.now().isoformat(),
-            "entry_count": len(entries),
-            "entries": []
-        }
-
-        column_names = [col.name for col in entries[0].keys()] if entries else []
-
-        for entry in entries:
-            entry_dict = dict(zip(column_names, entry))
-            if fields:
-                entry_dict = {k: v for k, v in entry_dict.items() if k in fields}
-            data["entries"].append(entry_dict)
-
-        with open(output_file, "w") as f:
-            json.dump(data, f, indent=2, default=str)
-
-    def _export_csv(self, entries: List, output_file: str, fields: Optional[List[str]]):
-        """Export entries to CSV"""
-        if not entries:
-            return
-
-        column_names = [col.name for col in entries[0].keys()]
-        if fields:
-            column_names = [c for c in column_names if c in fields]
-
-        with open(output_file, "w", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=column_names)
-            writer.writeheader()
-
-            for entry in entries:
-                row = dict(zip(column_names, entry))
-                if fields:
-                    row = {k: v for k, v in row.items() if k in fields}
-                writer.writerow(row)
-
-    def _export_jsonl(self, entries: List, output_file: str, fields: Optional[List[str]]):
-        """Export entries to JSONL (one JSON object per line)"""
-        column_names = [col.name for col in entries[0].keys()] if entries else []
-
-        with open(output_file, "w") as f:
-            for entry in entries:
-                entry_dict = dict(zip(column_names, entry))
-                if fields:
-                    entry_dict = {k: v for k, v in entry_dict.items() if k in fields}
-                f.write(json.dumps(entry_dict, default=str) + "\n")
+    # ------------------------------------------------------------------
+    # generate_report — uses 5-verdict summary.
+    # ------------------------------------------------------------------
 
     def generate_report(
         self,
@@ -305,90 +372,130 @@ class Ledger:
         include_timeline: bool = False,
         organization: str = "Organization",
     ) -> ReportResult:
-        """Generate compliance report from ledger data"""
         session = self.Session()
         try:
-            # Get verdict summary
-            query = text("""
-                SELECT verdict, COUNT(*) as count
-                FROM ledger_entries
-                WHERE timestamp >= :start_date AND timestamp <= :end_date
-                GROUP BY verdict
-            """)
-            verdict_result = session.execute(query, {
-                "start_date": start_date,
-                "end_date": end_date
-            })
-            verdict_counts = {row[0]: row[1] for row in verdict_result}
-
-            total_verdicts = sum(verdict_counts.values())
+            verdict_counts = {
+                r[0]: int(r[1])
+                for r in session.execute(
+                    text(
+                        """
+                        SELECT verdict, COUNT(*)
+                        FROM ledger_entries
+                        WHERE timestamp >= :start AND timestamp <= :end
+                        GROUP BY verdict
+                        """
+                    ),
+                    {"start": start_date, "end": end_date},
+                ).all()
+            }
+            total = sum(verdict_counts.values())
+            pct = lambda key: ((verdict_counts.get(key, 0) / total) * 100) if total else 0
             verdict_summary = VerdictSummary(
-                total=total_verdicts,
+                total=total,
                 clear=verdict_counts.get("CLEAR", 0),
                 flag=verdict_counts.get("FLAG", 0),
-                null=verdict_counts.get("NULL", 0),
+                null_unmapped=verdict_counts.get("NULL_UNMAPPED", 0),
+                null_stale=verdict_counts.get("NULL_STALE", 0),
                 discretionary=verdict_counts.get("DISCRETIONARY", 0),
-                clear_percent=(verdict_counts.get("CLEAR", 0) / total_verdicts * 100) if total_verdicts > 0 else 0,
-                flag_percent=(verdict_counts.get("FLAG", 0) / total_verdicts * 100) if total_verdicts > 0 else 0,
-                null_percent=(verdict_counts.get("NULL", 0) / total_verdicts * 100) if total_verdicts > 0 else 0,
-                discretionary_percent=(verdict_counts.get("DISCRETIONARY", 0) / total_verdicts * 100) if total_verdicts > 0 else 0,
+                clear_percent=pct("CLEAR"),
+                flag_percent=pct("FLAG"),
+                null_unmapped_percent=pct("NULL_UNMAPPED"),
+                null_stale_percent=pct("NULL_STALE"),
+                discretionary_percent=pct("DISCRETIONARY"),
             )
 
-            violation_summary = None
+            violation_summary: Optional[ViolationSummary] = None
             if include_violations:
-                # Get violation details
-                violation_query = text("""
-                    SELECT rule_id, COUNT(*) as count
-                    FROM ledger_entries
-                    WHERE verdict = 'FLAG' AND timestamp >= :start_date AND timestamp <= :end_date
-                    GROUP BY rule_id
-                    ORDER BY count DESC
-                """)
-                violation_result = session.execute(violation_query, {
-                    "start_date": start_date,
-                    "end_date": end_date
-                })
-                violations_by_rule = {row[0]: row[1] for row in violation_result}
-
+                vio_rows = session.execute(
+                    text(
+                        """
+                        SELECT rule_id, COUNT(*) AS c
+                        FROM ledger_entries
+                        WHERE verdict = 'FLAG' AND timestamp >= :start AND timestamp <= :end
+                        GROUP BY rule_id
+                        ORDER BY c DESC
+                        """
+                    ),
+                    {"start": start_date, "end": end_date},
+                ).all()
+                violations_by_rule = {r[0]: int(r[1]) for r in vio_rows}
                 violation_summary = ViolationSummary(
                     total_violations=verdict_summary.flag,
                     violations_by_rule=violations_by_rule,
-                    most_common_rules=list(violations_by_rule.items())[:5]
+                    most_common_rules=list(violations_by_rule.items())[:5],
                 )
 
             return ReportResult(
                 report_date=datetime.now(),
-                report_file="",  # Will be set by caller
+                report_file="",
                 organization=organization,
                 start_date=datetime.fromisoformat(start_date),
                 end_date=datetime.fromisoformat(end_date),
                 verdict_summary=verdict_summary,
                 violation_summary=violation_summary,
-                total_entries_analyzed=total_verdicts,
+                total_entries_analyzed=total,
                 includes_timeline=include_timeline,
                 includes_audit_trail=True,
             )
         finally:
             session.close()
 
-    def backup_database(
-        self,
-        output_file: str,
-        compress: bool = False,
-        verify: bool = True,
-    ) -> BackupResult:
-        """Create backup of ledger database"""
-        # This would typically use pg_dump or similar
-        # For now, returning a result template
-        import os
-        from datetime import datetime
 
-        return BackupResult(
-            backup_date=datetime.now(),
-            source_db=self.connection_string.split("@")[1] if "@" in self.connection_string else "unknown",
-            backup_file=output_file,
-            compressed=compress,
-            size_bytes=0,
-            verified=verify,
-            verification_status="Backup created successfully" if verify else None,
-        )
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
+
+
+def _write_json(rows: Iterable[dict[str, Any]], path: str, fields: Optional[List[str]]) -> None:
+    out = {
+        "export_date": datetime.now().isoformat(),
+        "entries": [_project(row, fields) for row in rows],
+    }
+    out["entry_count"] = len(out["entries"])
+    with open(path, "w") as f:
+        json.dump(out, f, indent=2, default=str)
+
+
+def _write_jsonl(rows: Iterable[dict[str, Any]], path: str, fields: Optional[List[str]]) -> None:
+    with open(path, "w") as f:
+        for row in rows:
+            f.write(json.dumps(_project(row, fields), default=str) + "\n")
+
+
+def _write_csv(rows: List[dict[str, Any]], path: str, fields: Optional[List[str]]) -> None:
+    if not rows:
+        open(path, "w").close()
+        return
+    columns = list(fields) if fields else list(rows[0].keys())
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=columns)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({c: row.get(c) for c in columns})
+
+
+def _project(row: dict[str, Any], fields: Optional[List[str]]) -> dict[str, Any]:
+    row = dict(row)
+    if fields:
+        return {k: v for k, v in row.items() if k in fields}
+    return row
+
+
+def _sha256_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _redact(dsn: str) -> str:
+    # Avoid logging passwords from the DSN.
+    if "@" not in dsn:
+        return dsn
+    head, tail = dsn.split("@", 1)
+    if "://" in head and ":" in head.split("://", 1)[1]:
+        scheme, rest = head.split("://", 1)
+        user = rest.split(":", 1)[0]
+        return f"{scheme}://{user}:***@{tail}"
+    return dsn
