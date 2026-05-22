@@ -14,7 +14,7 @@ setup(
     package_dir={"": "src"},
     packages=find_packages("src"),
     install_requires=[
-        "psycopg[binary]==3.1.18",
+        "psycopg[binary]==3.2.13",
         "sqlalchemy==2.0.27",
         "click==8.1.7",
         "pydantic==2.6.3",
