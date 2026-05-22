@@ -35,7 +35,7 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "pydantic==2.6.3",
+        "pydantic==2.13.4",
         "python-dotenv==1.0.1",
         "click==8.1.7",
         "pyyaml==6.0.1",
