@@ -20,7 +20,7 @@ setup(
         "pydantic==2.6.3",
         "python-dotenv==1.0.1",
         "jinja2==3.1.3",
-        "pyyaml==6.0.1",
+        "pyyaml==6.0.3",
         "httpx==0.27.0",
         "tabulate==0.9.0",
     ],
