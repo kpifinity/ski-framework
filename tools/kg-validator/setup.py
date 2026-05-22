@@ -35,7 +35,7 @@ setup(
         "click==8.1.7",
         "python-dotenv==1.0.1",
         "rapidfuzz==3.7.0",
-        "jinja2==3.1.3",
+        "jinja2==3.1.6",
     ],
     entry_points={
         "console_scripts": [
