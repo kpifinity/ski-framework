@@ -39,7 +39,7 @@ setup(
         "python-dotenv==1.0.1",
         "click==8.1.7",
         "pyyaml==6.0.1",
-        "httpx==0.27.0",
+        "httpx==0.28.1",
         "pypdf==4.2.0",
         "python-docx==1.1.0",
         "anthropic==0.21.3",
