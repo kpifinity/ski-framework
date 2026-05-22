@@ -1,5 +1,0 @@
-{"id": "tel_d_001", "timestamp": "2026-05-22T10:00:00Z", "subject": "data.cui.storage", "measurement": {"encrypted_at_rest": true}}
-{"id": "tel_d_002", "timestamp": "2026-05-22T10:05:00Z", "subject": "data.cui.storage", "measurement": {"encrypted_at_rest": false}}
-{"id": "tel_d_003", "timestamp": "2026-05-22T10:10:00Z", "subject": "access.privileged", "measurement": {"mfa_present": true}}
-{"id": "tel_d_004", "timestamp": "2026-05-22T10:15:00Z", "subject": "access.privileged", "measurement": {"mfa_present": false}}
-{"id": "tel_d_005", "timestamp": "2026-05-22T10:20:00Z", "subject": "incident.security.candidate", "measurement": {"security_incident": {"summary": "Suspicious privileged login from new geography"}}}

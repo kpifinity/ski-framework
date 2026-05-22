@@ -1,6 +1,0 @@
-{"id": "tel_f_001", "timestamp": "2026-05-22T10:00:00Z", "subject": "transaction.wire.large", "measurement": {"amount_usd": 12000, "has_business_purpose": true}}
-{"id": "tel_f_002", "timestamp": "2026-05-22T10:05:00Z", "subject": "transaction.wire.large", "measurement": {"amount_usd": 25000, "has_business_purpose": false}}
-{"id": "tel_f_003", "timestamp": "2026-05-22T10:10:00Z", "subject": "transaction.account_opening.cip", "measurement": {"days_to_cip_completion": 22}}
-{"id": "tel_f_004", "timestamp": "2026-05-22T10:15:00Z", "subject": "transaction.account_opening.cip", "measurement": {"days_to_cip_completion": 41}}
-{"id": "tel_f_005", "timestamp": "2026-05-22T10:20:00Z", "subject": "transaction.suspicious_activity.review", "measurement": {"suspicious_activity": {"pattern": "structured_cash_deposits", "amount_total_usd": 45000}}}
-{"id": "tel_f_006", "timestamp": "2026-05-22T10:25:00Z", "subject": "transaction.card.unknown_metric", "measurement": {"x": 1}}

@@ -5,46 +5,46 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
-    labels: ["deps", "python"]
+    labels: ["dependencies", "python"]
     commit-message:
       prefix: "[chore]"
   - package-ecosystem: "pip"
     directory: "/reference-implementation/src/ski_model"
     schedule:
       interval: "weekly"
-    labels: ["deps", "ski-model"]
+    labels: ["dependencies", "maintenance"]
   - package-ecosystem: "pip"
     directory: "/reference-implementation/src/sidecar"
     schedule:
       interval: "weekly"
-    labels: ["deps", "sidecar"]
+    labels: ["dependencies", "maintenance"]
   - package-ecosystem: "pip"
     directory: "/tools/kg-extractor"
     schedule:
       interval: "weekly"
-    labels: ["deps", "kg-extractor"]
+    labels: ["dependencies", "maintenance"]
   - package-ecosystem: "pip"
     directory: "/tools/kg-validator"
     schedule:
       interval: "weekly"
-    labels: ["deps", "kg-validator"]
+    labels: ["dependencies", "maintenance"]
   - package-ecosystem: "pip"
     directory: "/tools/ski-model-deploy"
     schedule:
       interval: "weekly"
-    labels: ["deps", "ski-model-deploy"]
+    labels: ["dependencies", "maintenance"]
   - package-ecosystem: "pip"
     directory: "/tools/audit-ledger"
     schedule:
       interval: "weekly"
-    labels: ["deps", "audit-ledger"]
+    labels: ["dependencies", "maintenance"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    labels: ["deps", "github-actions"]
+    labels: ["dependencies", "maintenance"]
   - package-ecosystem: "docker"
     directory: "/reference-implementation"
     schedule:
       interval: "weekly"
-    labels: ["deps", "docker"]
+    labels: ["dependencies", "maintenance"]
