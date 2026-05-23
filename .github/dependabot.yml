@@ -1,50 +1,92 @@
+# Dependabot configuration — tuned for an alpha repo.
+#
+# Design choices:
+#   * MONTHLY cadence (not weekly) — we don't need to chase every patch
+#     bump in an alpha.
+#   * `open-pull-requests-limit: 1` per ecosystem — Dependabot will never
+#     have more than one PR open per ecosystem at a time.
+#   * `groups` collapses all minor+patch updates for each ecosystem into
+#     a SINGLE PR. Major bumps still come in separately so they can be
+#     reviewed individually (they often break things).
+#   * Each tool's pip directory is collapsed into one "python-tools" entry
+#     using the `directories` field (added to Dependabot in 2024) so we
+#     don't get a separate PR per tool.
+
 version: 2
+
 updates:
+  # ----- Root pip (requirements-dev.txt) -----
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
-    labels: ["dependencies", "python"]
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    labels: ["deps", "python"]
     commit-message:
       prefix: "[chore]"
+    groups:
+      python-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # ----- Reference implementation (ski-model + sidecar) -----
   - package-ecosystem: "pip"
-    directory: "/reference-implementation/src/ski_model"
+    directories:
+      - "/reference-implementation/src/ski_model"
+      - "/reference-implementation/src/sidecar"
     schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    labels: ["deps", "reference-implementation"]
+    commit-message:
+      prefix: "[chore]"
+    groups:
+      ref-impl-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # ----- Tools (all four under one umbrella) -----
   - package-ecosystem: "pip"
-    directory: "/reference-implementation/src/sidecar"
+    directories:
+      - "/tools/kg-extractor"
+      - "/tools/kg-validator"
+      - "/tools/ski-model-deploy"
+      - "/tools/audit-ledger"
     schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
-  - package-ecosystem: "pip"
-    directory: "/tools/kg-extractor"
-    schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
-  - package-ecosystem: "pip"
-    directory: "/tools/kg-validator"
-    schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
-  - package-ecosystem: "pip"
-    directory: "/tools/ski-model-deploy"
-    schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
-  - package-ecosystem: "pip"
-    directory: "/tools/audit-ledger"
-    schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    labels: ["deps", "tools"]
+    commit-message:
+      prefix: "[chore]"
+    groups:
+      tools-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # ----- GitHub Actions -----
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    labels: ["deps", "github-actions"]
+    commit-message:
+      prefix: "[ci]"
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+
+  # ----- Container base images -----
   - package-ecosystem: "docker"
     directory: "/reference-implementation"
     schedule:
-      interval: "weekly"
-    labels: ["dependencies", "maintenance"]
+      interval: "monthly"
+    open-pull-requests-limit: 1
+    labels: ["deps", "docker"]
+    commit-message:
+      prefix: "[chore]"
+    groups:
+      docker-minor-patch:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
