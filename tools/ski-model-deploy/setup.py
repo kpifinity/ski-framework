@@ -30,15 +30,15 @@ setup(
     ],
     python_requires=">=3.9",
     install_requires=[
-        "click==8.1.7",
-        "pydantic==2.6.3",
-        "python-dotenv==1.0.1",
-        "pyyaml==6.0.1",
-        "jinja2==3.1.3",
-        "httpx==0.27.0",
+        "click==8.1.8",
+        "pydantic==2.13.4",
+        "python-dotenv==1.2.1",
+        "pyyaml==6.0.3",
+        "jinja2==3.1.6",
+        "httpx==0.28.1",
         "cryptography==42.0.5",
-        "docker==7.0.0",
-        "psycopg[binary]==3.1.18",
+        "docker==7.1.0",
+        "psycopg[binary]==3.2.13",
     ],
     entry_points={
         "console_scripts": [
