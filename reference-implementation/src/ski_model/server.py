@@ -57,7 +57,7 @@ logging.basicConfig(
 logger = logging.getLogger("ski_model.server")
 
 
-_VERSION = "0.1.0-alpha"
+_VERSION = "0.2.0"
 
 
 # ============================================================================
@@ -74,6 +74,8 @@ class _State:
     backend: Optional[InferenceBackend] = None
     ledger: Optional[LedgerClient] = None
     canary: Optional[DeterminismCanary] = None
+    telemetry_buffer: Optional[Any] = None  # v0.2 — set in lifespan when LEDGER_DSN is configured
+    tenant_id: str = "default"               # v0.2 — single-tenant default
     verdicts_produced: int = 0
 
 
@@ -171,6 +173,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     state.ledger = LedgerClient(os.getenv("LEDGER_DSN", ""))
     await state.ledger.initialize()
 
+    # v0.2 telemetry buffer — reuses the LedgerClient's engine when possible
+    # so we don't open a second connection pool. Falls back to a no-op when
+    # LEDGER_DSN is unset (tests / smoke runs).
+    state.tenant_id = os.getenv("SKI_TENANT_ID", "default")
+    try:
+        from telemetry_buffer import TelemetryBuffer  # type: ignore
+        if state.ledger is not None and state.ledger._engine is not None:  # noqa: SLF001
+            state.telemetry_buffer = TelemetryBuffer(
+                state.ledger._engine,  # noqa: SLF001 — intentional reuse
+                tenant_id=state.tenant_id,
+            )
+            logger.info("Telemetry buffer ready (tenant=%s).", state.tenant_id)
+    except Exception as exc:  # pragma: no cover — buffer is best-effort wiring
+        logger.warning("Telemetry buffer not initialised (%s); stateful predicates will return DISCRETIONARY.", exc)
+
     state.canary = DeterminismCanary(
         backend=state.backend,
         interval_seconds=int(os.getenv("DETERMINISM_CANARY_INTERVAL", "300")),
@@ -242,6 +259,25 @@ async def evaluate(telemetry: TelemetryRecord) -> VerdictResponse:
             status.HTTP_500_INTERNAL_SERVER_ERROR, "Service not initialised."
         )
 
+    # 0. v0.2 — write to the telemetry buffer BEFORE evaluation so stateful
+    #    predicates on this very record can see it via subsequent queries.
+    #    Note: by ordering write-before-evaluate we guarantee replay
+    #    determinism (any rule that references "the current event" sees it).
+    if state.telemetry_buffer is not None:
+        try:
+            await state.telemetry_buffer.append(
+                subject=telemetry.subject,
+                telemetry_id=telemetry.telemetry_id,
+                telemetry_ts=_parse_telemetry_ts(telemetry.timestamp),
+                measurement=telemetry.measurement,
+            )
+        except Exception as exc:
+            # The buffer being down is a degraded-operation event, not a
+            # reason to refuse evaluation. Stateful predicates will return
+            # DISCRETIONARY because the buffer queries will fail; stateless
+            # predicates still work correctly.
+            logger.warning("Buffer append failed for %s: %r", telemetry.telemetry_id, exc)
+
     # 1. Tag Registry resolves subject → rule. Pure lookup; no inference.
     rule = state.tag_registry.resolve(telemetry.subject)
     if rule is None:
@@ -260,7 +296,13 @@ async def evaluate(telemetry: TelemetryRecord) -> VerdictResponse:
     # 2. Route by rule track.
     track = rule.get("track", "symbolic")
     if track == "symbolic":
-        decision = state.symbolic_evaluator.evaluate(rule, telemetry.model_dump())
+        # v0.2 — use the async evaluator with the buffer for stateful predicates.
+        decision = await state.symbolic_evaluator.aevaluate(
+            rule,
+            telemetry.model_dump(),
+            buffer=state.telemetry_buffer,
+            as_of=_parse_telemetry_ts(telemetry.timestamp),
+        )
         return await _record_verdict(
             telemetry=telemetry,
             verdict=decision.verdict,
@@ -352,6 +394,20 @@ async def canary_status() -> dict[str, Any]:
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _parse_telemetry_ts(value: str) -> datetime:
+    """Parse telemetry timestamp; fall back to now() only if parsing fails.
+
+    Telemetry timestamps are the authoritative clock for stateful evaluation
+    (see docs/RFCs/0001-stateful-evaluation.md). A malformed timestamp is a
+    producer bug; we log and degrade rather than crash.
+    """
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        logger.warning("Malformed telemetry timestamp %r; falling back to wall clock.", value)
+        return datetime.now(timezone.utc)
 
 
 # ============================================================================

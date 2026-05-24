@@ -1,6 +1,7 @@
 # Dev / CI dependencies for the SKI Framework repository.
 # Pinned per the project's reproducibility policy. Update via dependabot.
 
+alembic==1.13.1
 pytest==8.1.1
 pytest-asyncio==0.23.6
 pytest-cov==5.0.0

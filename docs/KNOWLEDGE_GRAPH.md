@@ -86,6 +86,71 @@ silent coercion.
 Predicates that do not fit this grammar must be Track 2 (`track: "llm"`),
 in which case `predicate` is descriptive only.
 
+### Stateful predicates (v0.2.0+)
+
+The following operators consult the telemetry buffer (see
+[RFCs/0001-stateful-evaluation.md](./RFCs/0001-stateful-evaluation.md))
+and therefore require a runtime configured with one. The buffer is part
+of the reference implementation; any conformant implementation must
+provide an equivalent backing store with the same semantics. All five
+operators accept the standard comparator set
+(`op ∈ {lte, lt, gte, gt, eq}`) and use the telemetry record's own
+`timestamp` field as the authoritative "now".
+
+| Operator | Required fields | Returns |
+|---|---|---|
+| `window_count` | `metric`, `seconds`, `op`, `value` | `CLEAR` / `FLAG` based on count of records for the subject in the trailing window |
+| `window_sum` | `metric` (numeric path), `seconds`, `op`, `value` | `CLEAR` / `FLAG` based on the sum of `metric` over the window; `NULL_UNMAPPED` if no numeric values found |
+| `window_avg` | `metric` (numeric path), `seconds`, `op`, `value` | `CLEAR` / `FLAG` based on the mean of `metric` over the window |
+| `since_last` | `metric` (informational), `op`, `value_seconds` | `CLEAR` / `FLAG` based on seconds elapsed since the previous record for the subject; `NULL_UNMAPPED` if no prior record |
+| `debounce` | `metric` (informational), `seconds` | `CLEAR` if no prior record in the window; `DISCRETIONARY` if a duplicate is observed |
+
+Any rule (stateful or not) may carry a top-level
+`requires_recent_within_seconds: N` property. When set, the evaluator
+checks the buffer first; if no record for the subject exists within
+`N` seconds of the current telemetry timestamp, the verdict is
+`NULL_STALE` and the rule body is skipped entirely.
+
+#### Example: 60-second rolling SO₂ average
+
+```json
+{
+  "id": "energy.so2.window_avg_60s",
+  "subject": "facility.so2.discharge_ppm",
+  "predicate": {
+    "operator": "window_avg",
+    "metric": "so2_ppm.value",
+    "seconds": 60,
+    "op": "lte",
+    "value": 100,
+    "unit": "ppm"
+  },
+  "track": "symbolic",
+  "confidence": "EXPLICIT",
+  "requires_recent_within_seconds": 300,
+  ...
+}
+```
+
+The metric path `so2_ppm.value` is the dotted lookup into the JSON
+measurement (matching the same convention the stateless operators use).
+
+#### Out-of-order arrival
+
+The buffer is keyed by `telemetry_ts`, not arrival order, so a record
+arriving late takes its correct temporal position in the window. If the
+producer reports an incorrect timestamp, evaluation is incorrect; this
+is inherent to any clock-driven system. The runtime supports a
+`max_clock_skew_seconds` rejection knob per tenant for defence in
+depth.
+
+#### Determinism guarantee
+
+Because window queries use the telemetry timestamp (not wall-clock), a
+later replay against the same buffer state yields the same verdict.
+This is what makes the `audit-ledger replay` command meaningful — see
+[`docs/REPLAY.md`](./REPLAY.md).
+
 ## `tag_registry`
 
 A flat object mapping the **normalised** subject string (lowercase,

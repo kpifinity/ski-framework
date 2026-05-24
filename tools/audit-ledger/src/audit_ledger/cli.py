@@ -157,6 +157,56 @@ def backup(source: str, output: str, compress: bool, verify: bool) -> None:
         click.echo(f"Verification:      {result.verification_status}")
 
 
+@main.command()
+@click.option("--source", required=True, envvar="LEDGER_DSN")
+@click.option("--from-sequence", "from_sequence", required=True, type=int, help="Lowest sequence number to replay (inclusive).")
+@click.option("--to-sequence", "to_sequence", required=True, type=int, help="Highest sequence number to replay (inclusive).")
+@click.option("--kg-path", required=True, type=click.Path(exists=True, dir_okay=False), help="Signed KG used during the original evaluation.")
+@click.option("--tenant-id", default="default", show_default=True)
+@click.option("--output", default=None, help="Optional path to write the JSON replay report.")
+@click.option("--strict/--no-strict", default=True, show_default=True, help="Exit non-zero on any verdict divergence.")
+def replay(source: str, from_sequence: int, to_sequence: int, kg_path: str, tenant_id: str, output: Optional[str], strict: bool) -> None:
+    """v0.2.0 — replay ledger entries against the recorded KG and buffer.
+
+    For every entry in [from-sequence, to-sequence] this command re-runs
+    the Symbolic Evaluator against the telemetry buffer state at the
+    entry's timestamp and compares the produced verdict to what was
+    recorded. v0.1 ledger entries and Track 2 (LLM) entries are skipped
+    with a note.
+    """
+    from .replay import replay as run_replay
+    import json as _json
+
+    report = run_replay(
+        dsn=source,
+        from_sequence=from_sequence,
+        to_sequence=to_sequence,
+        kg_path=kg_path,
+        tenant_id=tenant_id,
+    )
+
+    click.echo(f"Replay: {report.replayed_entries}/{report.total_entries} entries replayed, "
+               f"{report.matched_entries} matched, {len(report.mismatches)} diverged, "
+               f"{report.skipped_entries} skipped.")
+    for note in report.notes[:5]:
+        click.echo(f"  note: {note}")
+    if len(report.notes) > 5:
+        click.echo(f"  ... and {len(report.notes) - 5} more notes")
+    if report.mismatches:
+        click.echo("\nDivergences:")
+        for m in report.mismatches[:10]:
+            click.echo(f"  seq={m.sequence_number}: recorded={m.recorded_verdict} replayed={m.replayed_verdict} ({m.reason})")
+        if len(report.mismatches) > 10:
+            click.echo(f"  ... and {len(report.mismatches) - 10} more")
+    if output:
+        with open(output, "w") as f:
+            _json.dump(report.to_dict(), f, indent=2, default=str)
+        click.echo(f"\nFull report: {output}")
+
+    if strict and not report.is_clean:
+        raise SystemExit(1)
+
+
 # ---------------------------------------------------------------------------
 # HTML report (5-verdict)
 # ---------------------------------------------------------------------------
