@@ -75,6 +75,23 @@
       "conflicts_with": []
     },
     {
+      "id": "energy.so2.window_avg_60s",
+      "subject": "facility.so2.discharge_ppm",
+      "relation": "must_not_exceed_window_average",
+      "object": {"operator": "window_avg", "metric": "so2_ppm.value", "seconds": 60, "op": "lte", "value": 100, "unit": "ppm"},
+      "predicate": {"operator": "window_avg", "metric": "so2_ppm.value", "seconds": 60, "op": "lte", "value": 100, "unit": "ppm"},
+      "track": "symbolic",
+      "confidence": "EXPLICIT",
+      "reasoning": "Demo rule (v0.2 stateful): 60-second rolling average of SO2 must not exceed 100 ppm. Single-point spikes are caught by energy.so2.lte_100ppm; this rule catches sustained borderline levels.",
+      "source_clause": "demo-CAA-rolling-average",
+      "source_document_version": "demo-2026-05",
+      "effective_date": "2026-01-01",
+      "sunset_date": null,
+      "precedence": 110,
+      "conflicts_with": [],
+      "requires_recent_within_seconds": 300
+    },
+    {
       "id": "energy.spill.disclosure_required",
       "subject": "facility.spill.event",
       "relation": "requires_human_review",
@@ -92,7 +109,7 @@
     }
   ],
   "tag_registry": {
-    "facility.so2.discharge_ppm":  "energy.so2.lte_100ppm",
+    "facility.so2.discharge_ppm":  "energy.so2.window_avg_60s",
     "facility.nox.discharge_ppm":  "energy.nox.lte_75ppm",
     "facility.wastewater.ph":      "energy.wastewater.ph_range",
     "facility.pm.mg_per_m3":       "energy.pm.lte_50",

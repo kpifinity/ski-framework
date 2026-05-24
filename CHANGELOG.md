@@ -9,12 +9,77 @@ referenced from each release entry.
 
 ## [Unreleased]
 
-### Added
-- Stateful evaluation buffer with NULL_STALE routing (planned).
-- Conformance suite Level 2 tests (planned).
+### Planned for v0.3.0
+- Per-shard horizontal scaling (Theme B): shard router, per-tenant
+  config wiring through the sidecar, Postgres ledger partitioning,
+  Kubernetes operator + CRDs.
+- Sigstore / cosign image signing and SLSA Level 3 provenance.
 - Additional LLM backends behind a uniform interface: vLLM, llama.cpp,
-  Bedrock, Vertex (planned).
-- Kubernetes deployment manifests (planned).
+  Bedrock, Vertex.
+
+## [0.2.0] — 2026-05-22
+
+Specification: **v2.1** (no spec changes). Closes the `NULL_STALE` gap
+and lands the deterministic-replay primitive that Level 3 conformance
+depends on. Theme A of the v0.2 architectural plan.
+
+### Added
+- **Telemetry buffer (RFC 0001).** Postgres-backed, append-only at the
+  database layer (same trigger pattern as `ledger_entries`), RANGE-
+  partitioned by `telemetry_ts` for retention-by-partition-drop.
+- **Per-tenant configuration.** New `tenants` table with explicit
+  `buffer_retention_days`; no default value baked in. A `'default'`
+  tenant row is inserted by migration 002 for single-tenant
+  compatibility.
+- **Five new predicate operators** in the Symbolic Evaluator:
+  `window_count`, `window_sum`, `window_avg`, `since_last`, `debounce`.
+- **`requires_recent_within_seconds` wired end-to-end** — `NULL_STALE`
+  is produced when the buffer has no sample in the window.
+- **Async evaluator API** — `SymbolicEvaluator.aevaluate()` is the
+  async entry point used by the server. The synchronous `evaluate()`
+  remains for stateless predicates.
+- **Authoritative-clock semantics.** Telemetry timestamp is "now" for
+  stateful evaluation; wall-clock is never consulted. Replay
+  determinism depends on this.
+- **`audit-ledger replay` command** — re-evaluates a ledger range
+  against the recorded buffer state, exits non-zero on divergence.
+  See [docs/REPLAY.md](./docs/REPLAY.md).
+- **Schema versioning** on `ledger_entries`. v0.1 entries tagged
+  `'0.1.0'` by migration; new entries `'0.2.0'`. Replay skips v0.1
+  entries with a note.
+- **Conformance Level 2 tests** under `conformance/level2/`.
+- **Alembic migrations** under `reference-implementation/migrations/`.
+  See [docs/MIGRATIONS.md](./docs/MIGRATIONS.md).
+- **Energy demo KG** gains a stateful rule:
+  `energy.so2.window_avg_60s` (60-second rolling SO₂ avg ≤ 100 ppm).
+- **New docs**: RFC 0001, REPLAY.md, MIGRATIONS.md.
+
+### Changed
+- SKI Model service version → `0.2.0`.
+- The server writes every accepted telemetry record to the buffer
+  before evaluation so self-referential window queries see the current
+  event.
+- CI conformance job runs both Level 1 and Level 2 markers.
+
+### Backwards compatibility
+- v0.1 ledger entries read without change.
+- Synchronous `SymbolicEvaluator.evaluate()` is retained.
+- Stateful predicates evaluated on a v0.1 runtime return
+  `DISCRETIONARY` rather than silently mis-evaluating.
+
+### Migration impact
+- Operators upgrading from v0.1 must:
+  1. `audit-ledger backup ...`
+  2. `alembic -c reference-implementation/migrations/alembic.ini upgrade head`
+  3. `audit-ledger verify ...`
+- The default `'default'` tenant keeps single-tenant deployments
+  working with no configuration changes.
+
+### Known limitations
+- Per-shard throughput ceiling ~5k records/sec (buffer query bound).
+  Horizontal scaling lands in v0.3.0.
+- Track 2 (LLM) entries are skipped during replay — they remain
+  best-effort deterministic until v0.3.0 TPM-attested model loading.
 
 ## [0.1.0-alpha] — 2026-05-22
 

@@ -25,7 +25,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
-      - run: pytest conformance/ -q -m "level1" --tb=short
+      - run: pytest conformance/ -q -m "level1 or level2" --tb=short
 
   codeql:
     name: CodeQL (Python)

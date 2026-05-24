@@ -158,6 +158,25 @@ open-weights instruction-tuned model. Operating constraints (B3.4):
 - Determinism canary on a fixed input every `DETERMINISM_CANARY_INTERVAL`
   seconds. Divergence flips the canary status and Prometheus alert.
 
+### Telemetry buffer (v0.2.0, B4.4)
+
+Append-only Postgres table partitioned by `telemetry_ts`, holding
+recent telemetry records so the Symbolic Evaluator can answer
+stateful predicates (`window_*`, `since_last`, `debounce`,
+`requires_recent_within_seconds`). Shares the append-only trigger
+function with the audit ledger; retention is per-tenant via the
+`tenants` table; partition drops are restricted to a dedicated
+`ski_buffer_admin` role.
+
+The buffer's "now" is **always** the telemetry record's own
+`timestamp` field, never wall-clock at arrival. This is what makes
+`audit-ledger replay` deterministic — re-running an old evaluation
+yields the same verdict because the window query sees the same buffer
+state at the same logical time.
+
+Full design: [RFCs/0001-stateful-evaluation.md](./RFCs/0001-stateful-evaluation.md).
+Replay tool: [REPLAY.md](./REPLAY.md).
+
 ### Audit ledger (B5)
 
 Postgres-backed, append-only, hash-chained. Append-only is enforced at
@@ -205,7 +224,7 @@ by B3.1 and Axiom 2.
 | B3.2 Local Deployability | Ollama backend, default; no required cloud key |
 | B3.4 Determinism Enforcement Controls | Model file SHA-256 pin, fixed seed, canary, structured output |
 | B4.3 Tag Registry | `src/tag_registry/`; pure-lookup at runtime |
-| B4.4 Stateful Evaluation | Buffer + `NULL_STALE` — **partial in v0.1**, completion planned for v0.2 |
+| B4.4 Stateful Evaluation | Buffer + `NULL_STALE` — **complete in v0.2.0**: `src/telemetry_buffer/` (append-only, partitioned), `window_*` / `since_last` / `debounce` operators, `requires_recent_within_seconds` wired |
 | B5 Audit Ledger | `src/ledger/schema.sql`, `append_only.sql`, real `verify_integrity` and `backup_database` |
 
 ## Further reading

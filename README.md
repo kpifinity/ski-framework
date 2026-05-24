@@ -142,8 +142,10 @@ SKI produces exactly five verdict types. No scores, no confidence intervals, no 
 - ✅ Knowledge Graph signature verification (Ed25519)
 - ✅ Append-only audit ledger with database-level triggers
 - ✅ Determinism canary
-- ⏳ Stateful evaluation buffer (NULL_STALE path) — partial
-- ⏳ Kubernetes manifests — planned
+- ✅ Stateful evaluation buffer with NULL_STALE routing (v0.2.0)
+- ✅ Deterministic replay primitive — `audit-ledger replay` (v0.2.0)
+- ⏳ Kubernetes manifests — planned for v0.3.0
+- ⏳ Per-shard horizontal scaling — planned for v0.3.0
 
 ### Tools (Apache 2.0, alpha)
 - `kg-extractor` — extract rules from regulatory docs (multiple LLM backends)
@@ -225,15 +227,24 @@ CC explicitly recommends against using CC licenses for software, which is why we
 - Conformance suite: Level 1 tests ✅
 - CI/CD with security scanning ✅
 
-### v0.2.0
-- Stateful evaluation buffer with NULL_STALE routing
-- Conformance suite: Level 2 tests
-- Additional LLM backends (vLLM, llama.cpp) behind the same interface
-- Kubernetes manifests
+### v0.2.0 — Stateful and observable (shipped)
+- Telemetry buffer (Postgres, append-only, per-tenant retention) ✅
+- Five new stateful predicate operators (`window_count`, `window_sum`, `window_avg`, `since_last`, `debounce`) ✅
+- `NULL_STALE` wired end-to-end via `requires_recent_within_seconds` ✅
+- Deterministic replay primitive (`audit-ledger replay`) ✅
+- Conformance suite: Level 2 tests ✅
+- Schema versioning + Alembic migrations ✅
 
-### v0.3.0
+### v0.3.0 — Production-track (planned)
+- Per-shard horizontal scaling: shard router, ledger partitioning
+- Kubernetes operator + CRDs (`SkiModelDeployment`)
+- Sigstore / cosign image signing + SLSA Level 3 provenance
+- Additional LLM backends (vLLM, llama.cpp, Bedrock, Vertex) behind the same interface
+
+### v0.4.0 — Assured (planned)
 - Conformance suite: Level 3 tests, tamper-resistance benchmarks
-- MCP connector framework
+- TPM-attested model loading
+- KpiFinity-issued conformance certificates
 - Air-gapped deployment playbook
 
 ### v1.0
