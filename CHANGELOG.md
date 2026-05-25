@@ -17,6 +17,35 @@ referenced from each release entry.
 - Additional LLM backends behind a uniform interface: vLLM, llama.cpp,
   Bedrock, Vertex.
 
+## [0.2.1] - 2026-05-25
+
+Specification: **v2.1** (no spec changes). Patch release closing two
+correctness bugs uncovered by the v0.2.0 post-release test pass. No
+schema or API changes; safe to upgrade from 0.2.0 by pulling main.
+
+### Fixed
+- **Symbolic Evaluator package now exports `Verdict`.** The v0.2 test
+  module `symbolic_evaluator/tests/test_stateful.py` imports
+  `from symbolic_evaluator import Verdict`, but the package's
+  `__init__.py` only re-exported `SymbolicDecision` and
+  `SymbolicEvaluator`, so the test file failed at collection. CI would
+  have caught this if the test had ever been collected. Fix is a
+  one-line `__init__.py` change; all 10 stateful tests now pass.
+- **kg-validator now detects contradictory limits driven by the
+  relation field.** `_is_contradictory()` previously inspected only
+  the object text for keywords like "max" / "below" / "not exceed",
+  so a pair of rules under `must_not_exceed` with objects like
+  "100 ppm sulfur dioxide" vs "50 ppm sulfur dioxide" was missed.
+  The detector now also reads the shared `relation` field, recognises
+  bound-style relations (`must_not_exceed`, `must_be_at_least`,
+  `must_be_below`, etc.), and flags any numeric disagreement as
+  `CONTRADICTORY`. Two new unit tests lock in the behaviour and a
+  third proves identical thresholds are NOT flagged.
+
+### Backwards compatibility
+- Pure bug-fix release. Same Postgres schema, same Knowledge Graph
+  schema, same wire formats. No migration required.
+
 ## [0.2.0] — 2026-05-22
 
 Specification: **v2.1** (no spec changes). Closes the `NULL_STALE` gap

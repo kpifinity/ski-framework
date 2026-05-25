@@ -1,4 +1,4 @@
-"""Symbolic Evaluator (Track 1) — deterministic predicate evaluation.
+"""Symbolic Evaluator (Track 1) - deterministic predicate evaluation.
 
 The Symbolic Evaluator is the deterministic-by-construction half of the SKI
 Framework v2.1 hybrid runtime. It evaluates structured predicates of the form
@@ -17,6 +17,6 @@ that require natural-language interpretation must be declared `track: "llm"`
 and are routed to the SKI Model wrapper instead.
 """
 
-from .evaluator import SymbolicDecision, SymbolicEvaluator
+from .evaluator import SymbolicDecision, SymbolicEvaluator, Verdict
 
-__all__ = ["SymbolicEvaluator", "SymbolicDecision"]
+__all__ = ["SymbolicEvaluator", "SymbolicDecision", "Verdict"]
