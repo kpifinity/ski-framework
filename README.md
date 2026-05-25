@@ -2,11 +2,12 @@
 
 > **Sovereign Knowledge Intelligence** — An open architecture for deterministic AI compliance monitoring in regulated industries.
 
-> **⚠ STATUS: EARLY ALPHA (v0.1.0-alpha).** The specification is stable at v2.1. The reference implementation and tools in this repository are *proof-of-scaffold* quality and are **not production ready**. Treat this repo as an executable companion to the specification, not a turnkey product. See [CHANGELOG.md](./CHANGELOG.md) for the current scope.
+> **⚠ STATUS: ALPHA (v0.2.0).** The specification is stable at v2.1. The reference implementation and tools in this repository are *pre-production* quality: v0.2.0 closes stateful evaluation (telemetry buffer + `NULL_STALE`) and ships the deterministic-replay primitive, but production-track concerns (horizontal scaling, Kubernetes operator, Level 3 assurance) remain on the v0.3.0 / v0.4.0 roadmap below. Treat this repo as an executable companion to the specification, not a turnkey product. See [CHANGELOG.md](./CHANGELOG.md) for what shipped in each release.
 
 [![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
 [![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
 [![Specification](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
+[![Release](https://img.shields.io/badge/Release-v0.2.0-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v0.2.0)
 [![Status](https://img.shields.io/badge/Status-alpha-orange.svg)](./CHANGELOG.md)
 
 ## What is SKI?
@@ -220,14 +221,14 @@ CC explicitly recommends against using CC licenses for software, which is why we
 
 ## Roadmap
 
-### v0.1.0-alpha (this release)
+### v0.1.0-alpha (shipped)
 - Specification at v2.1 ✅
 - Reference implementation: Symbolic Evaluator, SKI Model wrapper (Ollama), Tag Registry, signed-KG loader, append-only ledger ✅
 - Determinism canary ✅
 - Conformance suite: Level 1 tests ✅
 - CI/CD with security scanning ✅
 
-### v0.2.0 — Stateful and observable (shipped)
+### v0.2.0 — Stateful and replayable (current release)
 - Telemetry buffer (Postgres, append-only, per-tenant retention) ✅
 - Five new stateful predicate operators (`window_count`, `window_sum`, `window_avg`, `since_last`, `debounce`) ✅
 - `NULL_STALE` wired end-to-end via `requires_recent_within_seconds` ✅
