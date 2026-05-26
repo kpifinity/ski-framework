@@ -11,7 +11,8 @@ the **latest tagged release** receives security fixes.
 
 | Version | Status | Security fixes |
 |---|---|---|
-| `0.1.x-alpha` | active development | yes |
+| `0.2.x` | active development | yes |
+| `0.1.x-alpha` | unsupported (superseded by 0.2.x) | no |
 | pre-`0.1` | unsupported | no |
 
 ## Reporting a vulnerability
@@ -64,6 +65,45 @@ Operator-facing hardening guidance is consolidated in
 [`reference-implementation/SECURITY_DEFAULTS.md`](./reference-implementation/SECURITY_DEFAULTS.md).
 The reference implementation is configured to refuse to start without
 operator-supplied secrets and with TLS enabled by default.
+
+## Verifying release artifacts
+
+Every wheel, sdist, SBOM, and container image published to GitHub
+Releases / GHCR is signed with [sigstore/cosign](https://docs.sigstore.dev/)
+keyless (OIDC-based, no long-lived signing keys), and ships with SLSA
+Level 3 provenance attestations.
+
+### Verifying a Python distribution
+
+```bash
+cosign verify-blob \
+  --certificate-identity-regexp '^https://github.com/kpifinity/ski-framework/\.github/workflows/' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
+  --signature <artifact>.sig \
+  --certificate <artifact>.pem \
+  <artifact>
+```
+
+### Verifying a container image
+
+```bash
+cosign verify ghcr.io/kpifinity/ski-model:<tag> \
+  --certificate-identity-regexp '^https://github.com/kpifinity/ski-framework/\.github/workflows/' \
+  --certificate-oidc-issuer 'https://token.actions.githubusercontent.com'
+```
+
+If verification fails, the artifact is not authentic. Do not run it.
+
+### Verifying SLSA provenance
+
+```bash
+# Using slsa-verifier (https://github.com/slsa-framework/slsa-verifier)
+slsa-verifier verify-artifact \
+  --provenance-path ski-framework-provenance.intoto.jsonl \
+  --source-uri github.com/kpifinity/ski-framework \
+  --source-tag <version> \
+  <artifact>
+```
 
 ## Cryptographic primitives
 

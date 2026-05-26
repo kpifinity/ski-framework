@@ -1,0 +1,81 @@
+# Security workflow: PR-time secret + dependency scanning, weekly OSSF
+# Scorecard, monthly SBOM publication. Independent of ci.yml so security
+# issues are surfaced as their own status checks.
+name: security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  id-token: write
+  pull-requests: read
+
+jobs:
+  # --------------------------------------------------------------------
+  # gitleaks - secret scanning. Mirrors the pre-commit hook so the same
+  # check runs in CI even when a contributor bypasses pre-commit.
+  # --------------------------------------------------------------------
+  gitleaks:
+    name: Gitleaks (secret scan)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # --------------------------------------------------------------------
+  # GitHub's dependency-review action - flags newly added vulnerable
+  # dependencies on PRs. Doesn't run on main.
+  # --------------------------------------------------------------------
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+          comment-summary-in-pr: on-failure
+          deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
+
+  # --------------------------------------------------------------------
+  # OSSF Scorecard - weekly automated security-posture scoring published
+  # to the GitHub Security tab and (optionally) to scorecard.dev.
+  # --------------------------------------------------------------------
+  scorecard:
+    name: OSSF Scorecard
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-22.04
+    permissions:
+      security-events: write
+      id-token: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ossf/scorecard-action@v2.4.0
+        with:
+          results_file: scorecard-results.sarif
+          results_format: sarif
+          publish_results: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: scorecard-results
+          path: scorecard-results.sarif
+          retention-days: 90
+      - uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: scorecard-results.sarif

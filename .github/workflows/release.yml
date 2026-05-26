@@ -1,3 +1,6 @@
+# Release workflow: builds wheels, SBOMs, container images; signs every
+# artifact with sigstore/cosign keyless signatures (OIDC-based, no
+# secret management); generates SLSA Level 3 provenance.
 name: release
 
 on:
@@ -7,10 +10,19 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  id-token: write       # required for cosign keyless OIDC signing
+  attestations: write   # required for GitHub artifact attestations
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
+  # --------------------------------------------------------------------
+  # 1. Build wheels + SBOMs for the four CLI tools.
+  # --------------------------------------------------------------------
+  build:
+    name: Build wheels + SBOMs
+    runs-on: ubuntu-22.04
+    outputs:
+      hashes: ${{ steps.compute-hashes.outputs.hashes }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -18,7 +30,14 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install cyclonedx-bom==4.4.3 build
+      - run: pip install "cyclonedx-bom==4.4.3" build
+
+      - name: Build sdists/wheels for tools
+        run: |
+          mkdir -p dist
+          for tool in kg-extractor kg-validator ski-model-deploy audit-ledger; do
+            (cd tools/$tool && python -m build --outdir ../../dist/)
+          done
 
       - name: Generate SBOMs
         run: |
@@ -31,21 +50,151 @@ jobs:
             tools/ski-model-deploy/requirements.txt \
             tools/audit-ledger/requirements.txt; do
               name=$(echo "$req" | tr '/' '_')
-              # cyclonedx-py requirements takes the requirements file as
-              # a POSITIONAL argument (not -i).
               cyclonedx-py requirements -o "dist/sbom/sbom-${name}.json" "$req" || true
           done
-          ls -la dist/sbom/
 
-      - name: Build sdists/wheels for tools
+      - name: Compute file hashes for SLSA provenance
+        id: compute-hashes
         run: |
-          for tool in kg-extractor kg-validator ski-model-deploy audit-ledger; do
-            (cd tools/$tool && python -m build --outdir ../../dist/)
+          cd dist
+          # Hash every distributable artifact for SLSA L3 provenance.
+          hashes=$(sha256sum $(find . -type f \( -name "*.whl" -o -name "*.tar.gz" -o -name "*.json" \)) | base64 -w0)
+          echo "hashes=$hashes" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+
+  # --------------------------------------------------------------------
+  # 2. SLSA Level 3 provenance for the wheels + SBOMs.
+  # --------------------------------------------------------------------
+  provenance:
+    needs: [build]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.0.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.hashes }}
+      provenance-name: ski-framework-provenance.intoto.jsonl
+      upload-assets: true
+
+  # --------------------------------------------------------------------
+  # 3. Build, push, and sign container images to GHCR.
+  # --------------------------------------------------------------------
+  container-images:
+    name: Build, push, sign container images
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    strategy:
+      matrix:
+        image:
+          - name: ski-model
+            dockerfile: reference-implementation/Dockerfile.ski-model
+            context: reference-implementation
+          - name: ski-sidecar
+            dockerfile: reference-implementation/Dockerfile.sidecar
+            context: reference-implementation
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}
+          tags: |
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.0'
+
+      - name: Sign image with cosign (keyless, OIDC)
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            cosign sign --yes "$tag@$DIGEST"
           done
 
-      - name: GitHub release
+      - uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+  # --------------------------------------------------------------------
+  # 4. Sign every wheel/SBOM with cosign keyless and attach to release.
+  # --------------------------------------------------------------------
+  sign-and-release:
+    needs: [build, provenance]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+
+      - uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: 'v2.4.0'
+
+      - name: Sign every artifact with cosign (keyless, OIDC)
+        run: |
+          shopt -s globstar
+          for f in dist/**/*.whl dist/**/*.tar.gz dist/**/*.json; do
+            [ -f "$f" ] || continue
+            cosign sign-blob --yes "$f" \
+              --output-signature "${f}.sig" \
+              --output-certificate "${f}.pem"
+          done
+
+      - name: GitHub artifact attestations (build provenance)
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: |
+            dist/**/*.whl
+            dist/**/*.tar.gz
+
+      - name: Create / update GitHub release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/**
+            dist/**/*.whl
+            dist/**/*.tar.gz
+            dist/**/*.sig
+            dist/**/*.pem
+            dist/sbom/*.json
           generate_release_notes: true
