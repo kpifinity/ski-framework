@@ -12,7 +12,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class VerdictType(str, Enum):
@@ -44,8 +44,7 @@ class LedgerEntry(BaseModel):
     escalation_status: Optional[str] = None
     escalation_notes: Optional[str] = None
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class IntegrityIssue(BaseModel):

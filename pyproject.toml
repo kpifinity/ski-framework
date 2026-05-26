@@ -1,6 +1,6 @@
-# Root pyproject.toml — ruff, mypy, pytest, coverage configuration.
-# This file's only purpose is tooling configuration; no build metadata
-# lives here (each tool under tools/ has its own setup.py).
+# Root pyproject.toml - ruff, mypy, pytest, coverage, bandit config.
+# This file's only purpose is tooling configuration; each tool under
+# tools/ has its own pyproject.toml with build metadata.
 
 [tool.ruff]
 line-length = 110
@@ -11,12 +11,11 @@ extend-exclude = [
     "dist",
     "build",
     "*.egg-info",
+    "_site",
     "examples/*/knowledge-graphs/*.json",
 ]
 
 [tool.ruff.lint]
-# Conservative for the alpha: just the obvious correctness rules.
-# We can tighten in v0.2.
 select = [
     "E",       # pycodestyle errors
     "F",       # pyflakes
@@ -24,52 +23,95 @@ select = [
     "B",       # flake8-bugbear
     "UP",      # pyupgrade
     "W",       # pycodestyle warnings
+    "S",       # bandit-equivalent security rules
+    "C4",      # flake8-comprehensions
+    "PIE",     # flake8-pie
+    "RET",     # flake8-return
+    "SIM",     # flake8-simplify
+    "ASYNC",   # async best practices
+    "RUF",     # ruff-specific
 ]
 ignore = [
-    "E501",    # line length — handled by formatter
+    "E501",    # line length - formatter handles
     "B008",    # function call in default arg (FastAPI Depends/Header)
-    "B904",    # raise ... from ... — sometimes intentionally omitted
-    "UP006",   # PEP 585 generic — we target 3.9
-    "UP007",   # PEP 604 union types — we target 3.9
-    "UP035",   # deprecated import — Dict/List from typing OK for 3.9
-    "UP045",   # X | None — we target 3.9
+    "B904",    # raise ... from ... - sometimes intentionally omitted
+    "UP006",   # PEP 585 generic - we still target 3.9
+    "UP007",   # PEP 604 union types - we still target 3.9
+    "UP035",   # deprecated import - Dict/List from typing OK for 3.9
+    "UP045",   # X | None - we still target 3.9
+    "S101",    # assert in tests is fine
+    "S104",    # binding 0.0.0.0 (uvicorn config)
+    "S105",    # hard-coded password (in example .env strings)
+    "S106",    # hard-coded password keyword arg (test fixtures)
+    "S311",    # non-crypto random - we use it for canary IDs etc.
+    "S603",    # subprocess without shell=False
+    "S607",    # subprocess partial path (pg_dump, ollama)
+    "RET504",  # unnecessary variable before return - style only
+    "SIM108",  # ternary - style only
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests and conformance often need to import unusual things or use
-# patterns that would warn elsewhere.
-"conformance/**/*.py" = ["E402", "B011"]
-"**/tests/**/*.py" = ["E402", "B011", "F401"]
-"scripts/**/*.py" = ["E402"]
+"conformance/**/*.py" = ["E402", "B011", "S"]
+"**/tests/**/*.py"    = ["E402", "B011", "F401", "S"]
+"scripts/**/*.py"     = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
 
 # ---------------------------------------------------------------------
-# mypy — advisory for the alpha. Tighten in v0.2.
+# mypy - strict on runtime packages, advisory on legacy CLI tools.
 # ---------------------------------------------------------------------
 [tool.mypy]
 python_version = "3.11"
 ignore_missing_imports = true
 follow_imports = "silent"
-warn_unused_ignores = false
 warn_redundant_casts = true
-strict_optional = false
-disallow_untyped_defs = false
-check_untyped_defs = false
-# Limit the scope to the new packages we wrote; old tool code is exempt
-# until it gets a typed rewrite.
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+no_implicit_optional = true
 files = [
     "reference-implementation/src/ski_model",
     "reference-implementation/src/symbolic_evaluator",
     "reference-implementation/src/tag_registry",
+    "reference-implementation/src/telemetry_buffer",
+    "tools/audit-ledger/src/audit_ledger/canonical.py",
     "conformance",
 ]
 exclude = [
     "build/",
     "dist/",
     "\\.venv/",
+    "_site/",
 ]
+
+# Strict on the deterministic core (Symbolic Evaluator + telemetry
+# buffer + tag registry + canonical hashing). Any change here ships
+# with full type coverage.
+[[tool.mypy.overrides]]
+module = [
+    "symbolic_evaluator",
+    "symbolic_evaluator.*",
+    "tag_registry",
+    "tag_registry.*",
+    "telemetry_buffer",
+    "telemetry_buffer.*",
+    "audit_ledger.canonical",
+]
+strict = true
+disallow_untyped_defs = true
+disallow_any_unimported = false
+disallow_incomplete_defs = true
+
+# Less strict on the FastAPI server and conformance test glue.
+[[tool.mypy.overrides]]
+module = [
+    "ski_model",
+    "ski_model.*",
+    "conformance.*",
+]
+disallow_untyped_defs = false
+check_untyped_defs = true
 
 # ---------------------------------------------------------------------
 # pytest
@@ -82,12 +124,15 @@ testpaths = [
     "tools/kg-validator/tests",
     "tools/ski-model-deploy/tests",
     "tools/audit-ledger/tests",
+    "reference-implementation/src/symbolic_evaluator/tests",
+    "reference-implementation/src/telemetry_buffer/tests",
 ]
 addopts = [
     "-ra",
     "--strict-markers",
     "--ignore=examples",
     "--ignore=reference-implementation/tls",
+    "--ignore=_site",
 ]
 markers = [
     "level1: Level 1 Foundational conformance tests",
@@ -96,6 +141,7 @@ markers = [
     "requires_live_deployment: Test requires a running SKI Model endpoint",
     "requires_ledger: Test requires a Postgres ledger DSN",
 ]
+asyncio_mode = "auto"
 
 # ---------------------------------------------------------------------
 # coverage.py
@@ -109,6 +155,7 @@ omit = [
     "*/tests/*",
     "*/conftest.py",
     "examples/*",
+    "_site/*",
 ]
 
 [tool.coverage.report]
@@ -116,14 +163,14 @@ exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",
     "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]
 
 # ---------------------------------------------------------------------
-# bandit — used by CI via the bandit CLI, but a config file here keeps
-# the rules consistent between local and CI runs.
+# bandit
 # ---------------------------------------------------------------------
 [tool.bandit]
-exclude_dirs = ["tests", "examples", "conformance"]
+exclude_dirs = ["tests", "examples", "conformance", "_site"]
 skips = [
-    "B101",   # assert_used — fine in tests/conformance
+    "B101",   # assert_used - fine in tests/conformance
 ]
