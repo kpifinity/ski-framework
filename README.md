@@ -7,7 +7,8 @@
 [![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
 [![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
 [![Specification](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
-[![Release](https://img.shields.io/badge/Release-v0.2.0-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v0.2.0)
+[![Release](https://img.shields.io/badge/Release-v0.2.1-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v0.2.1)
+[![Docs](https://img.shields.io/badge/Docs-MkDocs%20Material-blue.svg)](https://kpifinity.github.io/ski-framework/)
 [![Status](https://img.shields.io/badge/Status-alpha-orange.svg)](./CHANGELOG.md)
 
 ## What is SKI?
@@ -22,6 +23,14 @@ Unlike general-purpose AI systems, SKI is purpose-built to solve a specific prob
 4. **Human Primacy** — AI supports human judgment, never replaces it.
 
 SKI satisfies all four through a two-phase architecture: offline Knowledge Graph compilation (probabilistic) plus runtime evaluation (deterministic, sovereign, and air-gap capable). The runtime is a hybrid of a deterministic **Symbolic Evaluator** (Track 1) and a bounded local **SKI Model** (Track 2) gated by a governed **Tag Registry**.
+
+---
+
+## Documentation
+
+Full documentation is published at **<https://kpifinity.github.io/ski-framework/>** — searchable, with architecture diagrams, a glossary of regulatory + framework terms, the governance model, the threat model, RFCs, and a 10-minute newcomer tutorial.
+
+For the source of those pages, see [`docs/`](./docs/) in this repository.
 
 ---
 
