@@ -1,235 +1,246 @@
-# SKI Framework architecture (v2.1)
+# Architecture
 
-> **License:** this document is licensed under [CC BY 4.0](../LICENSE-docs.md).
+SKI v2.1 is built around a **two-phase architecture**. Phase 1 (offline,
+probabilistic) compiles regulations into a signed Knowledge Graph.
+Phase 2 (runtime, deterministic) evaluates telemetry against that graph
+inside the operator's sovereignty boundary.
 
-## High-level overview
+## High-level dataflow
 
-SKI operates as a **two-phase system** separated by a one-way boundary:
+```mermaid
+flowchart LR
+    subgraph P1["Phase 1 — Compilation (outside sovereign boundary)"]
+        Reg[Regulatory<br/>documents]
+        Ext[kg-extractor<br/><i>(LLM-assisted)</i>]
+        Val[kg-validator<br/><i>(human review)</i>]
+        KG[(Signed<br/>Knowledge Graph)]
+        Reg --> Ext --> Val --> KG
+    end
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 1 — Offline compilation (outside the sovereign boundary)   │
-│ Regulatory documents → kg-extractor → kg-validator (humans) →    │
-│ signed Knowledge Graph + compiled Tag Registry                   │
-│ Probabilistic work happens here.                                 │
-└─────────────────────────────────────────────────────────────────┘
-                          │
-              one-way boundary crossing
-              (data diode, physical media,
-               or controlled file transfer)
-                          │
-┌─────────────────────────────────────────────────────────────────┐
-│ PHASE 2 — Runtime evaluation (inside the sovereign boundary)     │
-│ Telemetry → sidecar → SKI Model service → Tag Registry lookup → │
-│ Symbolic Evaluator OR bounded local LLM → verdict → audit ledger │
-│ Deterministic work only. No outbound network calls during        │
-│ inference under the default configuration.                       │
-└─────────────────────────────────────────────────────────────────┘
-```
+    subgraph P2["Phase 2 — Runtime (inside sovereign boundary)"]
+        Tel[Telemetry<br/><i>(SCADA, sensors, ETL)</i>]
+        SC[Sidecar]
+        SM[SKI Model service]
+        TR{{Tag Registry}}
+        SE[Symbolic Evaluator<br/><b>Track 1</b>]
+        LL[Local LLM<br/><b>Track 2</b><br/><i>(Ollama)</i>]
+        TB[(Telemetry buffer)]
+        AL[(Audit ledger)]
+        V((Verdict))
 
-## Phase 1 — offline compilation
+        Tel --> SC --> SM
+        SM --> TR
+        TR -->|symbolic| SE
+        TR -->|llm| LL
+        SE --> V
+        LL --> V
+        SM --> TB
+        V --> AL
+    end
 
-**Purpose**: turn regulatory documents into a signed Knowledge Graph
-plus a Tag Registry that the runtime can use for deterministic routing.
+    KG -. one-way<br/>signed transfer .-> SM
 
-```
-Regulatory documents
-        ↓
-   Extract rules (LLM-assisted, temperature=0, recorded seed)
-        ↓
-   Express as structured predicates  {operator, metric, value, unit}
-        ↓
-   Human expert validation (every rule reviewed)
-        ↓
-   Conflict declarations + precedence
-        ↓
-   Compile the Tag Registry  (telemetry subject → rule id)
-        ↓
-   Sign with Ed25519 over canonical JSON
-        ↓
-   Transfer across the boundary
+    classDef boundary fill:#f9f9f9,stroke:#666,stroke-dasharray: 5 5;
+    class P1,P2 boundary;
 ```
 
-Key requirements:
+The dashed arrow is the **only** thing that crosses the boundary: a
+signed KG file. No operational data ever moves the other way.
 
-- Rules **explicitly stated** in source documents. Inference beyond the
-  source text is prohibited (B2.1 Anchor Constraint). The `kg-extractor`
-  refuses to emit rules with `confidence: IMPLIED`.
-- **Verbatim traceability** to source clause and document version
-  (`source_document_version`).
-- **Every rule human-validated** (B2.3 Universal Coverage). The
-  `kg-validator` does not ship an `auto_approve_explicit` option.
-- **Cryptographic signing** with Ed25519 over the canonical
-  serialization. Unsigned KGs are rejected at load time.
+## Component breakdown
 
-## Phase 2 — runtime evaluation
+### Phase 1 — Compilation
 
-```
-Operational telemetry
-        ↓
-   Sidecar (read-only)  ← rejects any record carrying `rule_id`
-        ↓
-   SKI Model service
-        ↓
-   Tag Registry  ←  dictionary lookup; no inference
-        │
-        ├── unmapped → NULL_UNMAPPED (logged to Coverage Register)
-        │
-        ├── Track 1 → Symbolic Evaluator (deterministic predicates)
-        │
-        └── Track 2 → bounded local LLM (Ollama, T=0, seed, JSON-only output)
-        ↓
-   Verdict  ∈  {CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE, DISCRETIONARY}
-        ↓
-   Audit ledger (append-only, hash-chained)
-```
+#### kg-extractor
 
-Key requirements:
+Reads regulatory documents (Clean Air Act, MiFID, GDPR, etc.) and
+emits structured rule candidates. Uses an LLM backend (configurable —
+not bound to any vendor). Output is **never** trusted directly; every
+rule is reviewed in the next step.
 
-- All work happens **inside the sovereign boundary**.
-- **No outbound network calls during inference** under the default
-  configuration. The `anthropic` backend is opt-in, labelled
-  non-conformant, and logs a warning on every call.
-- **SKI Model at temperature 0 with seeded decoding** and structured
-  JSON output.
-- **Verdicts are categorical only**. No scores, no confidence intervals
-  (B3.1).
-- **Every verdict written to the ledger** before being returned.
+#### kg-validator
 
-## Core components
+Human-in-the-loop validation. Detects:
 
-### Knowledge Graph (B2)
+- **duplicates** (same subject + relation + object),
+- **contradictions** (same subject + relation, different numeric
+  thresholds — see [v0.2.1 fix](CHANGELOG.md#021---2026-05-25)),
+- **date overlaps**.
 
-```
-{
-  "metadata":               { version, compiled_at, model_file_sha256, ... },
-  "rules": [
-    {
-      "id":                    "energy.so2.lte_100ppm",
-      "subject":               "facility.so2.discharge_ppm",
-      "predicate":             { operator, metric, value, unit },
-      "track":                 "symbolic" | "llm",
-      "confidence":            "EXPLICIT" | "DISCRETIONARY",     /* never IMPLIED */
-      "reasoning":             "...",
-      "source_document":       "...",
-      "source_clause":         "...",
-      "source_document_version": "...",
-      "effective_date":        "YYYY-MM-DD",
-      "sunset_date":           "YYYY-MM-DD" | null,
-      "precedence":            <int>,
-      "conflicts_with":        [<rule ids>]
+Outputs an approved-rule list. EXPLICIT and DISCRETIONARY rules both
+require human approval; auto-approval was removed in v2.1.
+
+#### Knowledge Graph
+
+The compiled artifact. Contains:
+
+```mermaid
+classDiagram
+    class KnowledgeGraph {
+        +metadata
+        +rules[]
+        +tag_registry
+        +signature
     }
-  ],
-  "tag_registry":           { "<subject>": "<rule_id>", ... },
-  "signature":              { algorithm: "ed25519", public_key_pem, value_hex }
-}
+    class Rule {
+        +id
+        +subject
+        +relation
+        +predicate
+        +track: symbolic|llm
+        +source_clause
+        +effective_date
+        +precedence
+    }
+    class TagRegistry {
+        +subject -> rule_id
+    }
+    class Signature {
+        +algorithm: Ed25519
+        +public_key_pem
+        +value_hex
+    }
+    KnowledgeGraph "1" --> "*" Rule
+    KnowledgeGraph "1" --> "1" TagRegistry
+    KnowledgeGraph "1" --> "1" Signature
 ```
 
-`object` is **never** a free-text string. The Symbolic Evaluator
-operates on the structured `predicate` so evaluation is a pure function
-of the AST and the input.
+### Phase 2 — Runtime
 
-### Tag Registry (B4.3)
+#### Sidecar
 
-A frozen lookup from normalised subject → rule id, compiled during
-Phase 1 and shipped embedded in the signed KG. At runtime, resolving a
-subject is a dict lookup. Runtime tag inference (substring matching,
-embedding similarity, LLM disambiguation) is architecturally
-prohibited. Missing subjects produce `NULL_UNMAPPED`.
+Passive, read-only telemetry intake. Reads from `file`, `http`, or
+`kafka` (selected via `TELEMETRY_SOURCE`). Forwards normalised records
+to the SKI Model service over mTLS. **Does not perform tag inference**
+— routing is the runtime's job.
 
-### Symbolic Evaluator (Track 1)
+Rejects any incoming record that carries a `rule_id` field (B4.3).
 
-Deterministic predicate evaluator. Operators: `lte`, `gte`, `lt`, `gt`,
-`eq`, `range`, `in_set`, `not_in_set`, `exists`. Outputs depend only on
-the predicate AST and the input.
+#### SKI Model service
 
-The Symbolic Evaluator handles the **majority** of rules in any
-well-engineered KG. If most of your rules are Track 2, you have likely
-under-specified your predicates.
+The runtime's core. Receives a telemetry record and:
 
-### SKI Model (Track 2)
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Sidecar
+    participant SKIModel as SKI Model
+    participant TagRegistry as Tag Registry
+    participant Buffer as Telemetry buffer
+    participant Evaluator as Symbolic Evaluator
+    participant LLM as Local LLM
+    participant Ledger as Audit ledger
 
-Bounded LLM wrapper. Default backend is **Ollama** running a small
-open-weights instruction-tuned model. Operating constraints (B3.4):
-
-- Temperature 0, seeded decoding (`SKI_MODEL_SEED`), `top_k = 1`.
-- Structured-JSON output enforced. Non-conforming output → `DISCRETIONARY`.
-- Model file SHA-256 pinned via `SKI_MODEL_FILE_SHA256`.
-- Determinism canary on a fixed input every `DETERMINISM_CANARY_INTERVAL`
-  seconds. Divergence flips the canary status and Prometheus alert.
-
-### Telemetry buffer (v0.2.0, B4.4)
-
-Append-only Postgres table partitioned by `telemetry_ts`, holding
-recent telemetry records so the Symbolic Evaluator can answer
-stateful predicates (`window_*`, `since_last`, `debounce`,
-`requires_recent_within_seconds`). Shares the append-only trigger
-function with the audit ledger; retention is per-tenant via the
-`tenants` table; partition drops are restricted to a dedicated
-`ski_buffer_admin` role.
-
-The buffer's "now" is **always** the telemetry record's own
-`timestamp` field, never wall-clock at arrival. This is what makes
-`audit-ledger replay` deterministic — re-running an old evaluation
-yields the same verdict because the window query sees the same buffer
-state at the same logical time.
-
-Full design: [RFCs/0001-stateful-evaluation.md](./RFCs/0001-stateful-evaluation.md).
-Replay tool: [REPLAY.md](./REPLAY.md).
-
-### Audit ledger (B5)
-
-Postgres-backed, append-only, hash-chained. Append-only is enforced at
-the database layer (`BEFORE UPDATE / DELETE / TRUNCATE` triggers).
-Every entry stores:
-
-```
-sequence_number, previous_hash, entry_hash, timestamp,
-verdict, telemetry_id, telemetry_hash,
-rule_id, knowledge_graph_version, ski_model_version,
-reasoning, track,
-escalation_status, escalation_notes
+    Sidecar->>SKIModel: POST /api/evaluate
+    SKIModel->>Buffer: append(record)
+    SKIModel->>TagRegistry: resolve(subject)
+    alt subject unmapped
+        TagRegistry-->>SKIModel: None
+        SKIModel-->>Ledger: append(NULL_UNMAPPED)
+    else track == "symbolic"
+        TagRegistry-->>SKIModel: rule (Track 1)
+        SKIModel->>Evaluator: aevaluate(rule, telemetry, buffer)
+        alt requires_recent_within_seconds fails
+            Evaluator-->>SKIModel: NULL_STALE
+        else stateless predicate
+            Evaluator-->>SKIModel: CLEAR / FLAG
+        else stateful predicate
+            Evaluator->>Buffer: window_query(subject, as_of)
+            Buffer-->>Evaluator: window result
+            Evaluator-->>SKIModel: CLEAR / FLAG
+        end
+        SKIModel-->>Ledger: append(verdict)
+    else track == "llm"
+        TagRegistry-->>SKIModel: rule (Track 2)
+        SKIModel->>LLM: evaluate(temperature=0, seed=42)
+        LLM-->>SKIModel: structured output
+        SKIModel-->>Ledger: append(DISCRETIONARY / CLEAR / FLAG)
+    end
 ```
 
-`entry_hash = SHA-256(canonical_payload)`. The canonical payload is
-documented in
-[`tools/audit-ledger/src/audit_ledger/canonical.py`](../tools/audit-ledger/src/audit_ledger/canonical.py)
-so third parties can verify the ledger without our code.
+Key invariants:
 
-There is no `confidence_level` column. Confidence scores are prohibited
-by B3.1 and Axiom 2.
+- **One worker.** `SKI_MODEL_WORKERS=1` is enforced. Concurrent writes
+  to the buffer + ledger would break the sequence-number monotonicity
+  guarantee. See [`docs/CONCURRENCY.md`](https://github.com/kpifinity/ski-framework/blob/main/reference-implementation/docs/CONCURRENCY.md).
+- **Buffer-before-evaluate.** The current record is written to the
+  buffer **before** the Symbolic Evaluator runs, so self-referential
+  window queries see the record they're being asked about.
+- **Authoritative clock.** The telemetry's `timestamp` is the "now"
+  for stateful predicates. Wall-clock at arrival is never consulted.
+  This is what makes replay deterministic.
 
-## Cryptographic primitives
+#### Telemetry buffer
 
-- **KG signatures**: Ed25519 (RFC 8032).
-- **Ledger hashes**: SHA-256 over the documented canonical serialization.
-- **TLS in transit**: ≥ TLS 1.2; prefer TLS 1.3.
+Postgres-backed, RANGE-partitioned by `telemetry_ts`. Append-only at
+the database layer (same trigger pattern as the ledger). Retention is
+configured per tenant in the `tenants` table — no default; the
+operator must set it explicitly.
 
-## Deployment modes
+See [RFC 0001](RFCs/0001-stateful-evaluation.md) for the design
+rationale.
 
-| Mode | Description |
-|---|---|
-| **On-premise** | All components on the customer's infrastructure. Zero external connectivity at runtime. Default. |
-| **Air-gapped on-premise** | Network-isolated; updates via physical media. Common for classified / critical infrastructure. |
-| **Customer-controlled BYOC** | Customer's own cloud account; customer holds keys and admin. *Not* "KpiFinity-hosts-your-data" — that mode does not exist in v2.1 because it contradicts the Sovereignty pillar. |
+#### Symbolic Evaluator
 
-## Spec section ↔ implementation map
+Pure async function from `(rule, telemetry, buffer, as_of)` to
+`SymbolicDecision`. No LLM involved. Operators are limited to the
+predicate grammar:
 
-| Spec | Reference implementation |
-|---|---|
-| B2.1 Anchor Constraint | `tools/kg-extractor` refuses `IMPLIED`; `scripts/validate-kg.py` enforces |
-| B2.2 Conflicts & precedence | `predicate`, `precedence`, `conflicts_with` fields; `kg-validator` conflict detector |
-| B2.3 Universal Coverage | `kg-validator` requires human review of every rule |
-| B3.1 No confidence scores | Schema has no `confidence_level`; `Verdict` enum is five members |
-| B3.2 Local Deployability | Ollama backend, default; no required cloud key |
-| B3.4 Determinism Enforcement Controls | Model file SHA-256 pin, fixed seed, canary, structured output |
-| B4.3 Tag Registry | `src/tag_registry/`; pure-lookup at runtime |
-| B4.4 Stateful Evaluation | Buffer + `NULL_STALE` — **complete in v0.2.0**: `src/telemetry_buffer/` (append-only, partitioned), `window_*` / `since_last` / `debounce` operators, `requires_recent_within_seconds` wired |
-| B5 Audit Ledger | `src/ledger/schema.sql`, `append_only.sql`, real `verify_integrity` and `backup_database` |
+- **Stateless**: `lte`, `lt`, `gte`, `gt`, `eq`, `range`, `between`,
+  `in_set`, `not_in_set`, `exists`.
+- **Stateful** (v0.2+): `window_count`, `window_sum`, `window_avg`,
+  `since_last`, `debounce`.
+- **Freshness gate**: `requires_recent_within_seconds` (any operator).
 
-## Further reading
+Any rule needing natural-language interpretation must be declared
+`track: "llm"` instead and routes through the LLM wrapper. The
+Symbolic Evaluator refuses to guess.
 
-- [`KNOWLEDGE_GRAPH.md`](./KNOWLEDGE_GRAPH.md) — KG schema in detail
-- [`CONFORMANCE.md`](./CONFORMANCE.md) — Level 1 / 2 / 3 methodology
-- [`../reference-implementation/README.md`](../reference-implementation/README.md)
-- [`../conformance/README.md`](../conformance/README.md)
+#### Audit ledger
+
+Append-only Postgres table. Each row contains:
+
+- `sequence_number` (monotonic, unique),
+- `telemetry_hash` (SHA-256 of canonical telemetry record — joins to
+  buffer rows),
+- `entry_hash` (SHA-256 over the canonical entry payload, chained
+  to `previous_entry_hash`),
+- `verdict`, `rule_id`, `reasoning`, `track`,
+- `knowledge_graph_version`, `schema_version`,
+- `recorded_at`.
+
+UPDATE / DELETE / TRUNCATE are blocked by triggers. The canonical
+serialization is documented in `tools/audit-ledger/src/audit_ledger/canonical.py`
+so any third party can re-verify.
+
+## Conformance levels
+
+```mermaid
+graph TD
+    L1[Level 1<br/>Foundational]
+    L2[Level 2<br/>Managed]
+    L3[Level 3<br/>Assured]
+
+    L1 -->|adds: stateful eval,<br/>NULL_STALE, replay| L2
+    L2 -->|adds: tamper-resistance,<br/>determinism canary,<br/>third-party verifiability| L3
+
+    L1 -.->|test suite| L1T[conformance/level1/]
+    L2 -.->|test suite| L2T[conformance/level2/]
+    L3 -.->|test suite| L3T[conformance/level3/ <br/>planned v0.4]
+```
+
+The conformance test suite is the **executable specification**. See
+[Conformance](conformance.md).
+
+## Threat model
+
+See [Threat model](threat-model.md) for the complete list of in-scope
+threats, defences, and out-of-scope concerns.
+
+## Related documents
+
+- [RFC 0001 — Stateful evaluation](RFCs/0001-stateful-evaluation.md)
+- [Knowledge Graph schema](knowledge-graph.md)
+- [Replay primitive](replay.md)
+- [Migrations](migrations.md)
+- [Glossary](glossary.md)

@@ -9,30 +9,6 @@ referenced from each release entry.
 
 ## [Unreleased]
 
-### Added (docs)
-- **MkDocs Material documentation site.** Published to GitHub Pages on
-  every push to `main`. Replaces the scattered Markdown files in
-  `docs/` with a browsable, searchable site. Configuration in
-  `mkdocs.yml`; build dependencies pinned in `requirements-docs.txt`.
-- **Architecture diagrams.** [docs/architecture.md](./docs/architecture.md)
-  now uses Mermaid for the two-phase dataflow, the runtime sequence
-  diagram, the KG class diagram, and the conformance-level ladder.
-- **Glossary** ([docs/glossary.md](./docs/glossary.md)) - every domain
-  term defined once, with cross-references.
-- **Governance** ([docs/governance.md](./docs/governance.md)) - roles,
-  lazy-consensus decision-making, RFC process, release cadence,
-  conformance authority.
-- **Threat model** ([docs/threat-model.md](./docs/threat-model.md)) -
-  eight in-scope threats with controls and residual risk; out-of-scope
-  concerns explicitly listed; re-verification recipes for every control.
-- **RFC template** ([docs/RFCs/0000-template.md](./docs/RFCs/0000-template.md))
-  and RFC index page.
-- **Newcomer tutorial** ([docs/tutorials/first-rule.md](./docs/tutorials/first-rule.md))
-  - 10-minute walkthrough from `git clone` to verified replay.
-- **GitHub Pages deployment workflow**
-  ([.github/workflows/docs.yml](./.github/workflows/docs.yml)) - builds
-  the site on every PR and deploys on push to `main`.
-
 ### Planned for v0.3.0
 - Per-shard horizontal scaling (Theme B): shard router, per-tenant
   config wiring through the sidecar, Postgres ledger partitioning,

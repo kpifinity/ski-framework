@@ -1,0 +1,96 @@
+site_name: SKI Framework
+site_description: Sovereign Knowledge Intelligence — an open architecture for deterministic AI compliance monitoring in regulated industries.
+site_url: https://kpifinity.github.io/ski-framework/
+repo_url: https://github.com/kpifinity/ski-framework
+repo_name: kpifinity/ski-framework
+edit_uri: edit/main/docs/
+
+copyright: >
+  Copyright &copy; 2026 KpiFinity Inc.
+  &mdash; Specification CC BY 4.0, software Apache 2.0.
+
+theme:
+  name: material
+  language: en
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - content.code.copy
+    - content.code.annotate
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.details
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:mermaid2.fence_mermaid_custom
+
+nav:
+  - Home: index.md
+  - Get started:
+      - getting-started.md
+      - tutorials/first-rule.md
+  - Architecture:
+      - architecture.md
+      - knowledge-graph.md
+      - replay.md
+      - migrations.md
+  - Conformance: conformance.md
+  - Governance & security:
+      - governance.md
+      - threat-model.md
+      - security.md
+  - Reference:
+      - glossary.md
+      - RFCs/index.md
+      - CHANGELOG.md
+  - Contributing:
+      - contributing.md
