@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kg-extractor"
+version = "0.2.1"
+description = "Extract compliance rules from regulatory documents using LLM-assisted parsing. Phase 1 only."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "Apache-2.0"
+authors = [{ name = "KpiFinity", email = "hello@kpifinity.com" }]
+keywords = ["ski-framework", "compliance", "knowledge-graph", "extraction"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Legal Industry",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "pydantic==2.6.3",
+    "python-dotenv==1.0.1",
+    "click==8.1.7",
+    "pyyaml==6.0.1",
+    "httpx==0.27.0",
+    "pypdf==4.2.0",
+    "python-docx==1.1.0",
+    "anthropic==0.21.3",
+    "openai==1.16.2",
+]
+
+[project.urls]
+Homepage = "https://github.com/kpifinity/ski-framework"
+Documentation = "https://kpifinity.github.io/ski-framework/"
+Issues = "https://github.com/kpifinity/ski-framework/issues"
+
+[project.scripts]
+kg-extractor = "kg_extractor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+kg_extractor = ["py.typed"]

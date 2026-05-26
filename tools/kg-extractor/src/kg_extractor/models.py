@@ -12,7 +12,7 @@ v2.1 changes:
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, model_validator, ConfigDict
 
 
 class ConfidenceLevel(str, Enum):
@@ -52,8 +52,7 @@ class ComplianceRule(BaseModel):
             raise ValueError(f"Rule {self.id}: prohibited confidence value")
         return self
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class ExtractionMetadata(BaseModel):

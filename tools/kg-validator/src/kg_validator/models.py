@@ -5,7 +5,7 @@ Data models for KG Validator
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class ValidationStatus(str, Enum):
@@ -50,8 +50,7 @@ class ValidationIssue(BaseModel):
     suggested_action: Optional[str] = None
     related_rule_ids: List[str] = Field(default_factory=list)
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class ConflictPair(BaseModel):
@@ -87,8 +86,7 @@ class ApprovedRule(BaseModel):
     effective_date: Optional[str] = None
     expiration_date: Optional[str] = None
 
-    class Config:
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)
 
 
 class ValidationMetadata(BaseModel):

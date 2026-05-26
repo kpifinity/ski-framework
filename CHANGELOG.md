@@ -33,6 +33,42 @@ referenced from each release entry.
   ([.github/workflows/docs.yml](./.github/workflows/docs.yml)) - builds
   the site on every PR and deploys on push to `main`.
 
+### Added (code modernization)
+- **Unified packaging.** All four tools (`audit-ledger`, `kg-extractor`,
+  `kg-validator`, `ski-model-deploy`) migrated from legacy `setup.py`
+  to PEP 621 `pyproject.toml`. Each tool now declares its name,
+  version (`0.2.1`), dependencies, entry points, classifiers, and
+  package data in a single TOML file consistent with modern Python
+  packaging.
+- **`py.typed` markers** in every tool package, so downstream type
+  checkers know these packages ship type information (PEP 561).
+- **Pre-commit configuration** ([`.pre-commit-config.yaml`](./.pre-commit-config.yaml))
+  with ruff (auto-fix + format), mypy strict on runtime packages,
+  gitleaks secret scanning, and standard hygiene hooks
+  (trailing-whitespace, end-of-file-fixer, large-file detection,
+  private-key detection, line-ending normalization).
+
+### Changed (code modernization)
+- **Pydantic v2 idiom throughout.** Replaced the legacy `class Config:`
+  pattern with `model_config = ConfigDict(...)` in
+  `audit_ledger/models.py`, `kg_extractor/models.py`, and
+  `kg_validator/models.py`. Eliminates three deprecation warnings the
+  test suite emitted under Pydantic v2 and prepares the codebase for
+  Pydantic v3.
+- **mypy in strict mode** on the deterministic core
+  (`symbolic_evaluator`, `tag_registry`, `telemetry_buffer`,
+  `audit_ledger.canonical`). Type errors now block CI for these
+  packages. Other packages still use the relaxed settings.
+- **Ruff lint rule set expanded** to include `S` (bandit-equivalent
+  security checks), `C4` (comprehensions), `PIE` (idiom), `RET` (return
+  hygiene), `SIM` (simplification), `ASYNC` (async best practices),
+  and `RUF` (ruff-specific). Ignored rules are explicitly enumerated
+  with rationale.
+
+### Removed (code modernization)
+- Legacy `setup.py` files in `tools/*/`. The build system is now
+  PEP 621 (`pyproject.toml`) exclusively.
+
 ### Planned for v0.3.0
 - Per-shard horizontal scaling (Theme B): shard router, per-tenant
   config wiring through the sidecar, Postgres ledger partitioning,
@@ -234,8 +270,4 @@ open repository and aligns every file with the v2.1 specification.
   now actually invokes `pg_dump` and verifies the dump.
 - **Prometheus Postgres scrape:** Postgres does not expose `/metrics`
   natively; a `postgres_exporter` sidecar is now part of the compose
-  stack. SKI-specific alert rules are shipped under
-  `monitoring/rules/ski-alerts.yml`.
-
-[Unreleased]: https://github.com/kpifinity/ski-framework/compare/v0.1.0-alpha...HEAD
-[0.1.0-alpha]: https://github.com/kpifinity/ski-framework/releases/tag/v0.1.0-alpha
+  stack. SKI-specific a
