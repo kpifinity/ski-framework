@@ -1,0 +1,67 @@
+# EditorConfig — https://editorconfig.org
+#
+# Sets the baseline editor behavior across the repository so the line
+# endings, indent style, and trailing-newline rules match what ruff,
+# black, pre-commit, and `.gitattributes` already enforce. Without
+# this, Windows editors silently introduce CRLF and tab/space mixes
+# that the pre-commit hooks then "fix", producing diff noise on
+# every PR.
+
+root = true
+
+# Defaults for every file.
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+# Python — matches ruff/black: 4 spaces, line length governed by ruff
+# (110 in pyproject.toml).
+[*.py]
+indent_style = space
+indent_size = 4
+max_line_length = 110
+
+# YAML, JSON, TOML, Markdown — 2-space indent is conventional.
+[*.{yml,yaml,json,toml}]
+indent_style = space
+indent_size = 2
+
+# Markdown — preserve trailing whitespace (two spaces = hard line
+# break in CommonMark).
+[*.md]
+indent_style = space
+indent_size = 2
+trim_trailing_whitespace = false
+
+# Makefiles — tabs are mandatory.
+[{Makefile,makefile,*.mk}]
+indent_style = tab
+
+# Shell scripts.
+[*.sh]
+indent_style = space
+indent_size = 2
+
+# Dockerfiles.
+[{Dockerfile,Dockerfile.*}]
+indent_style = space
+indent_size = 2
+
+# SQL, including Alembic migration scripts.
+[*.sql]
+indent_style = space
+indent_size = 2
+
+# HTML / CSS / JS for the docs site.
+[*.{html,css,js}]
+indent_style = space
+indent_size = 2
+
+# Generated files — leave them alone.
+[**/*.lock]
+insert_final_newline = unset
+trim_trailing_whitespace = unset

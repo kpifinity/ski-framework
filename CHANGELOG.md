@@ -99,6 +99,40 @@ referenced from each release entry.
   commands. Updated supported-versions table to reflect 0.2.x as the
   active branch.
 
+### Added (contributor experience)
+- **Code of Conduct** ([CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md)) -
+  Contributor Covenant 2.1 with a regulated-industry addendum
+  (deliberately misleading conformance reports, vulnerability claims,
+  or benchmark numbers are treated as a CoC violation). Enforcement
+  contact: **conduct@kpifinity.com**.
+- **Maintainers roster** ([MAINTAINERS.md](./MAINTAINERS.md)) - human
+  side of [.github/CODEOWNERS](./.github/CODEOWNERS): named teams
+  (`owners`, `maintainers`, `spec-stewards`, `runtime-maintainers`,
+  `security`), responsibilities, contact addresses, the path to
+  becoming a maintainer, and the emeritus list.
+- **Release runbook** ([RELEASING.md](./RELEASING.md)) - end-to-end
+  procedure for cutting a tagged release: pre-flight checks, version
+  bumps, CHANGELOG promotion, signed-tag push, cosign and
+  `slsa-verifier` post-release verification, announcement, and
+  abort/fix-forward rules.
+- **`.editorconfig`** - baseline charset, line-ending, indent, and
+  trailing-newline rules that match what ruff, black, pre-commit, and
+  `.gitattributes` already enforce. Eliminates the diff-noise loop
+  where Windows editors introduce CRLF and pre-commit then "fixes"
+  them on every PR.
+- **`.gitattributes`** - forces LF line endings for all source files
+  so Windows + `git autocrlf` doesn't rewrite them on every `git add`.
+  Pairs with `.editorconfig`; together they make the Cowork
+  "modified externally" reminders stop firing on Windows clones.
+- **Dev container** ([.devcontainer/devcontainer.json](./.devcontainer/devcontainer.json))
+  - one-click reproducible environment on Python 3.11 (Debian
+  bookworm) with git, GitHub CLI, Docker-in-Docker (for integration
+  tests that spin up Postgres), pipx, all four CLIs installed in
+  editable mode via [post-create.sh](./.devcontainer/post-create.sh),
+  pre-commit hooks pre-installed, and a curated VS Code extension set
+  (Ruff, Pylance, mypy, Even Better TOML, YAML, EditorConfig, GitHub
+  Actions, Mermaid). Forwards ports 8000 / 8001 / 5432 / 8765.
+
 ### Planned for v0.3.0
 - Per-shard horizontal scaling (Theme B): shard router, per-tenant
   config wiring through the sidecar, Postgres ledger partitioning,
