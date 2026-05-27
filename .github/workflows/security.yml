@@ -13,9 +13,11 @@ on:
 
 permissions:
   contents: read
-  security-events: write
-  id-token: write
   pull-requests: read
+  # security-events: write and id-token: write are granted per-job
+  # (see the scorecard job below). OSSF Scorecard rejects publication
+  # if either is granted at the workflow level.
+  # https://github.com/ossf/scorecard-action#workflow-restrictions
 
 jobs:
   # --------------------------------------------------------------------
