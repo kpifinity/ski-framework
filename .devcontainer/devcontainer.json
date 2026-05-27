@@ -1,0 +1,100 @@
+{
+  "$schema": "https://raw.githubusercontent.com/devcontainers/spec/main/schemas/devContainer.schema.json",
+  "name": "SKI Framework",
+
+  // Python 3.11 on Debian bookworm. Matches the version range
+  // declared in tools/*/pyproject.toml and the CI test matrix.
+  "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
+
+  "features": {
+    // Recent git + GitHub CLI for release flows in RELEASING.md.
+    "ghcr.io/devcontainers/features/git:1": {
+      "version": "latest",
+      "ppa": true
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {
+      "version": "latest"
+    },
+    // Docker-in-Docker so the reference-implementation integration
+    // tests that spin up Postgres in containers can run.
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": true
+    },
+    // Pre-commit, ruff, mypy live in requirements-dev.txt, but having
+    // pipx here lets contributors install cosign/slsa-verifier without
+    // polluting the project venv.
+    "ghcr.io/devcontainers-contrib/features/pipx-package:1": {}
+  },
+
+  // Set predictable env vars so pip uses the user-site cache and
+  // PYTHONPATH points at the reference implementation. The CI uses
+  // the same values.
+  "containerEnv": {
+    "PIP_DISABLE_PIP_VERSION_CHECK": "1",
+    "PIP_NO_CACHE_DIR": "0",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTHONUNBUFFERED": "1",
+    "SKI_DEV_MODE": "1"
+  },
+
+  // Mount the workspace at /workspaces/ski-framework (devcontainer
+  // default) and use a named volume for pip cache so reopens are fast.
+  "mounts": [
+    "source=ski-pip-cache,target=/home/vscode/.cache/pip,type=volume"
+  ],
+
+  // First-run install. Idempotent — safe to re-run.
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  // Forwarded ports for the reference services.
+  "forwardPorts": [
+    8000,    // SKI Model service
+    8001,    // SKI sidecar
+    5432,    // Postgres (ledger + telemetry buffer)
+    8765     // mkdocs serve
+  ],
+  "portsAttributes": {
+    "8000": { "label": "SKI Model service",  "onAutoForward": "notify" },
+    "8001": { "label": "SKI sidecar",        "onAutoForward": "silent" },
+    "5432": { "label": "Postgres",           "onAutoForward": "silent" },
+    "8765": { "label": "MkDocs (docs site)", "onAutoForward": "openBrowser" }
+  },
+
+  // Non-root user — matches the base image.
+  "remoteUser": "vscode",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-python.mypy-type-checker",
+        "tamasfe.even-better-toml",
+        "redhat.vscode-yaml",
+        "editorconfig.editorconfig",
+        "github.vscode-pull-request-github",
+        "github.vscode-github-actions",
+        "bierner.markdown-mermaid"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "python.terminal.activateEnvironment": false,
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+          "source.fixAll.ruff": "explicit",
+          "source.organizeImports.ruff": "explicit"
+        },
+        "[python]": {
+          "editor.defaultFormatter": "charliermarsh.ruff"
+        },
+        "files.eol": "\n",
+        "files.insertFinalNewline": true,
+        "files.trimTrailingWhitespace": true
+      }
+    }
+  }
+}
