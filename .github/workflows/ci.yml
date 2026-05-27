@@ -161,15 +161,19 @@ jobs:
         run: docker build -f reference-implementation/Dockerfile.ski-model -t ski-model:ci reference-implementation
       - name: Build Sidecar image
         run: docker build -f reference-implementation/Dockerfile.sidecar -t ski-sidecar:ci reference-implementation
+      # trivy-action is pinned by commit SHA, not by tag — upstream had a
+      # supply-chain incident in early 2026 and now signs releases with the
+      # `v` prefix. SHA pinning protects against tag re-pointing. Bump via
+      # dependabot; when bumping, also update the `# v...` comment.
       - name: Trivy scan — SKI Model
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ski-model:ci
           severity: HIGH,CRITICAL
           exit-code: "0"             # advisory
           ignore-unfixed: true
       - name: Trivy scan — Sidecar
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ski-sidecar:ci
           severity: HIGH,CRITICAL
