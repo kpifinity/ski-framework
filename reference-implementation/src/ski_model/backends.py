@@ -81,7 +81,8 @@ class OllamaBackend:
         }
         resp = await self._client.post(f"{self._base_url}/api/generate", json=payload)
         resp.raise_for_status()
-        return resp.json().get("response", "")
+        response_text: str = resp.json().get("response", "")
+        return response_text
 
     def _build_prompt(self, rule: dict[str, Any], telemetry: dict[str, Any]) -> str:
         return (
@@ -130,7 +131,7 @@ class AnthropicDemoBackend:
 
     def __init__(self, api_key: str, model: str, max_tokens: int):
         try:
-            import anthropic  # type: ignore
+            import anthropic
         except ImportError as exc:
             raise RuntimeError(
                 "Anthropic demo backend requires `pip install anthropic`. "
@@ -171,7 +172,9 @@ class AnthropicDemoBackend:
                 raise ValueError(f"Verdict {v_raw!r} not in permitted set.")
             return BackendDecision(verdict=Verdict(v_raw), reasoning=str(obj.get("reasoning", "")))
         except Exception as exc:
-            return BackendDecision(verdict=Verdict.DISCRETIONARY, reasoning=f"Demo backend output not parseable: {exc}")
+            return BackendDecision(
+                verdict=Verdict.DISCRETIONARY, reasoning=f"Demo backend output not parseable: {exc}"
+            )
 
     async def canary_eval(self, fixed_input: dict[str, Any]) -> dict[str, Any]:
         return {"raw": "anthropic-demo backend cannot be canary-verified for determinism."}

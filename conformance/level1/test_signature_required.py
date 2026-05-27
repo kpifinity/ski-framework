@@ -27,7 +27,9 @@ def test_kg_loader_default_requires_signature(repo_root: Path) -> None:
 
 @pytest.mark.level1
 def test_ski_model_deploy_has_no_verify_signature_flag(repo_root: Path) -> None:
-    deployer = (repo_root / "tools" / "ski-model-deploy" / "src" / "ski_model_deploy" / "deployer.py").read_text()
+    deployer = (
+        repo_root / "tools" / "ski-model-deploy" / "src" / "ski_model_deploy" / "deployer.py"
+    ).read_text()
     cli = (repo_root / "tools" / "ski-model-deploy" / "src" / "ski_model_deploy" / "cli.py").read_text()
     # No bool parameter on load_knowledge_graph in the deployer.
     assert "verify_signature: bool" not in deployer, (

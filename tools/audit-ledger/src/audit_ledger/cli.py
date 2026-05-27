@@ -15,7 +15,6 @@ import click
 
 from .ledger import Ledger
 
-
 VERDICT_CHOICES = ["CLEAR", "FLAG", "NULL_UNMAPPED", "NULL_STALE", "DISCRETIONARY"]
 
 
@@ -122,7 +121,9 @@ def export(
 @click.option("--end-date", required=True)
 @click.option("--include-violations/--no-include-violations", default=True)
 @click.option("--organization", default="Organization")
-def report(source: str, output: str, start_date: str, end_date: str, include_violations: bool, organization: str) -> None:
+def report(
+    source: str, output: str, start_date: str, end_date: str, include_violations: bool, organization: str
+) -> None:
     """Generate an HTML compliance report from ledger data."""
     ledger = Ledger(source)
     result = ledger.generate_report(
@@ -159,13 +160,40 @@ def backup(source: str, output: str, compress: bool, verify: bool) -> None:
 
 @main.command()
 @click.option("--source", required=True, envvar="LEDGER_DSN")
-@click.option("--from-sequence", "from_sequence", required=True, type=int, help="Lowest sequence number to replay (inclusive).")
-@click.option("--to-sequence", "to_sequence", required=True, type=int, help="Highest sequence number to replay (inclusive).")
-@click.option("--kg-path", required=True, type=click.Path(exists=True, dir_okay=False), help="Signed KG used during the original evaluation.")
+@click.option(
+    "--from-sequence",
+    "from_sequence",
+    required=True,
+    type=int,
+    help="Lowest sequence number to replay (inclusive).",
+)
+@click.option(
+    "--to-sequence",
+    "to_sequence",
+    required=True,
+    type=int,
+    help="Highest sequence number to replay (inclusive).",
+)
+@click.option(
+    "--kg-path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Signed KG used during the original evaluation.",
+)
 @click.option("--tenant-id", default="default", show_default=True)
 @click.option("--output", default=None, help="Optional path to write the JSON replay report.")
-@click.option("--strict/--no-strict", default=True, show_default=True, help="Exit non-zero on any verdict divergence.")
-def replay(source: str, from_sequence: int, to_sequence: int, kg_path: str, tenant_id: str, output: Optional[str], strict: bool) -> None:
+@click.option(
+    "--strict/--no-strict", default=True, show_default=True, help="Exit non-zero on any verdict divergence."
+)
+def replay(
+    source: str,
+    from_sequence: int,
+    to_sequence: int,
+    kg_path: str,
+    tenant_id: str,
+    output: Optional[str],
+    strict: bool,
+) -> None:
     """v0.2.0 — replay ledger entries against the recorded KG and buffer.
 
     For every entry in [from-sequence, to-sequence] this command re-runs
@@ -174,8 +202,9 @@ def replay(source: str, from_sequence: int, to_sequence: int, kg_path: str, tena
     recorded. v0.1 ledger entries and Track 2 (LLM) entries are skipped
     with a note.
     """
-    from .replay import replay as run_replay
     import json as _json
+
+    from .replay import replay as run_replay
 
     report = run_replay(
         dsn=source,
@@ -185,9 +214,11 @@ def replay(source: str, from_sequence: int, to_sequence: int, kg_path: str, tena
         tenant_id=tenant_id,
     )
 
-    click.echo(f"Replay: {report.replayed_entries}/{report.total_entries} entries replayed, "
-               f"{report.matched_entries} matched, {len(report.mismatches)} diverged, "
-               f"{report.skipped_entries} skipped.")
+    click.echo(
+        f"Replay: {report.replayed_entries}/{report.total_entries} entries replayed, "
+        f"{report.matched_entries} matched, {len(report.mismatches)} diverged, "
+        f"{report.skipped_entries} skipped."
+    )
     for note in report.notes[:5]:
         click.echo(f"  note: {note}")
     if len(report.notes) > 5:
@@ -195,7 +226,9 @@ def replay(source: str, from_sequence: int, to_sequence: int, kg_path: str, tena
     if report.mismatches:
         click.echo("\nDivergences:")
         for m in report.mismatches[:10]:
-            click.echo(f"  seq={m.sequence_number}: recorded={m.recorded_verdict} replayed={m.replayed_verdict} ({m.reason})")
+            click.echo(
+                f"  seq={m.sequence_number}: recorded={m.recorded_verdict} replayed={m.replayed_verdict} ({m.reason})"
+            )
         if len(report.mismatches) > 10:
             click.echo(f"  ... and {len(report.mismatches) - 10} more")
     if output:
@@ -257,7 +290,7 @@ th{{background-color:#f0f0f0;}}
   <h2>Analysis</h2>
   <p><strong>Total entries analysed:</strong> {result.total_entries_analyzed}</p>
   <p><strong>Compliance status:</strong>
-    {('CLEAR' if vs.flag == 0 else 'BREACHES DETECTED')}
+    {("CLEAR" if vs.flag == 0 else "BREACHES DETECTED")}
   </p>
 </div>
 <div class="section">

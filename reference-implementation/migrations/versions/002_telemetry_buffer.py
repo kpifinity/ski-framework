@@ -23,10 +23,9 @@ and tenants. Snapshot the database first.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from alembic import op
-
 
 revision: str = "002_telemetry_buffer"
 down_revision: str | None = "001_baseline"
@@ -121,6 +120,7 @@ ALTER TABLE ledger_entries
 CREATE INDEX IF NOT EXISTS idx_ledger_schema_version
     ON ledger_entries (schema_version);
 """
+
 
 # Bootstrap a 'default' tenant + a partition covering today so a fresh
 # deployment is immediately writable. Operators who care about per-tenant

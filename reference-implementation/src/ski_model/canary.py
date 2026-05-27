@@ -27,7 +27,7 @@ _FIXED_INPUT: dict[str, Any] = {
 
 
 class DeterminismCanary:
-    def __init__(self, backend, interval_seconds: int):
+    def __init__(self, backend: Any, interval_seconds: int):
         self._backend = backend
         self._interval = interval_seconds
         self._baseline: Optional[dict[str, Any]] = None

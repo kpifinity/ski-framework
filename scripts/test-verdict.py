@@ -3,6 +3,7 @@
 
 Rejects records that carry a `rule_id` — producers must not pre-route.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -11,7 +12,6 @@ import os
 import sys
 
 import httpx
-
 
 VERDICT_KEYS = ("CLEAR", "FLAG", "NULL_UNMAPPED", "NULL_STALE", "DISCRETIONARY")
 
@@ -33,7 +33,7 @@ def main() -> int:
         return 1
 
     records: list[dict] = []
-    with open(args.telemetry, "r") as f:
+    with open(args.telemetry) as f:
         for lineno, line in enumerate(f, start=1):
             line = line.strip()
             if not line:
@@ -52,7 +52,7 @@ def main() -> int:
                 return 1
             records.append(rec)
 
-    counts: dict[str, int] = {v: 0 for v in VERDICT_KEYS}
+    counts: dict[str, int] = dict.fromkeys(VERDICT_KEYS, 0)
     verdicts: list[dict] = []
 
     with httpx.Client(timeout=30.0, verify=not args.insecure) as client:
@@ -70,7 +70,8 @@ def main() -> int:
                 "telemetry_id": rec.get("telemetry_id") or rec.get("id") or f"tel_{i}",
                 "timestamp": rec.get("timestamp"),
                 "subject": rec.get("subject"),
-                "measurement": rec.get("measurement") or {k: v for k, v in rec.items() if k not in ("id", "timestamp", "subject", "telemetry_id")},
+                "measurement": rec.get("measurement")
+                or {k: v for k, v in rec.items() if k not in ("id", "timestamp", "subject", "telemetry_id")},
             }
             try:
                 resp = client.post(args.endpoint.rstrip("/") + "/api/evaluate", json=payload, headers=headers)

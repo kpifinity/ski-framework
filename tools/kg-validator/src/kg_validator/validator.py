@@ -3,19 +3,19 @@ Core validation logic
 """
 
 import time
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 
+from .conflict_detector import ConflictDetector
 from .models import (
-    ComplianceRule,
-    ValidationIssue,
-    IssueType,
     ApprovedRule,
+    ComplianceRule,
+    IssueType,
+    ValidationIssue,
     ValidationMetadata,
     ValidationResult,
     ValidationStatus,
 )
-from .conflict_detector import ConflictDetector
 from .utils import validate_rule_fields
 
 
@@ -127,9 +127,7 @@ class Validator:
 
         return found_terms
 
-    def _approve_rule(
-        self, rule: ComplianceRule, validator_notes: Optional[str] = None
-    ) -> None:
+    def _approve_rule(self, rule: ComplianceRule, validator_notes: Optional[str] = None) -> None:
         """Approve a rule"""
         approved = ApprovedRule(
             id=rule.id,
@@ -158,7 +156,7 @@ class Validator:
 
     def _add_pending_rule(self, rule: ComplianceRule) -> None:
         """Add a rule as pending review"""
-        pass  # In interactive mode, will be reviewed separately
+        # In interactive mode, will be reviewed separately
 
     def get_approved_rules(self) -> List[ApprovedRule]:
         """Get all approved rules"""

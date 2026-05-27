@@ -9,13 +9,12 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Coroutine, Optional
 
 import pytest
 
+from symbolic_evaluator import Verdict
 from symbolic_evaluator.evaluator import SymbolicEvaluator
-from symbolic_evaluator import Verdict  # type: ignore
-
 
 # --------------------------------------------------------------------------
 # Fake buffer that satisfies the BufferLike Protocol
@@ -43,12 +42,9 @@ class FakeBuffer:
         as_of: datetime,
         window_seconds: int,
         metric_path: Optional[str] = None,
-    ):
+    ) -> Any:
         window_start = as_of - timedelta(seconds=window_seconds)
-        rows = [
-            r for r in self._rows
-            if r.subject == subject and window_start < r.ts <= as_of
-        ]
+        rows = [r for r in self._rows if r.subject == subject and window_start < r.ts <= as_of]
         count = len(rows)
         oldest = min((r.ts for r in rows), default=None)
         newest = max((r.ts for r in rows), default=None)
@@ -88,9 +84,7 @@ class FakeBuffer:
         rows = [r for r in self._rows if r.subject == subject and r.ts <= as_of]
         return max((r.ts for r in rows), default=None)
 
-    async def has_fresh_sample(
-        self, *, subject: str, as_of: datetime, within_seconds: int
-    ) -> bool:
+    async def has_fresh_sample(self, *, subject: str, as_of: datetime, within_seconds: int) -> bool:
         last = await self.last_record_ts(subject=subject, as_of=as_of)
         if last is None:
             return False
@@ -102,7 +96,7 @@ class FakeBuffer:
 # --------------------------------------------------------------------------
 
 
-def _run(coro):
+def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     return asyncio.get_event_loop().run_until_complete(coro)
 
 

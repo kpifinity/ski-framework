@@ -8,14 +8,17 @@ canary reports FAILED, the test fails.
 
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 
 
 @pytest.mark.level1
 def test_canary_module_present() -> None:
     from pathlib import Path
-    canary = Path(__file__).resolve().parents[2] / "reference-implementation" / "src" / "ski_model" / "canary.py"
+
+    canary = (
+        Path(__file__).resolve().parents[2] / "reference-implementation" / "src" / "ski_model" / "canary.py"
+    )
     assert canary.exists(), "canary.py is missing from the reference implementation."
     text = canary.read_text()
     assert "DeterminismCanary" in text, "DeterminismCanary class must be defined."
@@ -31,6 +34,4 @@ def test_live_canary_endpoint(require_live: tuple[str, str], insecure: bool) -> 
         r.raise_for_status()
         data = r.json()
     assert "status" in data, "/api/canary must return a `status` field."
-    assert "FAILED" not in str(data.get("status", "")).upper(), (
-        f"Determinism canary reports FAILED: {data}"
-    )
+    assert "FAILED" not in str(data.get("status", "")).upper(), f"Determinism canary reports FAILED: {data}"

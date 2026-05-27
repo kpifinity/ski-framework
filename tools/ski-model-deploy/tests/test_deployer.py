@@ -1,7 +1,6 @@
 """Tests for the ski-model-deploy deployer."""
 
 import pytest
-
 from ski_model_deploy import Deployer
 from ski_model_deploy.models import DeploymentConfig, DeploymentMode
 

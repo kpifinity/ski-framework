@@ -10,9 +10,8 @@ test_canary_active.py).
 
 from __future__ import annotations
 
-import pytest
 import httpx
-
+import pytest
 
 _RECORD = {
     "telemetry_id": "conformance_determinism_001",

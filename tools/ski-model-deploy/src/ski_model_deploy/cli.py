@@ -17,7 +17,9 @@ def main() -> None:
 
 @main.command()
 @click.option("--name", "-n", required=True, help="Deployment name")
-@click.option("--sector", "-s", required=True, help="Industry sector (energy, finance, manufacturing, defense)")
+@click.option(
+    "--sector", "-s", required=True, help="Industry sector (energy, finance, manufacturing, defense)"
+)
 @click.option("--mode", "-m", default="docker", help="Deployment mode (docker, kubernetes, direct)")
 @click.option("--output", "-o", default="deployment-config.yaml", help="Output config file")
 def init(name: str, sector: str, mode: str, output: str) -> None:

@@ -4,9 +4,9 @@
 Test Knowledge Graph - Validate Knowledge Graph schema and structure
 """
 
+import argparse
 import json
 import sys
-import argparse
 
 
 def validate_rule(rule):
@@ -15,8 +15,16 @@ def validate_rule(rule):
     warnings = []
 
     # Check required fields
-    required_fields = ["id", "subject", "relation", "object", "source_document",
-                      "source_clause", "confidence", "reasoning"]
+    required_fields = [
+        "id",
+        "subject",
+        "relation",
+        "object",
+        "source_document",
+        "source_clause",
+        "confidence",
+        "reasoning",
+    ]
 
     for field in required_fields:
         if field not in rule:
@@ -49,17 +57,20 @@ def check_for_conflicts(rules):
     conflicts = []
 
     for i, rule1 in enumerate(rules):
-        for rule2 in rules[i + 1:]:
+        for rule2 in rules[i + 1 :]:
             # Check if same subject-relation pair with different objects
-            if (rule1.get("subject", "").lower() == rule2.get("subject", "").lower() and
-                rule1.get("relation", "").lower() == rule2.get("relation", "").lower() and
-                rule1.get("object", "").lower() != rule2.get("object", "").lower()):
-
-                conflicts.append({
-                    "rule1": rule1.get("id"),
-                    "rule2": rule2.get("id"),
-                    "reason": "Conflicting objects for same subject-relation pair"
-                })
+            if (
+                rule1.get("subject", "").lower() == rule2.get("subject", "").lower()
+                and rule1.get("relation", "").lower() == rule2.get("relation", "").lower()
+                and rule1.get("object", "").lower() != rule2.get("object", "").lower()
+            ):
+                conflicts.append(
+                    {
+                        "rule1": rule1.get("id"),
+                        "rule2": rule2.get("id"),
+                        "reason": "Conflicting objects for same subject-relation pair",
+                    }
+                )
 
     return conflicts
 
@@ -73,15 +84,13 @@ def check_for_duplicates(rules):
         key = (
             rule.get("subject", "").lower(),
             rule.get("relation", "").lower(),
-            rule.get("object", "").lower()
+            rule.get("object", "").lower(),
         )
 
         if key in seen:
-            duplicates.append({
-                "rule1": seen[key],
-                "rule2": rule.get("id"),
-                "reason": "Identical subject-relation-object"
-            })
+            duplicates.append(
+                {"rule1": seen[key], "rule2": rule.get("id"), "reason": "Identical subject-relation-object"}
+            )
         else:
             seen[key] = rule.get("id")
 
@@ -98,7 +107,7 @@ def main():
 
     # Load file
     try:
-        with open(args.file, "r") as f:
+        with open(args.file) as f:
             kg_data = json.load(f)
     except FileNotFoundError:
         print(f"✗ File not found: {args.file}")

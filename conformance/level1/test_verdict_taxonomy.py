@@ -32,7 +32,9 @@ def test_schema_does_not_admit_null_alone(repo_root: Path) -> None:
     schema = (repo_root / "reference-implementation" / "src" / "ledger" / "schema.sql").read_text()
     # We grep for a CHECK that lists 'NULL' as a verdict value. Match
     # against a tight pattern so we don't trip on SQL nullability.
-    assert "'NULL'" not in schema, "schema.sql still lists 'NULL' as a verdict — replace with NULL_UNMAPPED/NULL_STALE."
+    assert "'NULL'" not in schema, (
+        "schema.sql still lists 'NULL' as a verdict — replace with NULL_UNMAPPED/NULL_STALE."
+    )
 
 
 @pytest.mark.level1

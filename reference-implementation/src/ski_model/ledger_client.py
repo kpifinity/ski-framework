@@ -88,42 +88,41 @@ class LedgerClient:
         track: Optional[str],
     ) -> None:
         assert self._session_factory is not None
-        async with self._session_factory() as session:
-            async with session.begin():
-                row = (
-                    await session.execute(
-                        text(
-                            "SELECT sequence_number, entry_hash FROM ledger_entries "
-                            "ORDER BY sequence_number DESC LIMIT 1"
-                        )
-                    )
-                ).first()
-                if row is None:
-                    sequence_number = 1
-                    previous_hash = "0" * 64
-                else:
-                    sequence_number = int(row[0]) + 1
-                    previous_hash = str(row[1])
-
-                timestamp_iso = datetime.now(timezone.utc).isoformat()
-                payload = canonical_entry_payload(
-                    sequence_number=sequence_number,
-                    previous_hash=previous_hash,
-                    timestamp_iso=timestamp_iso,
-                    verdict=verdict.value,
-                    telemetry_id=telemetry_id,
-                    telemetry_hash=telemetry_hash,
-                    rule_id=rule_id,
-                    kg_version=kg_version,
-                    ski_model_version=ski_model_version,
-                    reasoning=reasoning,
-                    track=track,
-                )
-                entry_hash = hashlib.sha256(payload).hexdigest()
-
+        async with self._session_factory() as session, session.begin():
+            row = (
                 await session.execute(
                     text(
-                        """
+                        "SELECT sequence_number, entry_hash FROM ledger_entries "
+                        "ORDER BY sequence_number DESC LIMIT 1"
+                    )
+                )
+            ).first()
+            if row is None:
+                sequence_number = 1
+                previous_hash = "0" * 64
+            else:
+                sequence_number = int(row[0]) + 1
+                previous_hash = str(row[1])
+
+            timestamp_iso = datetime.now(timezone.utc).isoformat()
+            payload = canonical_entry_payload(
+                sequence_number=sequence_number,
+                previous_hash=previous_hash,
+                timestamp_iso=timestamp_iso,
+                verdict=verdict.value,
+                telemetry_id=telemetry_id,
+                telemetry_hash=telemetry_hash,
+                rule_id=rule_id,
+                kg_version=kg_version,
+                ski_model_version=ski_model_version,
+                reasoning=reasoning,
+                track=track,
+            )
+            entry_hash = hashlib.sha256(payload).hexdigest()
+
+            await session.execute(
+                text(
+                    """
                         INSERT INTO ledger_entries (
                             sequence_number, previous_hash, entry_hash, timestamp,
                             verdict, telemetry_id, telemetry_hash, rule_id,
@@ -136,22 +135,22 @@ class LedgerClient:
                             :reasoning, :track
                         )
                         """
-                    ),
-                    {
-                        "seq": sequence_number,
-                        "prev": previous_hash,
-                        "hash": entry_hash,
-                        "ts": timestamp_iso,
-                        "verdict": verdict.value,
-                        "tid": telemetry_id,
-                        "thash": telemetry_hash,
-                        "rule_id": rule_id,
-                        "kg_version": kg_version,
-                        "ski_model_version": ski_model_version,
-                        "reasoning": reasoning,
-                        "track": track,
-                    },
-                )
+                ),
+                {
+                    "seq": sequence_number,
+                    "prev": previous_hash,
+                    "hash": entry_hash,
+                    "ts": timestamp_iso,
+                    "verdict": verdict.value,
+                    "tid": telemetry_id,
+                    "thash": telemetry_hash,
+                    "rule_id": rule_id,
+                    "kg_version": kg_version,
+                    "ski_model_version": ski_model_version,
+                    "reasoning": reasoning,
+                    "track": track,
+                },
+            )
 
     async def list(self, *, limit: int, offset: int) -> list[dict[str, Any]]:
         assert self._session_factory is not None

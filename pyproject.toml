@@ -48,6 +48,12 @@ ignore = [
     "S607",    # subprocess partial path (pg_dump, ollama)
     "RET504",  # unnecessary variable before return - style only
     "SIM108",  # ternary - style only
+    "ASYNC240", # rule advises trio.Path / anyio.path - this codebase
+                # is pure asyncio. The few startup-time os.path /
+                # pathlib calls inside async fns happen once at
+                # lifespan entry before the event loop starts serving,
+                # so blocking is fine. Revisit if we ever adopt trio
+                # or anyio.
 ]
 
 [tool.ruff.lint.per-file-ignores]

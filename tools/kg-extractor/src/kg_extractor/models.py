@@ -12,7 +12,7 @@ v2.1 changes:
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, model_validator, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ConfidenceLevel(str, Enum):
@@ -48,7 +48,11 @@ class ComplianceRule(BaseModel):
         # `confidence: "IMPLIED"`, the enum coercion will already have
         # raised. This validator exists so the prohibition is also
         # documented in code.
-        if self.confidence not in (ConfidenceLevel.EXPLICIT, ConfidenceLevel.DISCRETIONARY, ConfidenceLevel.CONFLICTING):
+        if self.confidence not in (
+            ConfidenceLevel.EXPLICIT,
+            ConfidenceLevel.DISCRETIONARY,
+            ConfidenceLevel.CONFLICTING,
+        ):
             raise ValueError(f"Rule {self.id}: prohibited confidence value")
         return self
 
@@ -65,7 +69,7 @@ class ExtractionMetadata(BaseModel):
     total_rules_extracted: int
     rules_by_confidence: Dict[str, int]
     extraction_duration_seconds: float
-    backend: str                          # "anthropic" | "openai" | "ollama" | ...
+    backend: str  # "anthropic" | "openai" | "ollama" | ...
     model_used: str
     model_file_sha256: Optional[str] = None
     temperature: float = 0.0

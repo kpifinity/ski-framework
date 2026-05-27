@@ -38,12 +38,10 @@ def test_live_update_is_refused(require_ledger: str) -> None:
             pytest.skip("Ledger is empty; cannot test UPDATE refusal without a row.")
         try:
             conn.execute(text("UPDATE ledger_entries SET verdict='CLEAR' WHERE id = :id"), {"id": rows[0][0]})
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             msg = str(exc).lower()
             assert "append-only" in msg or "insufficient_privilege" in msg, (
                 f"UPDATE failed but for the wrong reason: {exc}"
             )
             return
-        pytest.fail(
-            "UPDATE on ledger_entries succeeded — the append-only trigger is not installed."
-        )
+        pytest.fail("UPDATE on ledger_entries succeeded — the append-only trigger is not installed.")

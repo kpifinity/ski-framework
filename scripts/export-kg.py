@@ -8,6 +8,7 @@ The exported JSON contains the metadata, rules, tag_registry, and signature
 block exactly as loaded. It can be re-loaded via POST /api/kg/load on any
 SKI Model instance with the same signing public key configured.
 """
+
 from __future__ import annotations
 
 import argparse

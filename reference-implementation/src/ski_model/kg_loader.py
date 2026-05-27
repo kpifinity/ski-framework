@@ -41,7 +41,7 @@ class KnowledgeGraph:
     signature_verified: bool
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], *, require_signature: bool) -> "KnowledgeGraph":
+    def from_dict(cls, data: dict[str, Any], *, require_signature: bool) -> KnowledgeGraph:
         metadata = data.get("metadata") or {}
         rules = data.get("rules") or []
         tag_registry = data.get("tag_registry") or {}

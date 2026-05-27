@@ -26,6 +26,7 @@ from .utils import generate_docker_compose, load_config, save_config
 # format is shared between the deployer and the server.
 try:
     import sys
+
     sys.path.insert(
         0,
         str(Path(__file__).resolve().parents[5] / "reference-implementation" / "src"),
@@ -76,7 +77,7 @@ class Deployer:
         if not os.path.exists(kg_path):
             raise FileNotFoundError(f"Knowledge Graph not found: {kg_path}")
 
-        with open(kg_path, "r") as f:
+        with open(kg_path) as f:
             kg_data = json.load(f)
 
         if "signature" not in kg_data:
@@ -150,7 +151,14 @@ class Deployer:
             return False
         headers = {"x-api-key": api_key} if api_key else {}
         try:
-            r = httpx.get(f"{endpoint}/api/health", headers=headers, timeout=5.0, verify=False)  # nosec B501 — self-signed certs in dev
+            # Dev-only health probe against self-signed certs. The production
+            # path uses SKI_MODEL_CA_CERT pinning in sidecar/main.py.
+            r = httpx.get(
+                f"{endpoint}/api/health",
+                headers=headers,
+                timeout=5.0,
+                verify=False,  # noqa: S501
+            )
             return r.status_code == 200
         except Exception:
             return False
@@ -169,9 +177,7 @@ class Deployer:
             uptime_seconds=uptime,
             knowledge_graph_loaded=bool(self.config and self.config.knowledge_graph),
             knowledge_graph_version=(
-                self.config.knowledge_graph.version
-                if self.config and self.config.knowledge_graph
-                else None
+                self.config.knowledge_graph.version if self.config and self.config.knowledge_graph else None
             ),
             ledger_entries=0,
             api_healthy=self.verify(),

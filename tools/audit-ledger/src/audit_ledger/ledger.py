@@ -38,7 +38,6 @@ from .models import (
     ViolationSummary,
 )
 
-
 GENESIS_HASH = "0" * 64
 
 
@@ -149,9 +148,7 @@ class Ledger:
                     )
 
                 # 3. Entry hash recomputation — the real integrity check.
-                timestamp_iso = (
-                    timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
-                )
+                timestamp_iso = timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
                 payload = canonical_entry_payload(
                     sequence_number=int(seq),
                     previous_hash=str(stored_prev),
@@ -274,18 +271,26 @@ class Ledger:
 
         verification_status: Optional[str] = None
         if verify:
-            # `pg_restore --list` parses the dump's table of contents; it
-            # fails on a corrupt archive.
-            try:
-                subprocess.run(
-                    ["pg_restore", "--list", output_file] if not compress
-                    else ["pg_restore", "--list", output_file],
-                    check=True,
-                    stdout=subprocess.DEVNULL,
-                )
-                verification_status = "pg_restore --list succeeded"
-            except subprocess.CalledProcessError as exc:
-                verification_status = f"verification FAILED: {exc}"
+            if compress:
+                # `pg_restore --list` cannot read a .gz file directly.
+                # Until a gunzip-to-pipe step is added here, compressed
+                # backups are checksummed (above) but not archive-parsed.
+                # The previous code claimed to verify both branches but
+                # ran the same uncompressed command in each, silently a
+                # no-op on compressed dumps.
+                verification_status = "skipped (compressed dump; checksum verified, archive parse not run)"
+            else:
+                # `pg_restore --list` parses the dump's table of contents;
+                # it fails on a corrupt archive.
+                try:
+                    subprocess.run(
+                        ["pg_restore", "--list", output_file],
+                        check=True,
+                        stdout=subprocess.DEVNULL,
+                    )
+                    verification_status = "pg_restore --list succeeded"
+                except subprocess.CalledProcessError as exc:
+                    verification_status = f"verification FAILED: {exc}"
 
         return BackupResult(
             backup_date=datetime.now(),

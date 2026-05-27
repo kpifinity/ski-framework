@@ -5,6 +5,7 @@ For the alpha this is a thin wrapper around /api/kg/load. Use
 `ski-model-deploy load-kg` for production deployments — that tool also
 verifies the signature locally before uploading.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,7 +25,7 @@ def main() -> int:
     args = parser.parse_args()
 
     try:
-        with open(args.kg_file, "r") as f:
+        with open(args.kg_file) as f:
             kg_data = json.load(f)
     except FileNotFoundError:
         print(f"✗ File not found: {args.kg_file}", file=sys.stderr)
@@ -58,7 +59,9 @@ def main() -> int:
             return 1
 
     result = resp.json()
-    print(f"✓ Knowledge Graph loaded ({result.get('rules_loaded', 0)} rules, version={result.get('version')!r})")
+    print(
+        f"✓ Knowledge Graph loaded ({result.get('rules_loaded', 0)} rules, version={result.get('version')!r})"
+    )
     return 0
 
 

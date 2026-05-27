@@ -20,6 +20,6 @@ This package exposes two classes:
   * `WindowQueryResult` — typed result returned by window queries.
 """
 
-from .buffer import TelemetryBuffer, WindowQueryResult, BufferError
+from .buffer import BufferError, TelemetryBuffer, WindowQueryResult
 
-__all__ = ["TelemetryBuffer", "WindowQueryResult", "BufferError"]
+__all__ = ["BufferError", "TelemetryBuffer", "WindowQueryResult"]
