@@ -132,8 +132,7 @@ class OpenAIBackend:
             from openai import OpenAI  # type: ignore
         except ImportError as exc:
             raise RuntimeError(
-                "openai backend requires `pip install openai`. "
-                "Or — preferably — use the ollama backend."
+                "openai backend requires `pip install openai`. Or — preferably — use the ollama backend."
             ) from exc
         self._client = OpenAI(api_key=api_key)
         self.model = model

@@ -4,6 +4,7 @@ Utility functions for KG Extractor
 
 import os
 from typing import List
+
 from .models import ComplianceRule
 
 
@@ -25,21 +26,20 @@ def extract_text_from_document(file_path: str) -> str:
 
     if ext == ".txt":
         return _extract_from_txt(file_path)
-    elif ext == ".pdf":
+    if ext == ".pdf":
         return _extract_from_pdf(file_path)
-    elif ext == ".html":
+    if ext == ".html":
         return _extract_from_html(file_path)
-    elif ext == ".docx":
+    if ext == ".docx":
         return _extract_from_docx(file_path)
-    elif ext == ".md":
+    if ext == ".md":
         return _extract_from_markdown(file_path)
-    else:
-        raise ValueError(f"Unsupported file format: {ext}")
+    raise ValueError(f"Unsupported file format: {ext}")
 
 
 def _extract_from_txt(file_path: str) -> str:
     """Extract text from .txt file"""
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -78,7 +78,7 @@ def _extract_from_html(file_path: str) -> str:
         def handle_data(self, data):
             self.text.append(data)
 
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         html = f.read()
 
     parser = TextExtractor()
@@ -105,7 +105,7 @@ def _extract_from_docx(file_path: str) -> str:
 
 def _extract_from_markdown(file_path: str) -> str:
     """Extract text from Markdown file"""
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         return f.read()
 
 

@@ -4,6 +4,7 @@
 Usage:
     python scripts/check-verdicts.py [--endpoint URL] [--api-key KEY] [--limit N]
 """
+
 from __future__ import annotations
 
 import argparse

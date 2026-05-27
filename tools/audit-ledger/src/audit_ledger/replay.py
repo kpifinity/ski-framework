@@ -132,10 +132,10 @@ async def _replay_async(
         sys.path.insert(0, str(ref_impl_src))
 
     from ski_model.kg_loader import load_signed_kg  # type: ignore
+    from sqlalchemy.ext.asyncio import create_async_engine
     from symbolic_evaluator import SymbolicEvaluator  # type: ignore
     from tag_registry import TagRegistry  # type: ignore
     from telemetry_buffer import TelemetryBuffer  # type: ignore
-    from sqlalchemy.ext.asyncio import create_async_engine
 
     report = ReplayReport(started_at=datetime.utcnow(), from_sequence=from_sequence, to_sequence=to_sequence)
 
@@ -147,7 +147,9 @@ async def _replay_async(
     report.notes.append(f"Replaying against KG version {kg.version} loaded from {kg_path}")
 
     # 2. Open the ledger and buffer.
-    async_dsn = dsn.replace("postgresql://", "postgresql+psycopg://", 1) if dsn.startswith("postgresql://") else dsn
+    async_dsn = (
+        dsn.replace("postgresql://", "postgresql+psycopg://", 1) if dsn.startswith("postgresql://") else dsn
+    )
     engine = create_async_engine(async_dsn, pool_pre_ping=True, future=True)
     buffer = TelemetryBuffer(engine, tenant_id=tenant_id)
 
@@ -180,7 +182,7 @@ async def _replay_async(
             recorded_verdict,
             recorded_reasoning,
             track,
-            kg_version,
+            _kg_version,  # read for schema completeness; not used during replay
             schema_version,
         ) = row
 
@@ -194,9 +196,7 @@ async def _replay_async(
 
         if track == "llm":
             report.skipped_entries += 1
-            report.notes.append(
-                f"seq={seq}: Track 2 (LLM) entry — replay is best-effort only; skipped."
-            )
+            report.notes.append(f"seq={seq}: Track 2 (LLM) entry — replay is best-effort only; skipped.")
             continue
 
         # Reconstruct telemetry from the buffer.
@@ -211,8 +211,12 @@ async def _replay_async(
         telemetry = {
             "subject": record["subject"],
             "telemetry_id": record["telemetry_id"],
-            "timestamp": record["telemetry_ts"].isoformat() if isinstance(record["telemetry_ts"], datetime) else record["telemetry_ts"],
-            "measurement": record["measurement"] if isinstance(record["measurement"], dict) else json.loads(record["measurement"]),
+            "timestamp": record["telemetry_ts"].isoformat()
+            if isinstance(record["telemetry_ts"], datetime)
+            else record["telemetry_ts"],
+            "measurement": record["measurement"]
+            if isinstance(record["measurement"], dict)
+            else json.loads(record["measurement"]),
         }
 
         # Re-route via the Tag Registry (must produce the same rule_id).

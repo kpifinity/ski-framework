@@ -25,7 +25,6 @@ from .backends import ExtractorBackend, build_backend
 from .models import ComplianceRule, ConfidenceLevel, ExtractionMetadata, ExtractionResult
 from .utils import chunk_text, extract_text_from_document, validate_rule
 
-
 _PROHIBITED_IMPLIED = "IMPLIED"
 
 
@@ -128,7 +127,7 @@ class Extractor:
         source_document: str,
         source_document_version: Optional[str],
         chunk_index: int,
-    ) -> tuple[List[ComplianceRule], "object"]:
+    ) -> tuple[List[ComplianceRule], object]:
         prompt = self._build_prompt(chunk, sector, document_type, source_document, source_document_version)
 
         call = self.backend.extract_json(prompt=prompt, max_tokens=2000)
@@ -204,12 +203,12 @@ class Extractor:
             "Return STRICT JSON ONLY — a single JSON ARRAY of rule objects, no prose.\n"
             "\n"
             "Each rule object has these keys:\n"
-            '  subject (string), relation (string), object (string),\n'
+            "  subject (string), relation (string), object (string),\n"
             '  confidence ("EXPLICIT" or "DISCRETIONARY" or "CONFLICTING"),\n'
-            '  reasoning (string), source_clause (string).\n'
+            "  reasoning (string), source_clause (string).\n"
             "\n"
             "ABSOLUTE RULES (will be enforced by post-processing):\n"
-            "  1. Do NOT emit `confidence: \"IMPLIED\"`. The Anchor Constraint (B2.1) "
+            '  1. Do NOT emit `confidence: "IMPLIED"`. The Anchor Constraint (B2.1) '
             "     prohibits inference beyond source text. Rules that require inference "
             "     must be marked DISCRETIONARY so a human can decide.\n"
             "  2. For EXPLICIT rules, include a verbatim quote from the source in `reasoning`.\n"

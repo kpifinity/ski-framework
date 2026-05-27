@@ -4,20 +4,23 @@ Command-line interface for KG Extractor
 
 import json
 import os
-import click
 from typing import Optional
+
+import click
+
 from .extractor import Extractor
 
 
 @click.group()
 def main():
     """Extract compliance rules from regulatory documents"""
-    pass
 
 
 @main.command()
 @click.option("--file", "-f", required=True, help="Input document file")
-@click.option("--sector", "-s", default="general", help="Industry sector (energy, finance, manufacturing, defense)")
+@click.option(
+    "--sector", "-s", default="general", help="Industry sector (energy, finance, manufacturing, defense)"
+)
 @click.option("--output", "-o", default=None, help="Output JSON file (default: stdout)")
 @click.option("--document-type", "-t", default="regulation", help="Type of document")
 def extract(file: str, sector: str, output: Optional[str], document_type: str):
@@ -59,13 +62,13 @@ def extract(file: str, sector: str, output: Optional[str], document_type: str):
                 click.echo(f"  ⚠️  {warning}")
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
     except ValueError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
     except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
 
 
@@ -110,15 +113,15 @@ def batch(input_dir: str, output_dir: str, sector: str):
                 click.echo(f" ✓ {result.metadata.total_rules_extracted} rules")
 
             except Exception as e:
-                click.echo(f" ✗ Error: {str(e)}")
+                click.echo(f" ✗ Error: {e!s}")
 
         click.echo(f"\nResults saved to: {output_dir}")
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
     except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
 
 
@@ -129,7 +132,7 @@ def batch(input_dir: str, output_dir: str, sector: str):
 def filter(confidence: str, input: str, output: Optional[str]):
     """Filter rules by confidence level"""
     try:
-        with open(input, "r") as f:
+        with open(input) as f:
             data = json.load(f)
 
         rules = data.get("rules", [])
@@ -145,10 +148,10 @@ def filter(confidence: str, input: str, output: Optional[str]):
             click.echo(json.dumps({"rules": filtered}, indent=2))
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
     except json.JSONDecodeError as e:
-        click.echo(f"Error: Invalid JSON in {input}: {str(e)}", err=True)
+        click.echo(f"Error: Invalid JSON in {input}: {e!s}", err=True)
         raise SystemExit(1)
 
 

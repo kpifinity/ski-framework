@@ -53,6 +53,4 @@ def canonical_entry_payload(
         "reasoning": reasoning,
         "track": track,
     }
-    return json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-    ).encode("utf-8")
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")

@@ -5,11 +5,12 @@ Data models for KG Validator
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ValidationStatus(str, Enum):
     """Status of rule validation"""
+
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
     FLAGGED = "FLAGGED"
@@ -18,6 +19,7 @@ class ValidationStatus(str, Enum):
 
 class IssueType(str, Enum):
     """Type of validation issue"""
+
     DUPLICATE = "DUPLICATE"
     CONFLICT = "CONFLICT"
     MISSING_FIELD = "MISSING_FIELD"
@@ -29,6 +31,7 @@ class IssueType(str, Enum):
 
 class ComplianceRule(BaseModel):
     """Compliance rule from extraction"""
+
     id: str
     subject: str
     relation: str
@@ -43,6 +46,7 @@ class ComplianceRule(BaseModel):
 
 class ValidationIssue(BaseModel):
     """Issue found during validation"""
+
     rule_id: str
     issue_type: IssueType
     severity: str = Field(..., description="LOW|MEDIUM|HIGH|CRITICAL")
@@ -55,6 +59,7 @@ class ValidationIssue(BaseModel):
 
 class ConflictPair(BaseModel):
     """Pair of conflicting rules"""
+
     rule_id_1: str
     rule_id_2: str
     conflict_type: str = Field(..., description="CONTRADICTORY|DATE_OVERLAP|INCONSISTENT")
@@ -64,6 +69,7 @@ class ConflictPair(BaseModel):
 
 class DuplicatePair(BaseModel):
     """Pair of duplicate or near-duplicate rules"""
+
     rule_id_1: str
     rule_id_2: str
     similarity_score: float = Field(..., ge=0, le=1)
@@ -72,6 +78,7 @@ class DuplicatePair(BaseModel):
 
 class ApprovedRule(BaseModel):
     """Rule after expert approval"""
+
     id: str
     subject: str
     relation: str
@@ -91,6 +98,7 @@ class ApprovedRule(BaseModel):
 
 class ValidationMetadata(BaseModel):
     """Metadata about validation session"""
+
     total_rules_reviewed: int
     total_approved: int
     total_rejected: int
@@ -103,6 +111,7 @@ class ValidationMetadata(BaseModel):
 
 class ValidationResult(BaseModel):
     """Complete validation result"""
+
     approved_rules: List[ApprovedRule]
     issues: List[ValidationIssue] = Field(default_factory=list)
     conflicts: List[ConflictPair] = Field(default_factory=list)

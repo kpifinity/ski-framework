@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from alembic import op
 
-
 revision: str = "001_baseline"
 down_revision: str | None = None
 branch_labels: tuple[str, ...] | None = None

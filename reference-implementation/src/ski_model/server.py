@@ -23,7 +23,7 @@ import logging
 import os
 import secrets
 import sys
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Optional
@@ -35,19 +35,18 @@ from pydantic import BaseModel, Field
 # Allow execution as `python -m ski_model.server` (package mode) OR as a
 # raw script via the container CMD when WORKDIR is /app.
 try:
-    from symbolic_evaluator import SymbolicEvaluator  # type: ignore
-    from tag_registry import TagRegistry  # type: ignore
+    from symbolic_evaluator import SymbolicEvaluator
+    from tag_registry import TagRegistry
 except ImportError:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-    from symbolic_evaluator import SymbolicEvaluator  # type: ignore
-    from tag_registry import TagRegistry  # type: ignore
+    from symbolic_evaluator import SymbolicEvaluator
+    from tag_registry import TagRegistry
 
-from .backends import build_backend, InferenceBackend
+from .backends import InferenceBackend, build_backend
 from .canary import DeterminismCanary
 from .kg_loader import KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
 from .verdicts import Verdict
-
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -75,7 +74,7 @@ class _State:
     ledger: Optional[LedgerClient] = None
     canary: Optional[DeterminismCanary] = None
     telemetry_buffer: Optional[Any] = None  # v0.2 — set in lifespan when LEDGER_DSN is configured
-    tenant_id: str = "default"               # v0.2 — single-tenant default
+    tenant_id: str = "default"  # v0.2 — single-tenant default
     verdicts_produced: int = 0
 
 
@@ -178,15 +177,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # LEDGER_DSN is unset (tests / smoke runs).
     state.tenant_id = os.getenv("SKI_TENANT_ID", "default")
     try:
-        from telemetry_buffer import TelemetryBuffer  # type: ignore
-        if state.ledger is not None and state.ledger._engine is not None:  # noqa: SLF001
+        from telemetry_buffer import TelemetryBuffer
+
+        if state.ledger is not None and state.ledger._engine is not None:
             state.telemetry_buffer = TelemetryBuffer(
-                state.ledger._engine,  # noqa: SLF001 — intentional reuse
+                state.ledger._engine,
                 tenant_id=state.tenant_id,
             )
             logger.info("Telemetry buffer ready (tenant=%s).", state.tenant_id)
     except Exception as exc:  # pragma: no cover — buffer is best-effort wiring
-        logger.warning("Telemetry buffer not initialised (%s); stateful predicates will return DISCRETIONARY.", exc)
+        logger.warning(
+            "Telemetry buffer not initialised (%s); stateful predicates will return DISCRETIONARY.", exc
+        )
 
     state.canary = DeterminismCanary(
         backend=state.backend,
@@ -200,10 +202,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         canary_task.cancel()
-        try:
+        with suppress(asyncio.CancelledError):
             await canary_task
-        except asyncio.CancelledError:
-            pass
         await state.ledger.close()
         logger.info("SKI Model stopping (verdicts_produced=%d)", state.verdicts_produced)
 
@@ -221,9 +221,7 @@ async def health_check() -> HealthStatus:
     return HealthStatus(
         status="healthy" if state.knowledge_graph else "no_kg",
         kg_loaded=state.knowledge_graph is not None,
-        kg_signature_verified=bool(
-            state.knowledge_graph and state.knowledge_graph.signature_verified
-        ),
+        kg_signature_verified=bool(state.knowledge_graph and state.knowledge_graph.signature_verified),
         canary_status=state.canary.last_status if state.canary else "not_started",
         verdicts_produced=state.verdicts_produced,
         timestamp=_now_iso(),
@@ -255,9 +253,7 @@ async def evaluate(telemetry: TelemetryRecord) -> VerdictResponse:
     if state.knowledge_graph is None or state.tag_registry is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No KG loaded.")
     if state.backend is None or state.symbolic_evaluator is None or state.ledger is None:
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, "Service not initialised."
-        )
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Service not initialised.")
 
     # 0. v0.2 — write to the telemetry buffer BEFORE evaluation so stateful
     #    predicates on this very record can see it via subsequent queries.
@@ -312,13 +308,17 @@ async def evaluate(telemetry: TelemetryRecord) -> VerdictResponse:
         )
 
     if track == "llm":
-        decision = await state.backend.evaluate(rule, telemetry.model_dump())
+        # New name (not ``decision``) because the previous branch's
+        # ``decision`` was a ``SymbolicDecision``; mypy narrows by first
+        # assignment, so reusing the name here would be flagged as an
+        # incompatible reassignment even though we early-returned above.
+        llm_decision = await state.backend.evaluate(rule, telemetry.model_dump())
         return await _record_verdict(
             telemetry=telemetry,
-            verdict=decision.verdict,
+            verdict=llm_decision.verdict,
             rule=rule,
             track="llm",
-            reasoning=decision.reasoning,
+            reasoning=llm_decision.reasoning,
         )
 
     return await _record_verdict(
@@ -343,9 +343,7 @@ async def _record_verdict(
     verdict_id = f"verdict_{state.verdicts_produced:012d}"
 
     telemetry_hash = hashlib.sha256(
-        json.dumps(
-            telemetry.model_dump(), sort_keys=True, separators=(",", ":")
-        ).encode("utf-8")
+        json.dumps(telemetry.model_dump(), sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
     await state.ledger.append(

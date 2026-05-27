@@ -8,8 +8,9 @@ window. This is the freshness path that v0.1 stubbed and v0.2 wires.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -25,12 +26,12 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
     if str(src) not in sys.path:
         sys.path.insert(0, str(src))
 
+    from symbolic_evaluator import Verdict
     from symbolic_evaluator.evaluator import SymbolicEvaluator
-    from symbolic_evaluator import Verdict  # type: ignore
 
     # An in-memory buffer with one very old sample.
     class _EmptyBuffer:
-        async def window_query(self, **_: object):
+        async def window_query(self, **_: object) -> Any:
             class _R:
                 count = 0
                 sum_value = None
@@ -38,9 +39,10 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
                 oldest_ts = None
                 newest_ts = None
                 last_ts = None
+
             return _R()
 
-        async def last_record_ts(self, **_: object):
+        async def last_record_ts(self, **_: object) -> None:
             return None
 
         async def has_fresh_sample(self, **_: object) -> bool:
@@ -63,7 +65,9 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
         "measurement": {"x": 50},
     }
     decision = asyncio.get_event_loop().run_until_complete(
-        SymbolicEvaluator().aevaluate(rule, telemetry, buffer=_EmptyBuffer(), as_of=datetime.now(timezone.utc))
+        SymbolicEvaluator().aevaluate(
+            rule, telemetry, buffer=_EmptyBuffer(), as_of=datetime.now(timezone.utc)
+        )
     )
     assert decision.verdict == Verdict.NULL_STALE, decision.reasoning
 
@@ -72,7 +76,9 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
 def test_schema_has_telemetry_buffer_with_append_only(repo_root: Path) -> None:
     """B5.2 extension — the buffer must be append-only at the DB layer."""
     sql = (repo_root / "reference-implementation" / "src" / "ledger" / "telemetry_buffer.sql").read_text()
-    assert "PARTITION BY RANGE (telemetry_ts)" in sql, "Buffer must be partitioned by telemetry_ts for retention."
+    assert "PARTITION BY RANGE (telemetry_ts)" in sql, (
+        "Buffer must be partitioned by telemetry_ts for retention."
+    )
     for op in ("BEFORE UPDATE", "BEFORE DELETE", "BEFORE TRUNCATE"):
         assert op in sql and "telemetry_buffer" in sql, f"telemetry_buffer must have a {op} trigger."
     assert "ledger_block_update_delete" in sql, "Buffer triggers must reuse the ledger append-only function."

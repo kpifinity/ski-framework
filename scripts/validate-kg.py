@@ -13,6 +13,7 @@ Checks:
 Usage:
     python scripts/validate-kg.py PATH/TO/kg.json
 """
+
 from __future__ import annotations
 
 import argparse
@@ -24,8 +25,7 @@ from pathlib import Path
 # Allow running without `pip install`.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "reference-implementation" / "src"))
 
-from ski_model.kg_loader import KnowledgeGraph  # noqa: E402
-
+from ski_model.kg_loader import KnowledgeGraph
 
 _REQUIRED_PREDICATE_FIELDS = {"operator", "metric"}
 
@@ -64,9 +64,7 @@ def main() -> int:
         if track not in ("symbolic", "llm"):
             errors.append(f"rule {rid}: missing or invalid 'track' (got {track!r})")
         if rule.get("confidence") == "IMPLIED":
-            errors.append(
-                f"rule {rid}: confidence=IMPLIED is prohibited by B2.1 Anchor Constraint"
-            )
+            errors.append(f"rule {rid}: confidence=IMPLIED is prohibited by B2.1 Anchor Constraint")
         if track == "symbolic":
             predicate = rule.get("predicate")
             if not isinstance(predicate, dict):
@@ -76,7 +74,7 @@ def main() -> int:
                 if missing:
                     errors.append(f"rule {rid}: predicate missing fields {sorted(missing)}")
         for date_field in ("effective_date", "sunset_date"):
-            if date_field in rule and rule[date_field]:
+            if rule.get(date_field):
                 try:
                     dt.date.fromisoformat(rule[date_field])
                 except ValueError:

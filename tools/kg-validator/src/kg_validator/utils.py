@@ -22,7 +22,7 @@ def load_rules(file_path: str) -> List[ComplianceRule]:
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"Rules file not found: {file_path}")
 
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         data = json.load(f)
 
     rules = []
@@ -35,7 +35,7 @@ def load_rules(file_path: str) -> List[ComplianceRule]:
             rule = ComplianceRule(**rule_dict)
             rules.append(rule)
         except Exception as e:
-            print(f"Warning: Failed to load rule: {str(e)}")
+            print(f"Warning: Failed to load rule: {e!s}")
 
     return rules
 
@@ -153,13 +153,13 @@ def generate_html_report(result: Any, output_path: str) -> None:
             <td>{rule.relation}</td>
             <td>{rule.object}</td>
             <td>{rule.source_document} ({rule.source_clause})</td>
-            <td>{rule.validator_notes or ''}</td>
+            <td>{rule.validator_notes or ""}</td>
         </tr>
 """
 
-    html += """    </table>
+    html += f"""    </table>
 
-    <h2>Issues Found ({})""".format(len(result.issues))
+    <h2>Issues Found ({len(result.issues)})"""
     html += """</h2>
 """
 

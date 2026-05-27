@@ -2,18 +2,19 @@
 Command-line interface for KG Validator
 """
 
-import click
 import json
 from typing import Optional
-from .validator import Validator
-from .utils import load_rules, save_validation_result, generate_html_report
+
+import click
+
 from .conflict_detector import ConflictDetector
+from .utils import generate_html_report, load_rules, save_validation_result
+from .validator import Validator
 
 
 @click.group()
 def main():
     """Validate and review extracted compliance rules"""
-    pass
 
 
 @main.command()
@@ -52,10 +53,10 @@ def validate(input: str, output: Optional[str]):
             click.echo("\n" + json.dumps(result.to_json(), indent=2))
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
     except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
 
 
@@ -85,7 +86,7 @@ def review(input: str, output: Optional[str]):
             click.echo("\n" + json.dumps(result.to_json(), indent=2))
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
 
 
@@ -116,7 +117,7 @@ def detect_conflicts(input: str, output: Optional[str]):
             click.echo(json.dumps(output_data, indent=2))
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
 
 
@@ -149,7 +150,7 @@ def detect_duplicates(input: str, output: Optional[str], threshold: float):
             click.echo(json.dumps(output_data, indent=2))
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
 
 
@@ -171,10 +172,10 @@ def report(input: str, validated_rules: Optional[str], output: str):
         click.echo(f"Report saved to: {output}")
 
     except FileNotFoundError as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
     except Exception as e:
-        click.echo(f"Error: {str(e)}", err=True)
+        click.echo(f"Error: {e!s}", err=True)
         raise SystemExit(1)
 
 

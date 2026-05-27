@@ -17,6 +17,13 @@ that require natural-language interpretation must be declared `track: "llm"`
 and are routed to the SKI Model wrapper instead.
 """
 
-from .evaluator import SymbolicDecision, SymbolicEvaluator, Verdict
+# Explicit `name as name` re-export so mypy's strict --no-implicit-reexport
+# is satisfied (PEP 484). Verdict is imported from the upstream ski_model
+# package inside evaluator.py with a local-Enum fallback, so the underlying
+# source module is conditional; the alias pattern keeps the public surface
+# stable regardless.
+from .evaluator import SymbolicDecision as SymbolicDecision
+from .evaluator import SymbolicEvaluator as SymbolicEvaluator
+from .evaluator import Verdict as Verdict
 
-__all__ = ["SymbolicEvaluator", "SymbolicDecision", "Verdict"]
+__all__ = ["SymbolicDecision", "SymbolicEvaluator", "Verdict"]

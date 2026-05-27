@@ -15,7 +15,7 @@ import asyncio
 import logging
 import os
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator, Optional
 
@@ -23,7 +23,6 @@ import httpx
 import uvicorn
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
-
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(level=LOG_LEVEL, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -64,10 +63,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     finally:
         if state.heartbeat_task:
             state.heartbeat_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await state.heartbeat_task
-            except asyncio.CancelledError:
-                pass
         if state.ski_model_client:
             await state.ski_model_client.aclose()
         logger.info("Sidecar shutting down (telemetry_received=%d)", state.telemetry_received)

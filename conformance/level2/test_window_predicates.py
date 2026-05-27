@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Optional
+from typing import Any, Coroutine
 
 import pytest
 
@@ -18,6 +18,7 @@ import pytest
 def _setup_path() -> None:
     import sys
     from pathlib import Path
+
     src = Path(__file__).resolve().parents[2] / "reference-implementation" / "src"
     if str(src) not in sys.path:
         sys.path.insert(0, str(src))
@@ -62,12 +63,20 @@ class FakeBuffer:
             if vals:
                 sum_v = sum(vals)
                 avg_v = sum_v / len(vals)
-        return type("WQ", (), {
-            "count": count, "sum_value": sum_v, "avg_value": avg_v,
-            "oldest_ts": oldest, "newest_ts": newest, "last_ts": newest,
-        })()
+        return type(
+            "WQ",
+            (),
+            {
+                "count": count,
+                "sum_value": sum_v,
+                "avg_value": avg_v,
+                "oldest_ts": oldest,
+                "newest_ts": newest,
+                "last_ts": newest,
+            },
+        )()
 
-    async def last_record_ts(self, *, subject, as_of):
+    async def last_record_ts(self, *, subject: str, as_of: datetime) -> datetime | None:
         rows = [r for r in self.rows if r.subject == subject and r.ts <= as_of]
         return max((r.ts for r in rows), default=None)
 
@@ -78,25 +87,32 @@ class FakeBuffer:
         return (as_of - last).total_seconds() <= within_seconds
 
 
-def _run(coro):
+def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
 @pytest.mark.level2
 def test_window_count_correctness() -> None:
     _setup_path()
+    from symbolic_evaluator import Verdict
     from symbolic_evaluator.evaluator import SymbolicEvaluator
-    from symbolic_evaluator import Verdict  # type: ignore
 
     now = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
     buf = FakeBuffer()
     for i in range(7):
         buf.add("alerts.flood", now - timedelta(seconds=i + 1), {"x": 1})
 
-    rule = {"id": "r", "track": "symbolic",
-            "predicate": {"operator": "window_count", "metric": "x", "seconds": 30, "op": "lte", "value": 5}}
-    telemetry = {"subject": "alerts.flood", "telemetry_id": "t",
-                 "timestamp": now.isoformat(), "measurement": {"x": 1}}
+    rule = {
+        "id": "r",
+        "track": "symbolic",
+        "predicate": {"operator": "window_count", "metric": "x", "seconds": 30, "op": "lte", "value": 5},
+    }
+    telemetry = {
+        "subject": "alerts.flood",
+        "telemetry_id": "t",
+        "timestamp": now.isoformat(),
+        "measurement": {"x": 1},
+    }
     d = _run(SymbolicEvaluator().aevaluate(rule, telemetry, buffer=buf, as_of=now))
     assert d.verdict == Verdict.FLAG, d.reasoning
 
@@ -104,8 +120,8 @@ def test_window_count_correctness() -> None:
 @pytest.mark.level2
 def test_window_sum_handles_missing_metric_path() -> None:
     _setup_path()
+    from symbolic_evaluator import Verdict
     from symbolic_evaluator.evaluator import SymbolicEvaluator
-    from symbolic_evaluator import Verdict  # type: ignore
 
     now = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
     buf = FakeBuffer()
@@ -113,10 +129,17 @@ def test_window_sum_handles_missing_metric_path() -> None:
     for i in range(3):
         buf.add("subj", now - timedelta(seconds=i + 1), {"x": 1})
 
-    rule = {"id": "r", "track": "symbolic",
-            "predicate": {"operator": "window_sum", "metric": "y.value", "seconds": 30, "op": "lte", "value": 10}}
-    telemetry = {"subject": "subj", "telemetry_id": "t",
-                 "timestamp": now.isoformat(), "measurement": {"x": 1}}
+    rule = {
+        "id": "r",
+        "track": "symbolic",
+        "predicate": {"operator": "window_sum", "metric": "y.value", "seconds": 30, "op": "lte", "value": 10},
+    }
+    telemetry = {
+        "subject": "subj",
+        "telemetry_id": "t",
+        "timestamp": now.isoformat(),
+        "measurement": {"x": 1},
+    }
     d = _run(SymbolicEvaluator().aevaluate(rule, telemetry, buffer=buf, as_of=now))
     # Missing metric path → NULL_UNMAPPED, not silent CLEAR
     assert d.verdict == Verdict.NULL_UNMAPPED
@@ -126,17 +149,30 @@ def test_window_sum_handles_missing_metric_path() -> None:
 def test_window_avg_at_boundary_is_clear() -> None:
     """Boundary case: avg exactly equal to limit with `lte` is CLEAR, not FLAG."""
     _setup_path()
+    from symbolic_evaluator import Verdict
     from symbolic_evaluator.evaluator import SymbolicEvaluator
-    from symbolic_evaluator import Verdict  # type: ignore
 
     now = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
     buf = FakeBuffer()
     for v in (90, 100, 110):
         buf.add("subj", now - timedelta(seconds=v), {"so2": {"value": v}})
 
-    rule = {"id": "r", "track": "symbolic",
-            "predicate": {"operator": "window_avg", "metric": "so2.value", "seconds": 200, "op": "lte", "value": 100}}
-    telemetry = {"subject": "subj", "telemetry_id": "t",
-                 "timestamp": now.isoformat(), "measurement": {"so2": {"value": 110}}}
+    rule = {
+        "id": "r",
+        "track": "symbolic",
+        "predicate": {
+            "operator": "window_avg",
+            "metric": "so2.value",
+            "seconds": 200,
+            "op": "lte",
+            "value": 100,
+        },
+    }
+    telemetry = {
+        "subject": "subj",
+        "telemetry_id": "t",
+        "timestamp": now.isoformat(),
+        "measurement": {"so2": {"value": 110}},
+    }
     d = _run(SymbolicEvaluator().aevaluate(rule, telemetry, buffer=buf, as_of=now))
     assert d.verdict == Verdict.CLEAR

@@ -9,6 +9,7 @@ Reads one JSON object per line from PATH and POSTs each to the sidecar's
 client-side — the architecture forbids the producer telling the engine
 which rule to apply (B4.3 Tag Registry).
 """
+
 from __future__ import annotations
 
 import argparse

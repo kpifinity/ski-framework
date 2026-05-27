@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any, Optional
 
-
 _WHITESPACE_RE = re.compile(r"\s+")
 
 
@@ -25,13 +24,11 @@ class TagRegistry:
         self._mapping = dict(mapping)
 
     @classmethod
-    def from_knowledge_graph(cls, kg: Any) -> "TagRegistry":
+    def from_knowledge_graph(cls, kg: Any) -> TagRegistry:
         return cls.from_dict(kg.tag_registry, kg.rules)
 
     @classmethod
-    def from_dict(
-        cls, tag_registry: dict[str, str], rules: list[dict[str, Any]]
-    ) -> "TagRegistry":
+    def from_dict(cls, tag_registry: dict[str, str], rules: list[dict[str, Any]]) -> TagRegistry:
         rule_index = {r.get("id"): r for r in rules if r.get("id")}
         compiled: dict[str, dict[str, Any]] = {}
         for raw_subject, rule_id in tag_registry.items():
@@ -40,8 +37,7 @@ class TagRegistry:
                 # KG validators should have caught this. Refuse to silently
                 # ignore — a missing rule binding is a KG compilation bug.
                 raise ValueError(
-                    f"Tag Registry references rule_id {rule_id!r} which is "
-                    f"not present in the KG's rule set."
+                    f"Tag Registry references rule_id {rule_id!r} which is not present in the KG's rule set."
                 )
             compiled[_normalise(raw_subject)] = rule
         return cls(compiled)

@@ -13,15 +13,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Optional, Protocol
+from typing import Any, Callable, Optional, Protocol
 
 # Use the verdict taxonomy from the SKI Model package. Falls back to a
 # local definition if symbolic_evaluator is imported standalone (e.g.
 # in unit tests that don't load the runtime package).
+#
+# The ``as Verdict`` alias on the import is the PEP 484 explicit-re-export
+# form; mypy's --no-implicit-reexport needs it so symbolic_evaluator's
+# ``__init__.py`` can in turn re-export Verdict.
 try:
-    from ski_model.verdicts import Verdict  # type: ignore
+    from ski_model.verdicts import Verdict as Verdict
 except ImportError:  # pragma: no cover
-
     from enum import Enum
 
     class Verdict(str, Enum):  # type: ignore
@@ -69,12 +72,12 @@ _TEMPORAL_OPS = {"since_last", "debounce"}
 _STATEFUL_OPS = _WINDOW_OPS | _TEMPORAL_OPS
 
 # Mapping of comparison short-code to a comparator function.
-_COMPARATORS = {
+_COMPARATORS: dict[str, Callable[[float, float], bool]] = {
     "lte": lambda a, b: a <= b,
-    "lt":  lambda a, b: a < b,
+    "lt": lambda a, b: a < b,
     "gte": lambda a, b: a >= b,
-    "gt":  lambda a, b: a > b,
-    "eq":  lambda a, b: a == b,
+    "gt": lambda a, b: a > b,
+    "eq": lambda a, b: a == b,
 }
 _COMPARATOR_SYMBOL = {"lte": "≤", "lt": "<", "gte": "≥", "gt": ">", "eq": "=="}
 
@@ -124,9 +127,10 @@ class SymbolicEvaluator:
                     "telemetry buffer. Use evaluator.aevaluate(..., buffer=...) instead."
                 ),
             )
-        if isinstance(rule.get("predicate"), dict) and rule["predicate"].get(
-            "requires_recent_within_seconds"
-        ) is not None:
+        if (
+            isinstance(rule.get("predicate"), dict)
+            and rule["predicate"].get("requires_recent_within_seconds") is not None
+        ):
             return SymbolicDecision(
                 verdict=Verdict.DISCRETIONARY,
                 reasoning=(
@@ -222,9 +226,7 @@ def _evaluate_stateless(rule: dict[str, Any], telemetry: dict[str, Any]) -> Symb
     if observed is None:
         return SymbolicDecision(
             verdict=Verdict.NULL_UNMAPPED,
-            reasoning=(
-                f"Rule {rule_id!r}: metric {metric_path!r} not present in telemetry."
-            ),
+            reasoning=(f"Rule {rule_id!r}: metric {metric_path!r} not present in telemetry."),
         )
 
     observed_value, observed_unit = _value_and_unit(observed)
@@ -294,7 +296,9 @@ async def _evaluate_stateful(
                         f"{metric_path!r} for {subject!r} in the last {seconds}s."
                     ),
                 )
-            return _compare(rule_id, cmp, result.sum_value, target, label=f"sum({metric_path}) over {seconds}s")
+            return _compare(
+                rule_id, cmp, result.sum_value, target, label=f"sum({metric_path}) over {seconds}s"
+            )
 
         if op == "window_avg":
             if result.avg_value is None:
@@ -305,7 +309,9 @@ async def _evaluate_stateful(
                         f"{metric_path!r} for {subject!r} in the last {seconds}s."
                     ),
                 )
-            return _compare(rule_id, cmp, result.avg_value, target, label=f"avg({metric_path}) over {seconds}s")
+            return _compare(
+                rule_id, cmp, result.avg_value, target, label=f"avg({metric_path}) over {seconds}s"
+            )
 
     if op == "since_last":
         cmp = predicate.get("op", "gte")
@@ -315,8 +321,7 @@ async def _evaluate_stateful(
             return SymbolicDecision(
                 verdict=Verdict.NULL_UNMAPPED,
                 reasoning=(
-                    f"Rule {rule_id}: since_last needs a prior record for {subject!r}; "
-                    "none found in buffer."
+                    f"Rule {rule_id}: since_last needs a prior record for {subject!r}; none found in buffer."
                 ),
             )
         elapsed = (as_of - last_ts).total_seconds()
@@ -432,9 +437,7 @@ def _eval_numeric(
         lo = float(predicate["min"])
         hi = float(predicate["max"])
         ok = lo <= obs <= hi
-        return _bool_to_decision(
-            ok, rule_id, f"{metric_path}={obs} {'in' if ok else 'outside'} [{lo}, {hi}]"
-        )
+        return _bool_to_decision(ok, rule_id, f"{metric_path}={obs} {'in' if ok else 'outside'} [{lo}, {hi}]")
     raise ValueError(f"Unknown numeric operator: {op}")
 
 

@@ -41,9 +41,7 @@ def test_demo_kgs_have_tag_registry(repo_root: Path) -> None:
         assert kg_files, f"Missing demo KG for {sector}."
         for f in kg_files:
             kg = json.loads(f.read_text())
-            assert "tag_registry" in kg and kg["tag_registry"], (
-                f"{f} has no tag_registry — required by B4.3."
-            )
+            assert kg.get("tag_registry"), f"{f} has no tag_registry — required by B4.3."
 
 
 @pytest.mark.level1
@@ -59,6 +57,5 @@ def test_demo_telemetry_has_no_rule_id(repo_root: Path) -> None:
                     continue
                 rec = json.loads(line)
                 assert "rule_id" not in rec, (
-                    f"{jsonl}:{lineno} contains a `rule_id` — "
-                    "the Tag Registry resolves subject→rule. (B4.3)"
+                    f"{jsonl}:{lineno} contains a `rule_id` — the Tag Registry resolves subject→rule. (B4.3)"
                 )

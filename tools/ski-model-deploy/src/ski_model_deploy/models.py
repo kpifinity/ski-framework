@@ -58,7 +58,7 @@ class LedgerConfig(BaseModel):
     dsn_env: str = "LEDGER_DSN"
     hash_algorithm: str = "sha256"
     # Retention is operator policy. Sensible regulated-industry defaults
-    # are 5–10 years; we don't impose a default here so cleanup scripts
+    # are 5-10 years; we don't impose a default here so cleanup scripts
     # cannot quietly destroy required evidence.
     retention_days: Optional[int] = None
     backup_enabled: bool = True

@@ -7,6 +7,7 @@ Checks:
   * Postgres reachability via LEDGER_DSN
   * Ollama backend reachability if SKI_INFERENCE_BACKEND=ollama
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,6 +32,7 @@ def check_postgres(dsn: str) -> Tuple[bool, str]:
         return False, "LEDGER_DSN not set"
     try:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(dsn.replace("postgresql+psycopg://", "postgresql://", 1))
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))

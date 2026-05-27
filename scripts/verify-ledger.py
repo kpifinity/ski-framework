@@ -6,6 +6,7 @@ canonical serialization documented in
 `tools/audit-ledger/src/audit_ledger/canonical.py` and reports any
 divergence. Connects via the LEDGER_DSN environment variable or --dsn.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -13,9 +14,11 @@ import os
 import sys
 
 # Allow running from the repo root without installing the tool.
-sys.path.insert(0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "tools" / "audit-ledger" / "src"))
+sys.path.insert(
+    0, str(__import__("pathlib").Path(__file__).resolve().parents[1] / "tools" / "audit-ledger" / "src")
+)
 
-from audit_ledger.ledger import Ledger  # noqa: E402  (sys.path mutation above)
+from audit_ledger.ledger import Ledger
 
 
 def main() -> int:
@@ -33,8 +36,12 @@ def main() -> int:
     print(f"Total entries:                {result.total_entries}")
     print(f"Sequence range:               {result.sequence_range}")
     print(f"Time range:                   {result.time_range}")
-    print(f"Chain linkage verified:       {result.chain_link_verified_count} / {result.hash_verification_total}")
-    print(f"Entry hash recomputed:        {result.entry_hash_verified_count} / {result.hash_verification_total}")
+    print(
+        f"Chain linkage verified:       {result.chain_link_verified_count} / {result.hash_verification_total}"
+    )
+    print(
+        f"Entry hash recomputed:        {result.entry_hash_verified_count} / {result.hash_verification_total}"
+    )
     print(f"Sequence continuity:          {result.chain_continuity}")
     print(f"Timestamp ordering:           {result.timestamp_ordering}")
     print("\nRecommendation:")
@@ -43,7 +50,9 @@ def main() -> int:
     if result.issues:
         print("\nIssues:")
         for issue in result.issues:
-            print(f"  [{issue.severity}] {issue.issue_type} @ seq={issue.sequence_number}: {issue.description}")
+            print(
+                f"  [{issue.severity}] {issue.issue_type} @ seq={issue.sequence_number}: {issue.description}"
+            )
 
     if not result.is_valid:
         return 1

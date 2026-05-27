@@ -56,9 +56,7 @@ def canonical_measurement_hash(measurement: dict[str, Any]) -> str:
     operators cross-reference buffer rows against ledger entries.
     """
     return hashlib.sha256(
-        json.dumps(measurement, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
-            "utf-8"
-        )
+        json.dumps(measurement, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
     ).hexdigest()
 
 
@@ -72,9 +70,7 @@ class TelemetryBuffer:
 
     def __init__(self, engine: AsyncEngine, *, tenant_id: str = "default") -> None:
         self._engine = engine
-        self._sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(
-            engine, expire_on_commit=False
-        )
+        self._sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expire_on_commit=False)
         self._tenant_id = tenant_id
 
     @property
@@ -102,11 +98,10 @@ class TelemetryBuffer:
         verdict layer.)
         """
         measurement_hash = canonical_measurement_hash(measurement)
-        async with self._sessions() as session:
-            async with session.begin():
-                await session.execute(
-                    text(
-                        """
+        async with self._sessions() as session, session.begin():
+            await session.execute(
+                text(
+                    """
                         INSERT INTO telemetry_buffer (
                             tenant_id, subject, telemetry_id, telemetry_ts,
                             measurement, measurement_hash
@@ -115,16 +110,16 @@ class TelemetryBuffer:
                             CAST(:measurement AS JSONB), :measurement_hash
                         )
                         """
-                    ),
-                    {
-                        "tenant_id": self._tenant_id,
-                        "subject": subject,
-                        "telemetry_id": telemetry_id,
-                        "telemetry_ts": telemetry_ts,
-                        "measurement": json.dumps(measurement),
-                        "measurement_hash": measurement_hash,
-                    },
-                )
+                ),
+                {
+                    "tenant_id": self._tenant_id,
+                    "subject": subject,
+                    "telemetry_id": telemetry_id,
+                    "telemetry_ts": telemetry_ts,
+                    "measurement": json.dumps(measurement),
+                    "measurement_hash": measurement_hash,
+                },
+            )
 
     # ------------------------------------------------------------------
     # Query path — window predicates
@@ -261,7 +256,8 @@ class TelemetryBuffer:
                     },
                 )
             ).one()
-        return row[0]
+        result: Optional[datetime] = row[0]
+        return result
 
     async def has_fresh_sample(
         self,
