@@ -133,6 +133,24 @@ referenced from each release entry.
   (Ruff, Pylance, mypy, Even Better TOML, YAML, EditorConfig, GitHub
   Actions, Mermaid). Forwards ports 8000 / 8001 / 5432 / 8765.
 
+### Added (direction)
+- **[RFC 0002 — SKI v3.0: Neuro-Symbolic Pivot](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)**
+  drafted. Proposes inverting the runtime so a sovereign KG-grounded
+  LLM is the primary reasoner on every verdict and the existing
+  Symbolic Evaluator becomes an independent verifier of the LLM's
+  output. Elevates the Knowledge Graph from routing table to typed
+  semantic substrate (typed obligations, jurisdictional scope,
+  effective-date intervals, exemptions, precedent edges). Replaces
+  *deterministic replay* with *verifiable provenance* (signed model
+  weights, signed KG version, signed LLM transcript, KG citations,
+  hash-chained verifier results) as the v3 defensibility story.
+  Aligns the implementation with the framework's name. **Status:
+  Draft (14-day feedback window open).** Subsequent PRs (rewrite of
+  public-facing positioning, spec v3.0 document, KG schema upgrade,
+  runtime inversion, audit-trail expansion, canary repurpose, tag
+  registry repurpose, conformance reorganization) are sequenced in
+  the RFC's Rollout plan.
+
 ### Planned for v0.3.0
 - Per-shard horizontal scaling (Theme B): shard router, per-tenant
   config wiring through the sidecar, Postgres ledger partitioning,
@@ -140,6 +158,11 @@ referenced from each release entry.
 - Sigstore / cosign image signing and SLSA Level 3 provenance.
 - Additional LLM backends behind a uniform interface: vLLM, llama.cpp,
   Bedrock, Vertex.
+
+### Planned for v3.0.0
+- The v3 pivot, per [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md).
+  v2.x ledger entries remain readable; v3.0 ships a flagged dual-runtime
+  for one minor version before the v3 path becomes default.
 
 ## [0.2.1] - 2026-05-25
 
