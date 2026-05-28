@@ -19,6 +19,15 @@ See [Governance](../governance.md) for the full process.
   — Authoritative-clock semantics, telemetry buffer, deterministic
   replay. Landed in v0.2.0.
 
+## Draft
+
+- [RFC 0002 — SKI v3.0: Neuro-Symbolic Pivot](0002-v3-neuro-symbolic-pivot.md)
+  — Inverts the runtime: KG-grounded sovereign LLM as primary reasoner,
+  Symbolic Evaluator repositioned as an independent verifier of the LLM's
+  output, Knowledge Graph elevated from routing table to typed semantic
+  substrate. Replaces *deterministic replay* with *verifiable provenance*
+  as the defensibility story. Target: v3.0.0.
+
 ## Templates
 
 - [Template (RFC 0000)](0000-template.md)
