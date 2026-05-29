@@ -1,220 +1,112 @@
 # SKI Framework
 
-> **Sovereign Knowledge Intelligence** — An open architecture for deterministic AI compliance monitoring in regulated industries.
+> **Sovereign Knowledge Intelligence** — an open neuro-symbolic architecture for AI compliance in regulated industries.
 
-> **⚠ STATUS: ALPHA (v0.2.0).** The specification is stable at v2.1. The reference implementation and tools in this repository are *pre-production* quality: v0.2.0 closes stateful evaluation (telemetry buffer + `NULL_STALE`) and ships the deterministic-replay primitive, but production-track concerns (horizontal scaling, Kubernetes operator, Level 3 assurance) remain on the v0.3.0 / v0.4.0 roadmap below. Treat this repo as an executable companion to the specification, not a turnkey product. See [CHANGELOG.md](./CHANGELOG.md) for what shipped in each release.
+> **STATUS.** The framework is pivoting from v2.1 (rule-engine-with-LLM-fallback, the code currently on `main`) to v3.0 (KG-grounded sovereign LLM as the primary reasoner, Symbolic Evaluator repositioned as an independent verifier). The architectural direction is in [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md), accepted as Draft 2026-05-27 with a 14-day feedback window. The released artefacts (v0.2.x) implement v2.1; v3.0 lands across PRs 8–14 per the RFC's rollout plan. See [CHANGELOG.md](./CHANGELOG.md) for what shipped and what's planned.
 
 [![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
 [![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
-[![Specification](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
+[![Spec (released)](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
+[![Spec (in design)](https://img.shields.io/badge/Next-v3.0%20RFC%200002-orange.svg)](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)
 [![Release](https://img.shields.io/badge/Release-v0.2.1-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v0.2.1)
 [![Docs](https://img.shields.io/badge/Docs-MkDocs%20Material-blue.svg)](https://kpifinity.github.io/ski-framework/)
-[![Status](https://img.shields.io/badge/Status-alpha-orange.svg)](./CHANGELOG.md)
 
-## What is SKI?
+## What SKI is
 
-SKI is an open-source framework that enables **real-time, deterministic, auditable AI compliance monitoring** in environments where regulatory requirements, operational risk, and audit defensibility are non-negotiable.
+SKI is an open neuro-symbolic compliance system designed for regulated industries — energy, finance, manufacturing, defense — where every automated decision must be defensible to an auditor, a regulator, or a court. The framework's name decomposes into three pillars, each load-bearing:
 
-Unlike general-purpose AI systems, SKI is purpose-built to solve a specific problem: regulated industries (energy, finance, manufacturing, defense) cannot adopt AI in core operational systems because existing solutions don't satisfy four non-negotiable requirements:
+**Sovereign.** Every component of evaluation runs on the customer's own infrastructure. Model weights, knowledge graph, evaluator, verifier, ledger, and signing keys never leave the deployment perimeter. The reference deployment uses a local LLM runtime (Ollama, vLLM, or llama.cpp on customer hardware); there are no external API calls during evaluation. The EU AI Act (broadly enforceable from 2026-08-02), DORA, and equivalent regulations in other jurisdictions are turning this from a preference into a legal requirement.
 
-1. **Determinism** — Same input always produces the same verdict, every time.
-2. **Sovereignty** — Operational data never leaves the organization's infrastructure.
-3. **Auditability** — Every verdict traces directly to a specific regulation.
-4. **Human Primacy** — AI supports human judgment, never replaces it.
+**Knowledge.** SKI's Knowledge Graph is the framework's brain, not a routing table. In v3 it is a typed semantic substrate: every obligation has a structured operand and jurisdictional scope, every exemption is a first-class edge, every definition is resolvable, every node carries a citation back to the originating regulation. The KG is human-reviewed in Phase 1 (offline compilation by `kg-extractor` and `kg-validator`) and signed; the runtime refuses to load an unsigned KG.
 
-SKI satisfies all four through a two-phase architecture: offline Knowledge Graph compilation (probabilistic) plus runtime evaluation (deterministic, sovereign, and air-gap capable). The runtime is a hybrid of a deterministic **Symbolic Evaluator** (Track 1) and a bounded local **SKI Model** (Track 2) gated by a governed **Tag Registry**.
+**Intelligence.** A sovereign local LLM is the primary reasoner on every verdict. It is grounded in the relevant slice of the Knowledge Graph (typed obligations, definitions, exemptions, precedent), runs with temperature=0 and structured-generation constraints, and emits a verdict together with reasoning, KG citations, and a structured set of formalizable assertions. A separate Symbolic Verifier independently checks the formalizable subset (numeric bounds, set membership, temporal windows) and records its result alongside the LLM's. Disagreement is a first-class signal, not an error.
 
----
+The output is a **verifiable verdict**: every downstream auditor can reconstruct exactly how the decision was produced (which model weights, which KG version, which prompt template, which decoder seed, which KG citations, which symbolic checks) and re-verify each step. Defensibility in 2026 is provenance, not bit-identical determinism — and provenance is what SKI gives you.
+
+## How SKI differs from a rule engine and from a generic LLM chatbot
+
+A rule engine is fast and easy to audit but cannot reason about the language of an actual regulation. A frontier-model chatbot can interpret regulation but ships data to a vendor, cannot prove how a decision was made, and is not certifiable. SKI sits between: an LLM reasons over a curated, signed knowledge graph that captures the regulation's structure; a symbolic verifier catches the subset the LLM can hallucinate on; every step is signed and chained into an append-only ledger. Each pillar is non-negotiable. Remove sovereignty and you cannot deploy in a regulated environment. Remove the knowledge graph and the LLM has no ground truth. Remove the symbolic verifier and an LLM can hallucinate a `CLEAR` verdict on a value that is plainly over the limit.
 
 ## Documentation
 
-Full documentation is published at **<https://kpifinity.github.io/ski-framework/>** — searchable, with architecture diagrams, a glossary of regulatory + framework terms, the governance model, the threat model, RFCs, and a 10-minute newcomer tutorial.
+Full documentation is published at **<https://kpifinity.github.io/ski-framework/>** — searchable, with the architecture overview, a glossary of regulatory and framework terms, the governance model, the threat model, RFCs (including [RFC 0002 — SKI v3 Neuro-Symbolic Pivot](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)), and a 10-minute newcomer tutorial.
 
 For the source of those pages, see [`docs/`](./docs/) in this repository.
 
----
-
 ## What's in this repository
 
-This is the **open** half of the SKI ecosystem:
+This repository is the open half of the SKI ecosystem. The commercial half (Knowledge Graph libraries for specific industries, certified MCP connectors, managed implementation services) lives behind [KpiFinity](https://kpifinity.com).
 
-```
-ski-framework/
-├── docs/                          Specification documents (CC BY 4.0)
-├── reference-implementation/      Reference Phase 2 runtime (Apache 2.0)
-│   ├── src/
-│   │   ├── ski_model/             SKI Model service (Track 2 wrapper)
-│   │   ├── symbolic_evaluator/    Symbolic Evaluator (Track 1)
-│   │   ├── tag_registry/          Tag Registry (B4.3)
-│   │   ├── ledger/                Append-only audit ledger schema
-│   │   └── sidecar/               Read-only telemetry intake
-│   ├── docker-compose.yml         Ollama + Postgres + Prometheus + Grafana
-│   └── ...
-├── tools/                         CLI tools (Apache 2.0)
-│   ├── kg-extractor/              Phase 1: extract rules from regulations
-│   ├── kg-validator/              Phase 1: human-expert validation
-│   ├── ski-model-deploy/          Phase 2: deploy and verify a Knowledge Graph
-│   └── audit-ledger/              Verify, export, back up the ledger
-├── examples/                      DEMO-ONLY illustrative KGs and telemetry
-├── conformance/                   SKI conformance test suite (Apache 2.0)
-└── scripts/                       Setup, deploy, cleanup helpers
-```
+The repo layout is:
 
-The **commercial** half (Knowledge Graph libraries for energy, finance, manufacturing, defense; certified MCP connectors; managed implementation services) lives behind [KpiFinity](https://kpifinity.com) and is not present in this repository.
+- `docs/` — Specification documents (CC BY 4.0), architecture, RFCs, threat model, governance.
+- `reference-implementation/` — Phase 2 runtime (Apache 2.0): the SKI Model service, the Symbolic Evaluator / Verifier, the Tag Registry, the audit ledger schema, and the read-only telemetry sidecar.
+- `tools/` — Four CLI tools (Apache 2.0): `kg-extractor` (extract candidate rules from regulatory documents), `kg-validator` (human-in-the-loop validation), `ski-model-deploy` (sign and deploy a Knowledge Graph), `audit-ledger` (verify, export, back up the ledger).
+- `examples/` — Demo-only illustrative KGs and telemetry. Never production-grade.
+- `conformance/` — The SKI conformance test suite (Apache 2.0): Level 1 / 2 / 3 tests that any implementation can be run against.
+- `scripts/` — Setup, deploy, and cleanup helpers.
 
----
+## Quick start (v0.2.x / v2.1 reference implementation)
 
-## Quick start
+The instructions below run the currently-released code, which implements v2.1. The v3 runtime lands incrementally per the [RFC 0002 rollout plan](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md); when v3.0 ships, this section will be updated to reflect the inverted runtime.
 
-> The reference implementation runs entirely **on-premise**. It does not require — and by default does not have — any cloud API key. Inference is performed by a local LLM runtime (Ollama). An optional "demo" backend can call the Anthropic API, but it is **non-conformant** and clearly labelled as such.
+The reference implementation runs entirely on-premise. It does not require — and by default does not have — any cloud API key. Inference is performed by a local LLM runtime (Ollama). An optional "demo" backend can call the Anthropic API; it is non-conformant and clearly labelled as such.
 
-```bash
-git clone https://github.com/kpifinity/ski-framework.git
-cd ski-framework
+To run the stack: clone the repo, run `./scripts/setup.sh` to generate TLS certificates and write a `.env` file, start the Ollama container, pull the default open-weights model (`qwen2.5:7b-instruct`), bring up the rest of the stack with `docker compose`, send a sample telemetry record from `examples/`, and verify the audit ledger. The full walkthrough is in [reference-implementation/QUICKSTART.md](./reference-implementation/QUICKSTART.md). Production-track guidance is in [reference-implementation/docs/DEPLOYMENT.md](./reference-implementation/docs/DEPLOYMENT.md).
 
-# 1. Generate strong secrets and TLS certs, then write .env.
-./scripts/setup.sh
+## Architecture
 
-# 2. Pull the small open-weights model used by the reference impl.
-docker compose -f reference-implementation/docker-compose.yml up -d ollama
-docker exec ski-ollama ollama pull qwen2.5:7b-instruct
+**v2.1 (released).** Two phases. Phase 1 is compilation: regulatory documents are processed by `kg-extractor` (LLM-assisted) and then by `kg-validator` (human-reviewed) to produce a signed Knowledge Graph and a Tag Registry. Phase 2 is runtime: telemetry arrives at the SKI Model service, the Tag Registry dispatches a rule to either the Symbolic Evaluator (Track 1, deterministic) or the bounded local LLM (Track 2), and the verdict is hash-chained into the append-only audit ledger. The default for any rule is Track 1; Track 2 is the escape hatch for rules that resist formalization. This is described in full in [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
 
-# 3. Start the full stack.
-docker compose -f reference-implementation/docker-compose.yml up -d
+**v3.0 (in design per RFC 0002).** The Track 1 / Track 2 split dissolves. Every verdict takes the same path: telemetry arrives, the KG is queried for the typed semantic slice relevant to the rule, the local LLM evaluates against that slice with structured-generation constraints, the Symbolic Verifier independently checks the formalizable subset, and the ledger records the full provenance — signed LLM transcript, model weight hash, KG version hash, KG citations, verifier result. The audit story moves from "deterministic replay of a rule engine" to "verifiable provenance of a neuro-symbolic decision" — the stronger defensibility story for 2026. The full proposal, alternatives considered, threat-model deltas, and rollout plan are in [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md).
 
-# 4. Send a sample telemetry record (uses the demo KG in examples/).
-python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl
+## Verdicts
 
-# 5. Verify the audit ledger.
-python scripts/verify-ledger.py
-```
-
-See [reference-implementation/QUICKSTART.md](./reference-implementation/QUICKSTART.md) for the full walkthrough and [reference-implementation/docs/DEPLOYMENT.md](./reference-implementation/docs/DEPLOYMENT.md) for production-track guidance.
-
----
-
-## Architecture at a glance
-
-```
-┌──── PHASE 1: COMPILATION (outside sovereign boundary) ────┐
-│  Regulatory docs → kg-extractor → kg-validator (human)    │
-│  → signed Knowledge Graph + Tag Registry                   │
-└────────────────────────────────────────────────────────────┘
-                            │
-                  one-way boundary crossing
-                            │
-┌──── PHASE 2: RUNTIME (inside sovereign boundary) ─────────┐
-│  Telemetry → Sidecar → SKI Model service                   │
-│      │                                                      │
-│      ├── Tag Registry resolves subject → rule               │
-│      ├── Track 1 → Symbolic Evaluator (deterministic)       │
-│      └── Track 2 → bounded local LLM (temperature 0, seed)  │
-│                                                              │
-│  Verdict ∈ { CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE,         │
-│              DISCRETIONARY }                                 │
-│      │                                                      │
-│      └── append-only audit ledger (hash chained)            │
-└────────────────────────────────────────────────────────────┘
-```
-
-See [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) for the full picture.
-
----
-
-## Verdicts (v2.1)
-
-SKI produces exactly five verdict types. No scores, no confidence intervals, no probabilistic ranges (B3.1).
+SKI produces exactly five verdict types. No scores, no confidence intervals, no probabilistic ranges. The taxonomy is preserved across v2.1 and v3.
 
 | Verdict | Meaning | Action |
-|---------|---------|--------|
+|---|---|---|
 | **CLEAR** | Applicable rules evaluated; no compliance issue detected | Normal operation; logged to audit ledger |
 | **FLAG** | A compliance rule has been breached | Escalate to designated human reviewer; create incident |
-| **NULL_UNMAPPED** | Telemetry subject is not present in the Tag Registry | Document in Coverage Register; expand KG |
+| **NULL_UNMAPPED** | Telemetry subject is not present in the Knowledge Graph | Document in Coverage Register; expand KG |
 | **NULL_STALE** | Rule matched but its time-window predicate has expired | Investigate upstream freshness; expand KG buffer |
 | **DISCRETIONARY** | Rule applies but requires qualified human judgment | Route to compliance expert for decision |
 
----
+In v3 the verdict envelope is extended with the LLM transcript reference, KG citations, formalizable assertions, the symbolic verifier's per-assertion result, and model provenance metadata. The five-value taxonomy itself is unchanged.
 
 ## Components
 
-### Specification (CC BY 4.0)
-- Two-phase architecture, three axioms, three pillars
-- Knowledge Graph schema and Tag Registry requirements
-- SKI Model selection, configuration, determinism enforcement controls
-- Data integration and sidecar patterns
-- Audit ledger specification with canonical serialization
-- Governance, conformance levels, and audit requirements
+The specification under `docs/` defines the architecture, the Knowledge Graph schema, the Tag Registry requirements (v2.1) or risk-tier governor requirements (v3 in design), the SKI Model determinism enforcement controls, the data integration and sidecar patterns, and the audit ledger canonical serialization. It is CC BY 4.0.
 
-### Reference implementation (Apache 2.0, alpha)
-- ✅ Symbolic Evaluator (Track 1)
-- ✅ SKI Model wrapper (Track 2) with Ollama backend
-- ✅ Tag Registry as a first-class governed artifact
-- ✅ Knowledge Graph signature verification (Ed25519)
-- ✅ Append-only audit ledger with database-level triggers
-- ✅ Determinism canary
-- ✅ Stateful evaluation buffer with NULL_STALE routing (v0.2.0)
-- ✅ Deterministic replay primitive — `audit-ledger replay` (v0.2.0)
-- ⏳ Kubernetes manifests — planned for v0.3.0
-- ⏳ Per-shard horizontal scaling — planned for v0.3.0
+The reference implementation under `reference-implementation/` includes the Symbolic Evaluator (Track 1 in v2.1; Symbolic Verifier in v3), the SKI Model wrapper with Ollama backend, the Tag Registry, the signed-KG loader (Ed25519), the append-only audit ledger with database-level triggers, the determinism canary (repurposed in v3 to monitor neuro-symbolic agreement), and a Postgres-backed stateful evaluation buffer with `NULL_STALE` routing and deterministic replay. Kubernetes manifests and horizontal scaling are planned for v0.3.0.
 
-### Tools (Apache 2.0, alpha)
-- `kg-extractor` — extract rules from regulatory docs (multiple LLM backends)
-- `kg-validator` — every rule is human-reviewed; no auto-approval
-- `ski-model-deploy` — refuses to load unsigned KGs
-- `audit-ledger` — real hash recomputation; real `pg_dump` backup
+The four CLI tools under `tools/` cover the framework's lifecycle: `kg-extractor` reads regulatory documents and emits structured rule candidates; `kg-validator` runs the human-in-the-loop validation; `ski-model-deploy` refuses to load unsigned KGs; `audit-ledger` performs real hash recomputation and uses real `pg_dump` for backups.
 
-### Conformance test suite (Apache 2.0)
-- Black-box tests for Level 1 / Level 2 / Level 3 conformance
-- Each test cites the spec section it validates
-- Runnable against any implementation
+The conformance test suite under `conformance/` defines Level 1 / 2 / 3 conformance as runnable black-box tests. Each test cites the specification section it validates. v3 reorganizes the levels around verifiable provenance (see RFC 0002 §Conformance implications).
 
-### Knowledge Graph libraries (proprietary — KpiFinity)
-- Energy, Finance, Manufacturing, Defense — not in this repo.
-- See [KpiFinity](https://kpifinity.com) for licensing and professional services.
-
----
+The Knowledge Graph libraries for specific industries (energy, finance, manufacturing, defense) are proprietary and licensed separately by [KpiFinity](https://kpifinity.com).
 
 ## Conformance levels
 
-The framework defines three executable conformance levels. The repository's [`conformance/`](./conformance) directory contains the test suite that decides whether an implementation can claim a given level.
-
-| Level | Focus | Test scope |
+| Level | v2.1 focus | v3 focus (per RFC 0002) |
 |---|---|---|
-| **Level 1 Foundational** | Determinism, signature verification, ledger integrity | Single-domain happy path |
-| **Level 2 Managed** | Multi-domain, Tag Registry coverage, NULL_UNMAPPED handling | Multi-KG + Coverage Register |
-| **Level 3 Assured** | Determinism canary, append-only enforcement, third-party verifiability | Tamper-resistance under adversarial inputs |
+| **Level 1 Foundational** | Determinism, signature verification, ledger integrity | Adds: KG typed-obligations present, verdict envelope carries provenance, sovereignty enforced |
+| **Level 2 Managed** | Multi-domain, Tag Registry coverage, NULL_UNMAPPED handling | Adds: neuro-symbolic agreement rate threshold, jurisdictional resolution, v3 replay verification |
+| **Level 3 Assured** | Determinism canary, append-only enforcement, third-party verifiability | Adds: SLSA attestation endpoint, CommitLLM-style verifiable inference receipts, human attestation tokens for high-tier rules |
 
-See [docs/CONFORMANCE.md](./docs/CONFORMANCE.md) for the methodology and [conformance/README.md](./conformance/README.md) for runnable tests.
-
----
+See [docs/CONFORMANCE.md](./docs/CONFORMANCE.md) for the v2.1 methodology and [conformance/README.md](./conformance/README.md) for runnable tests. The v3 reorganization lands in PR 14 of the v3 stream.
 
 ## Security
 
-This is a security-relevant project. Please **do not** open public issues for vulnerabilities. Follow the disclosure process in [SECURITY.md](./SECURITY.md).
+This is a security-relevant project. Please **do not** open public issues for vulnerabilities. Follow the disclosure process in [SECURITY.md](./SECURITY.md). The [threat model](./docs/threat-model.md) enumerates the in-scope threats and the controls that mitigate each; [RFC 0002 §Security implications](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md) extends the model with v3-specific threats (prompt injection via telemetry, KG retrieval poisoning, LLM weight substitution).
 
-Hardening defaults are documented in [reference-implementation/SECURITY_DEFAULTS.md](./reference-implementation/SECURITY_DEFAULTS.md):
-- TLS is enabled by default; self-signed certs are generated by `scripts/setup.sh`.
-- Default passwords are absent; the stack refuses to start without operator-supplied secrets.
-- The audit ledger is append-only at the database layer (Postgres triggers prevent UPDATE/DELETE).
-- The reference implementation makes **no outbound network calls** during inference when the default Ollama backend is used.
-
----
+Hardening defaults are documented in [reference-implementation/SECURITY_DEFAULTS.md](./reference-implementation/SECURITY_DEFAULTS.md): TLS is enabled by default with self-signed certs generated by `scripts/setup.sh`; default passwords are absent and the stack refuses to start without operator-supplied secrets; the audit ledger is append-only at the database layer via Postgres triggers; the reference implementation makes no outbound network calls during inference when the default local backend is used.
 
 ## Contributing
 
-We welcome contributions. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) and please read the [Code of Conduct](./CODE_OF_CONDUCT.md).
+We welcome contributions. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) and please read the [Code of Conduct](./CODE_OF_CONDUCT.md). The [MAINTAINERS](./MAINTAINERS.md) document lists the teams and their areas of ownership. Architectural changes follow the [RFC process](./docs/governance.md) — RFC 0002 is the current example.
 
-```bash
-git clone https://github.com/kpifinity/ski-framework.git
-cd ski-framework
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-pytest
-```
-
-CI runs ruff, mypy, bandit, pip-audit, and the conformance suite on every pull request. See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
-
----
+Local setup is the standard Python workflow: clone the repo, create a virtual environment, install `requirements-dev.txt`, run `pytest`. CI runs ruff, mypy, bandit, pip-audit, the Trivy container scan, the SBOM generator, the CodeQL scanner, and the conformance suite on every pull request. See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
 ## Licensing summary
 
@@ -226,50 +118,25 @@ CI runs ruff, mypy, bandit, pip-audit, and the conformance suite on every pull r
 
 CC explicitly recommends against using CC licenses for software, which is why we split. Apache 2.0 includes the explicit patent grant that regulated-industry adopters typically require.
 
----
-
 ## Roadmap
 
-### v0.1.0-alpha (shipped)
-- Specification at v2.1 ✅
-- Reference implementation: Symbolic Evaluator, SKI Model wrapper (Ollama), Tag Registry, signed-KG loader, append-only ledger ✅
-- Determinism canary ✅
-- Conformance suite: Level 1 tests ✅
-- CI/CD with security scanning ✅
+**v0.1.0-alpha (shipped).** Specification at v2.0. Reference implementation: Symbolic Evaluator, SKI Model wrapper (Ollama), Tag Registry, signed-KG loader, append-only ledger, determinism canary, conformance suite Level 1, CI/CD with security scanning.
 
-### v0.2.0 — Stateful and replayable (current release)
-- Telemetry buffer (Postgres, append-only, per-tenant retention) ✅
-- Five new stateful predicate operators (`window_count`, `window_sum`, `window_avg`, `since_last`, `debounce`) ✅
-- `NULL_STALE` wired end-to-end via `requires_recent_within_seconds` ✅
-- Deterministic replay primitive (`audit-ledger replay`) ✅
-- Conformance suite: Level 2 tests ✅
-- Schema versioning + Alembic migrations ✅
+**v0.2.0 (shipped).** Specification at v2.1. Stateful evaluation: Postgres-backed telemetry buffer, five new stateful predicate operators (`window_count`, `window_sum`, `window_avg`, `since_last`, `debounce`), `NULL_STALE` wired end-to-end, deterministic replay primitive, conformance suite Level 2, schema versioning with Alembic migrations.
 
-### v0.3.0 — Production-track (planned)
-- Per-shard horizontal scaling: shard router, ledger partitioning
-- Kubernetes operator + CRDs (`SkiModelDeployment`)
-- Sigstore / cosign image signing + SLSA Level 3 provenance
-- Additional LLM backends (vLLM, llama.cpp, Bedrock, Vertex) behind the same interface
+**v0.2.1 (shipped).** Patch release: Symbolic Evaluator package now exports `Verdict`, kg-validator now detects contradictory limits driven by the `relation` field.
 
-### v0.4.0 — Assured (planned)
-- Conformance suite: Level 3 tests, tamper-resistance benchmarks
-- TPM-attested model loading
-- KpiFinity-issued conformance certificates
-- Air-gapped deployment playbook
+**v0.3.0 (planned).** Per-shard horizontal scaling, shard router, ledger partitioning, Kubernetes operator + CRDs (`SkiModelDeployment`), Sigstore / cosign image signing with SLSA Level 3 provenance, additional LLM backends behind a uniform interface (vLLM, llama.cpp, Bedrock, Vertex).
 
-### v1.0
-- Long-term-supported reference implementation
-- Conformance-mark issuance via KpiFinity
+**v3.0 (in design, per [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)).** The neuro-symbolic pivot: KG-grounded sovereign LLM as primary reasoner, Symbolic Evaluator repositioned as independent verifier, Knowledge Graph elevated from routing table to typed semantic substrate, verifiable-provenance audit trail. Rolls out across PRs 8–14 of the v3 stream; defaults remain v2 for one minor version before flipping.
 
----
+**v1.0 (long-term).** Long-term-supported reference implementation, conformance-mark issuance via KpiFinity.
 
 ## Citation
 
-A machine-readable citation file is provided ([CITATION.cff](./CITATION.cff)). Human-readable form:
+A machine-readable citation file is provided in [CITATION.cff](./CITATION.cff). Human-readable form:
 
-> KpiFinity Inc. (2026). *SKI Framework v2.1: Sovereign Knowledge Intelligence for Regulated Industries.* Retrieved from <https://skiframework.org>. Specification under CC BY 4.0; reference implementation under Apache 2.0.
-
----
+> KpiFinity Inc. (2026). *SKI Framework: Sovereign Knowledge Intelligence for Regulated Industries — neuro-symbolic compliance with verifiable provenance.* v0.2.1 (specification v2.1; v3.0 in design per RFC 0002). Retrieved from <https://skiframework.org>. Specification under CC BY 4.0; reference implementation under Apache 2.0.
 
 ## About
 

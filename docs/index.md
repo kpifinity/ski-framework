@@ -5,101 +5,144 @@ hide:
 
 # SKI Framework
 
-**Sovereign Knowledge Intelligence** — an open architecture for deterministic
-AI compliance monitoring in regulated industries.
+**Sovereign Knowledge Intelligence** — an open neuro-symbolic architecture for AI compliance in regulated industries.
 
 [![License (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](https://github.com/kpifinity/ski-framework/blob/main/LICENSE)
 [![License (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](https://github.com/kpifinity/ski-framework/blob/main/LICENSE-docs.md)
 [![Release](https://img.shields.io/badge/Release-v0.2.1-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v0.2.1)
-[![Spec](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
+[![Spec (released)](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
+[![Spec (in design)](https://img.shields.io/badge/Next-v3.0%20RFC%200002-orange.svg)](RFCs/0002-v3-neuro-symbolic-pivot.md)
 
-!!! warning "Status: ALPHA (v0.2.1)"
-    The specification is stable at v2.1. The reference implementation and
-    tools are pre-production quality. v0.2.x closes stateful evaluation and
-    deterministic replay; production-track features (horizontal scaling,
-    Kubernetes operator, Level 3 assurance) are on the v0.3 / v0.4 roadmap.
+!!! warning "Status — pivoting from v2.1 (released) to v3.0 (in design)"
+    The released artefacts (v0.2.x) implement specification v2.1: a rule
+    engine with a bounded local LLM as a fallback for unformalizable rules.
+    The framework is pivoting to v3.0 per [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md):
+    a KG-grounded sovereign LLM becomes the primary reasoner on every
+    verdict and the existing Symbolic Evaluator is repositioned as an
+    independent verifier of the LLM's output. The architectural direction
+    is settled; the engineering rollout sequences across PRs 8–14 of the
+    v3 stream. This site reflects v2.1 today; v3 sections are added as
+    each PR lands.
 
 ## Why SKI exists
 
-Regulated industries — energy, finance, manufacturing, defense — cannot
-adopt AI in core operational systems because existing solutions fail on
-four non-negotiable requirements:
+Regulated industries — energy, finance, manufacturing, defense — need AI in
+core operational systems but cannot adopt frontier-model chatbots or
+cloud-hosted compliance APIs. The reasons are non-negotiable: operational
+data cannot leave the deployment perimeter, every decision must trace to
+a specific regulation, the audit story must survive cross-examination,
+and human judgment must remain the final authority. A rule engine
+satisfies the audit requirement but cannot reason about regulatory
+language. A frontier LLM can reason but ships data and cannot prove how
+it decided. SKI is the architecture that meets all four requirements
+simultaneously.
 
 | Pillar | What it means | How SKI delivers it |
 |---|---|---|
-| **Determinism** | Same input always produces the same verdict | Two-phase architecture: probabilistic compilation, deterministic runtime |
-| **Sovereignty** | Operational data never leaves the boundary | Local LLM runtime (Ollama) by default; no cloud calls during inference |
-| **Auditability** | Every verdict traces directly to a regulation | Append-only audit ledger with database-level enforcement |
-| **Human primacy** | AI supports judgment, never replaces it | Five-verdict taxonomy with explicit `DISCRETIONARY` route to humans |
+| **Sovereign** | All evaluation runs on customer infrastructure; no data egress during inference | Local LLM runtime (Ollama, vLLM, or llama.cpp); model weights, KG, and ledger stay on the host |
+| **Knowledge** | Regulations are a typed semantic substrate the system reasons over, not free text | Knowledge Graph with typed obligations, jurisdictional scope, exemptions, precedent, citations |
+| **Intelligence** | An LLM that understands regulatory language, with its reasoning made auditable | KG-grounded local LLM (v3 primary); symbolic verifier on the formalizable subset; signed transcripts |
+| **Human primacy** | AI supports human judgment, never replaces it | Five-verdict taxonomy with explicit `DISCRETIONARY`; high-tier rules require attestation tokens |
 
 ## What you get
 
 <div class="grid cards" markdown>
 
--   :material-flash:{ .lg .middle } **Symbolic Evaluator (Track 1)**
+-   :material-brain:{ .lg .middle } **KG-grounded local LLM (v3 primary)**
 
     ---
 
-    Deterministic predicate evaluation. No LLM in the runtime path for
-    Track 1 rules. Stateful predicates (`window_avg`, `since_last`,
-    `debounce`) operate against a Postgres-backed telemetry buffer.
+    Sovereign local model (Ollama / vLLM / llama.cpp), temperature=0,
+    structured generation. Reads the typed KG slice for each rule;
+    emits a verdict, reasoning, KG citations, and formalizable
+    assertions.
+
+    [:octicons-arrow-right-24: RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md)
+
+-   :material-shield-check:{ .lg .middle } **Symbolic Verifier**
+
+    ---
+
+    Independent cross-check of the LLM's formalizable assertions —
+    numeric bounds, set membership, temporal windows. Disagreement is
+    a first-class signal recorded in the ledger.
 
     [:octicons-arrow-right-24: Architecture](architecture.md)
-
--   :material-database-lock:{ .lg .middle } **Append-only audit ledger**
-
-    ---
-
-    Postgres triggers reject `UPDATE`, `DELETE`, and `TRUNCATE` on
-    `ledger_entries`. Each entry's hash chains to the prior; a third
-    party can independently re-verify the ledger.
-
-    [:octicons-arrow-right-24: Replay docs](replay.md)
-
--   :material-shield-check:{ .lg .middle } **Conformance suite**
-
-    ---
-
-    Black-box tests defining Level 1 / 2 / 3 conformance. Each test
-    cites the spec section it validates. Run against any implementation.
-
-    [:octicons-arrow-right-24: Conformance](conformance.md)
 
 -   :material-file-document-multiple:{ .lg .middle } **Knowledge Graph**
 
     ---
 
-    Compiled, Ed25519-signed, tag-registry-routed rules. Human-reviewed
-    in Phase 1; the runtime refuses to load unsigned KGs by default.
+    Typed semantic substrate: obligations, definitions, exemptions,
+    jurisdictional scope, effective-date intervals, precedent edges.
+    Ed25519-signed; the runtime refuses to load an unsigned KG.
 
     [:octicons-arrow-right-24: KG schema](knowledge-graph.md)
 
+-   :material-database-lock:{ .lg .middle } **Verifiable audit ledger**
+
+    ---
+
+    Postgres triggers reject UPDATE, DELETE, TRUNCATE. Each entry's
+    hash chains to the prior; v3 adds signed LLM transcript, model
+    weight hash, KG version hash, KG citations, verifier result.
+
+    [:octicons-arrow-right-24: Replay docs](replay.md)
+
+-   :material-shield-account:{ .lg .middle } **Conformance suite**
+
+    ---
+
+    Black-box Level 1 / 2 / 3 tests citing the spec section they
+    validate. v3 reorganizes levels around verifiable provenance,
+    neuro-symbolic agreement, and SLSA attestation.
+
+    [:octicons-arrow-right-24: Conformance](conformance.md)
+
+-   :material-gavel:{ .lg .middle } **Governance and RFCs**
+
+    ---
+
+    Lazy-consensus model with named maintainer teams. Architectural
+    changes go through RFCs; the v3 pivot is RFC 0002.
+
+    [:octicons-arrow-right-24: Governance](governance.md)
+
 </div>
 
-## Quick start
+## How SKI differs
 
-```bash
-git clone https://github.com/kpifinity/ski-framework.git
-cd ski-framework
-./scripts/setup.sh
-docker compose -f reference-implementation/docker-compose.yml up -d ollama
-docker exec ski-ollama ollama pull qwen2.5:7b-instruct
-docker compose -f reference-implementation/docker-compose.yml up -d
-python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl --insecure
-```
+A rule engine is fast and easy to audit but cannot reason about an actual
+regulation's language. A frontier-model chatbot can reason but ships data
+to a vendor and cannot prove how a decision was made. SKI sits between:
+an LLM reasons over a curated, signed knowledge graph that captures the
+regulation's structure; a symbolic verifier catches the subset the LLM
+can hallucinate on; every step is signed and chained into an append-only
+ledger. Each pillar is non-negotiable. Remove sovereignty and you cannot
+deploy in a regulated environment. Remove the knowledge graph and the
+LLM has no ground truth. Remove the symbolic verifier and an LLM can
+hallucinate a `CLEAR` verdict on a value that is plainly over the limit.
 
-See [Getting started](getting-started.md) for the full walkthrough, or
-[Your first rule](tutorials/first-rule.md) for a 10-minute newcomer
-tutorial.
+## Quick start (v0.2.x reference implementation)
+
+Today's released code implements v2.1. Clone the repo, run
+`scripts/setup.sh` to generate TLS certificates and a `.env` file, start
+the Ollama container, pull the default open-weights model
+(`qwen2.5:7b-instruct`), bring up the rest of the stack with `docker
+compose`, send a sample telemetry record from `examples/`, and verify
+the audit ledger. The full walkthrough is in [Getting started](getting-started.md);
+the 10-minute newcomer path is in [Your first rule](tutorials/first-rule.md).
+
+The v3 quick start will be added when PR 10 (runtime inversion) lands.
 
 ## Who's behind this
 
-[KpiFinity Inc.](https://kpifinity.com) — Calgary-based technology and
+[KpiFinity Inc.](https://kpifinity.com) — a Calgary-based technology and
 consulting firm specialising in AI governance and compliance automation
 for regulated industries.
 
 The **specification** is permissively licensed (CC BY 4.0) and is open
-to community evolution. The **reference implementation** and **tools** in
-this repository are Apache 2.0. The **Knowledge Graph libraries** for
-energy / finance / manufacturing / defense are proprietary and licensed
-separately by KpiFinity.
+to community evolution. The **reference implementation** and **tools**
+in this repository are Apache 2.0. The **Knowledge Graph libraries**
+for energy, finance, manufacturing, and defense are proprietary and
+licensed separately by KpiFinity.
