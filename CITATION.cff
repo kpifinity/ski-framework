@@ -1,5 +1,5 @@
 cff-version: 1.2.0
-title: "SKI Framework: Sovereign Knowledge Intelligence"
+title: "SKI Framework: Sovereign Knowledge Intelligence — neuro-symbolic AI compliance for regulated industries"
 message: "If you reference the SKI Framework in academic or professional work, please cite as below."
 type: software
 authors:
@@ -10,19 +10,28 @@ authors:
 repository-code: "https://github.com/kpifinity/ski-framework"
 url: "https://skiframework.org"
 abstract: >
-  An open architecture for deterministic, sovereign, auditable AI compliance
-  monitoring in regulated industries. The specification (CC BY 4.0) defines a
-  two-phase architecture; the reference implementation (Apache 2.0) provides
-  a hybrid runtime of a Symbolic Evaluator (Track 1) and a bounded local
-  language model (Track 2) gated by a governed Tag Registry, plus an
-  append-only audit ledger and a determinism canary.
+  An open neuro-symbolic architecture for AI compliance in regulated industries.
+  The specification (CC BY 4.0) defines a sovereign-by-construction runtime in
+  which a knowledge-graph-grounded local language model is the primary reasoner
+  on every verdict and an independent symbolic verifier cross-checks the
+  formalizable subset of each rule. Every verdict carries verifiable
+  provenance: signed model weights, signed knowledge-graph version, signed
+  language-model transcript, knowledge-graph citations, and the symbolic
+  verifier's per-assertion result, all hash-chained into an append-only audit
+  ledger. The released reference implementation (Apache 2.0) currently
+  implements specification v2.1, a hybrid runtime of a Symbolic Evaluator
+  (Track 1) and a bounded local language model (Track 2) gated by a governed
+  Tag Registry; specification v3.0 inverting the runtime is in design per RFC
+  0002 with the rollout scheduled across the upcoming release stream.
 keywords:
   - compliance
   - regulated industries
   - sovereign AI
-  - audit
+  - neuro-symbolic
   - knowledge graph
-  - determinism
+  - verifiable inference
+  - audit defensibility
+  - on-premise LLM
   - SKI Framework
 version: "0.1.0-alpha"
 date-released: "2026-05-22"

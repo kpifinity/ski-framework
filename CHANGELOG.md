@@ -151,7 +151,18 @@ referenced from each release entry.
   registry repurpose, conformance reorganization) are sequenced in
   the RFC's Rollout plan.
 
-### Planned for v0.3.0
+### Changed (positioning)
+- **[README.md](./README.md), [CITATION.cff](./CITATION.cff), and
+  [docs/index.md](./docs/index.md) rewritten** to lead with the v3
+  neuro-symbolic-sovereign framing from RFC 0002. The S/K/I pillars
+  each receive a normative description, the KG is described as a typed
+  semantic substrate rather than a routing table, the LLM is described
+  as the primary reasoner rather than a fallback, and the symbolic
+  layer is described as an independent verifier. The released code
+  (v0.2.x implementing spec v2.1) is explicitly called out so visitors
+  understand which framing matches main today versus which is in
+  design. No engineering changes; tools and conformance docs continue
+  to describe v2.1 until their respective v3 PRs land.
 - Per-shard horizontal scaling (Theme B): shard router, per-tenant
   config wiring through the sidecar, Postgres ledger partitioning,
   Kubernetes operator + CRDs.
