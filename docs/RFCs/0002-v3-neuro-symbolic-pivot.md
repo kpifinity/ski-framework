@@ -35,20 +35,16 @@ v3.0 closes the gap.
 
 ### What v2.1 actually is
 
-v2.1 routes a verdict request by inspecting `rule.track`:
+v2.1 routes a verdict request by inspecting `rule.track` in
+`reference-implementation/src/ski_model/server.py`. The dispatch is a
+two-branch `if/elif`: when `track == "symbolic"` the call goes to
+`state.symbolic_evaluator.aevaluate(...)` and the result is recorded by
+`_record_verdict(...)`; when `track == "llm"` the call goes to
+`state.backend.evaluate(...)` and a parallel `_record_verdict(...)` is
+issued. The `track` field defaults to `"symbolic"` whenever the rule
+omits it.
 
-```python
-# reference-implementation/src/ski_model/server.py
-track = rule.get("track", "symbolic")
-if track == "symbolic":
-    decision = await state.symbolic_evaluator.aevaluate(rule, telemetry, …)
-    return await _record_verdict(verdict=decision.verdict, …)
-if track == "llm":
-    llm_decision = await state.backend.evaluate(rule, telemetry.model_dump())
-    return await _record_verdict(verdict=llm_decision.verdict, …)
-```
-
-`track` defaults to `"symbolic"`. The contributor guide reinforces this:
+The contributor guide reinforces this:
 
 > Track 1 rules MUST be expressible as one of the supported predicates. Rules
 > that require natural-language interpretation must be declared `track: "llm"`
@@ -146,18 +142,28 @@ rather than discarding them.
 
 ### Architecture overview
 
-```mermaid
-flowchart TD
-    A[Telemetry / Evidence] --> B[KG Retrieval]
-    B --> |obligations, definitions,<br/>exemptions, precedent| C[KG-Grounded LLM<br/>sovereign, local,<br/>temperature=0,<br/>structured generation]
-    C --> |verdict + reasoning +<br/>KG citations| D[Symbolic Verifier]
-    D --> |formalizable subset:<br/>numeric bounds, set<br/>membership, temporal<br/>windows, contradictions| E[Audit Ledger]
-    E --> |signed LLM transcript,<br/>model weight hash,<br/>KG version hash,<br/>KG citations,<br/>verifier result,<br/>hash-chained| F[Verifiable<br/>Verdict]
+The v3 runtime is a five-step pipeline, identical for every rule:
 
-    style C fill:#1f4d7a,stroke:#fff,color:#fff
-    style D fill:#2d5e2d,stroke:#fff,color:#fff
-    style E fill:#7a4d1f,stroke:#fff,color:#fff
-```
+1. **Telemetry / Evidence** arrives at the SKI Model service.
+2. **KG Retrieval** pulls the relevant typed semantic slice — obligations,
+   definitions, exemptions, precedent — scoped to the rule's jurisdiction
+   and the telemetry's `as_of` timestamp.
+3. **KG-Grounded LLM** evaluates against that slice (sovereign, local,
+   temperature=0, structured generation). Emits a structured response:
+   `{ verdict, reasoning, kg_citations, formalizable_assertions }`.
+4. **Symbolic Verifier** runs the formalizable subset of the rule
+   independently — numeric bounds, set membership, temporal windows,
+   contradictions — and cross-checks the LLM's assertions.
+5. **Audit Ledger** records the verdict alongside a signed LLM
+   transcript, the model weight hash, the KG version hash, the KG
+   citations the LLM relied on, and the verifier's per-assertion result,
+   all hash-chained.
+
+The output is a **Verifiable Verdict**: every downstream auditor can
+re-derive how the decision was produced and verify each step. (A
+rendered diagram of this pipeline will follow in PR 8 alongside the
+spec; this RFC keeps the description text-only so the mkdocs build
+stays simple.)
 
 Every verdict is produced by the same five-step pipeline. There is no
 `if symbolic else llm` branching at the entry point. Both layers run on
@@ -243,34 +249,34 @@ every verdict is what makes the framework defensible.
 
 ### Verdict envelope
 
-Every verdict in v3 is the same structured envelope, regardless of rule:
+Every verdict in v3 is the same structured envelope, regardless of rule.
+The envelope is a JSON object with the following fields (full schema
+landing in PR 8 alongside the spec):
 
-```json
-{
-  "verdict": "CLEAR | FLAG | NULL_UNMAPPED | NULL_STALE | DISCRETIONARY",
-  "reasoning": "<natural language from LLM>",
-  "kg_citations": [
-    {"node_id": "epa.so2.subpart_a.limit", "version": "v2.1.3", "role": "obligation"},
-    {"node_id": "epa.so2.exemption_a", "version": "v2.1.3", "role": "exemption_considered"}
-  ],
-  "formalizable_assertions": [
-    {"predicate": "lte", "metric": "so2.value", "value": 100, "observed": 87, "satisfied": true}
-  ],
-  "verifier_result": {
-    "status": "AGREED | LLM_CONTRADICTION | NEURO_SYMBOLIC_DIVERGENCE | UNVERIFIABLE",
-    "checked_assertions": 1,
-    "divergences": []
-  },
-  "model_provenance": {
-    "model_weight_hash": "sha256:…",
-    "kg_version_hash": "sha256:…",
-    "prompt_template_id": "ski.v3.evaluate.1",
-    "decoder_seed": 0,
-    "structured_grammar_hash": "sha256:…"
-  },
-  "transcript_ref": "ledger:tenant_id/seq:1234"
-}
-```
+- **`verdict`** — one of `CLEAR`, `FLAG`, `NULL_UNMAPPED`, `NULL_STALE`,
+  `DISCRETIONARY`. The v2.1 five-value taxonomy is preserved.
+- **`reasoning`** — natural-language explanation emitted by the LLM.
+- **`kg_citations`** — an array of `{node_id, version, role}` objects
+  recording which KG nodes the LLM cited (e.g.
+  `epa.so2.subpart_a.limit` with role `obligation`, or
+  `epa.so2.exemption_a` with role `exemption_considered`).
+- **`formalizable_assertions`** — an array of structured assertions the
+  LLM committed to, each of the shape `{predicate, metric, value,
+  observed, satisfied}`. Example: `{predicate=lte, metric=so2.value,
+  value=100, observed=87, satisfied=true}`.
+- **`verifier_result`** — `{status, checked_assertions, divergences}`,
+  where `status` is one of `AGREED`, `LLM_CONTRADICTION`,
+  `NEURO_SYMBOLIC_DIVERGENCE`, or `UNVERIFIABLE`.
+- **`model_provenance`** — `{model_weight_hash, kg_version_hash,
+  prompt_template_id, decoder_seed, structured_grammar_hash}`. The
+  hashes are SHA-256; `prompt_template_id` is a stable identifier such
+  as `ski.v3.evaluate.1`.
+- **`transcript_ref`** — pointer to the full LLM transcript in the
+  ledger transcript store, of the form
+  `ledger:tenant_id/seq:NNNN`.
+
+The `verdict` field keeps the five-value taxonomy from v2.1. Everything
+else is new.
 
 The `verdict` field keeps the five-value taxonomy from v2.1. The rest is new.
 
@@ -342,58 +348,41 @@ A v3 deployment running with `SKI_SOVEREIGNTY=strict` (the default):
 A separate `SKI_SOVEREIGNTY=advisory` mode is provided for development
 and testing only; it logs but does not enforce.
 
-### Pseudocode for the inverted runtime
+### The inverted runtime, step by step
 
-```python
-async def evaluate(rule, telemetry) -> Verdict:
-    # 1. KG retrieval — get the typed semantic slice for this rule.
-    kg_slice = await state.kg.retrieve(
-        subject=telemetry.subject,
-        rule_id=rule["id"],
-        as_of=_parse_telemetry_ts(telemetry.timestamp),
-        jurisdiction=telemetry.jurisdiction,
-    )
+The async `evaluate(rule, telemetry)` entry point in the v3 SKI Model
+service performs five sequential steps and returns a fully-provenanced
+verdict. Full implementation lands in PR 10; the runtime contract is:
 
-    # 2. KG-grounded LLM evaluation.
-    llm_response = await state.llm.evaluate(
-        rule=rule,
-        kg_slice=kg_slice,
-        telemetry=telemetry,
-        prompt_template_id="ski.v3.evaluate.1",
-    )
-    # llm_response = { verdict, reasoning, kg_citations,
-    #                  formalizable_assertions }
-
-    # 3. Symbolic verifier.
-    verifier_result = state.verifier.verify(
-        rule=rule,
-        llm_response=llm_response,
-        kg_slice=kg_slice,
-    )
-
-    # 4. Risk-tier governor (was: Tag Registry).
-    tier = state.risk_governor.tier_for(rule, telemetry)
-    final_verdict = _apply_tier_policy(
-        tier=tier,
-        llm_response=llm_response,
-        verifier_result=verifier_result,
-    )
-    # tier policies:
-    #   - low: accept LLM verdict; verifier divergence is logged.
-    #   - medium: verifier must agree on formalizable assertions.
-    #   - high: verifier must agree AND a human attestation token must
-    #     be present within the configured window.
-
-    # 5. Audit ledger write with full provenance.
-    return await _record_verdict(
-        telemetry=telemetry,
-        verdict=final_verdict,
-        rule=rule,
-        llm_transcript=llm_response.transcript,
-        verifier_result=verifier_result,
-        model_provenance=state.llm.provenance(),
-    )
-```
+1. **KG retrieval.** Call `state.kg.retrieve(subject, rule_id, as_of,
+   jurisdiction)` to fetch the typed semantic slice — obligations,
+   definitions, exemptions, precedent — scoped to the rule and the
+   telemetry's `as_of` timestamp and jurisdiction. The result is the
+   `kg_slice` consumed by the next step.
+2. **KG-grounded LLM evaluation.** Call `state.llm.evaluate(rule,
+   kg_slice, telemetry, prompt_template_id="ski.v3.evaluate.1")`. The
+   response is a structured object with `verdict`, `reasoning`,
+   `kg_citations`, and `formalizable_assertions`.
+3. **Symbolic verifier.** Call `state.verifier.verify(rule, llm_response,
+   kg_slice)` to cross-check the LLM's `formalizable_assertions` against
+   the rule's formalizable subset (numeric bounds, set membership,
+   temporal windows). Returns a `verifier_result` with `status`,
+   `checked_assertions`, and any `divergences`.
+4. **Risk-tier governor.** Call `state.risk_governor.tier_for(rule,
+   telemetry)` to obtain the rule's risk tier, then apply the tier's
+   policy:
+    - **low** — accept the LLM verdict; verifier divergence is logged
+      but does not change the outcome.
+    - **medium** — the verifier must agree with the LLM on the
+      formalizable assertions; otherwise the verdict is downgraded to
+      `DISCRETIONARY` and flagged for review.
+    - **high** — the verifier must agree AND a valid human attestation
+      token must be present within the configured window; otherwise the
+      verdict is held.
+5. **Audit ledger write.** Call `_record_verdict(telemetry,
+   verdict=final_verdict, rule, llm_transcript=llm_response.transcript,
+   verifier_result, model_provenance=state.llm.provenance())` to persist
+   the verdict with full provenance.
 
 There is no `if track == "symbolic"` branch. Every rule takes the same
 path. Rules whose `formalizable_assertions` is empty (genuinely unverifiable

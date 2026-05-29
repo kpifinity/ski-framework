@@ -153,9 +153,11 @@ class Deployer:
         try:
             # Dev-only health probe against self-signed certs. The production
             # path uses SKI_MODEL_CA_CERT pinning in sidecar/main.py.
-            # noqa is for ruff (S501); nosec is for bandit (B501); both
-            # need to be on the verify=False argument line so each tool's
-            # scanner sees the suppression on its triggering token.
+            # Each tool's suppression directive (ruff S501, bandit B501) sits
+            # on the verify=False argument line so the scanner sees it on its
+            # own triggering token. (Phrasing avoids the literal directive
+            # word at column start; ruff RUF100 would otherwise flag this
+            # comment as a misplaced blanket directive.)
             r = httpx.get(
                 f"{endpoint}/api/health",
                 headers=headers,
