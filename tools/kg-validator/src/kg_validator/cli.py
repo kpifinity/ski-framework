@@ -6,9 +6,11 @@ import json
 from typing import Optional
 
 import click
+from pydantic import ValidationError
 
 from .conflict_detector import ConflictDetector
 from .utils import generate_html_report, load_rules, save_validation_result
+from .v3 import V3Validator, load_v3_kg
 from .validator import Validator
 
 
@@ -18,15 +20,33 @@ def main():
 
 
 @main.command()
-@click.option("--input", "-i", required=True, help="Input JSON file with extracted rules")
+@click.option("--input", "-i", required=True, help="Input JSON file with extracted rules or a v3 KG")
 @click.option("--output", "-o", default=None, help="Output JSON file with validation results")
-def validate(input: str, output: Optional[str]):
-    """Validate extracted rules (automated checks only — every rule still
-    needs human approval via the interactive-review workflow).
+@click.option(
+    "--schema",
+    type=click.Choice(["v2", "v3"], case_sensitive=False),
+    default="v2",
+    show_default=True,
+    help=(
+        "KG schema to validate against. v2 (default) is the flat-rule-list shape used by "
+        "v0.2.x releases. v3 is the typed graph defined by spec v3.0 §3 (RFC 0002)."
+    ),
+)
+def validate(input: str, output: Optional[str], schema: str):
+    """Validate a KG against the selected schema.
 
-    v2.1: the `--auto-approve-explicit` flag was REMOVED. Per spec B2.3
-    (Universal Coverage), every rule must be reviewed by a qualified human.
+    v2 default behaviour (unchanged): automated checks on the extracted
+    rule list. Every rule still needs human approval via the
+    interactive-review workflow.
+
+    v3 (``--schema v3``): parse the input as a typed-graph v3 KG and
+    run the spec §3.6 validation passes implemented in
+    :mod:`kg_validator.v3`.
     """
+    if schema.lower() == "v3":
+        _validate_v3(input, output)
+        return
+
     try:
         click.echo(f"Loading rules from: {input}")
         rules = load_rules(input)
@@ -54,10 +74,51 @@ def validate(input: str, output: Optional[str]):
 
     except FileNotFoundError as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
+
+
+def _validate_v3(input_path: str, output_path: Optional[str]) -> None:
+    """v3 validation path. Loads the typed-graph KG and runs §3.6 passes."""
+    try:
+        click.echo(f"Loading v3 KG from: {input_path}")
+        kg = load_v3_kg(input_path)
+    except FileNotFoundError as e:
+        click.echo(f"Error: {e!s}", err=True)
+        raise SystemExit(1) from e
+    except ValidationError as e:
+        click.echo("Schema validation failed:", err=True)
+        click.echo(str(e), err=True)
+        raise SystemExit(2) from e
+
+    click.echo(
+        f"Loaded {len(kg.nodes.rules)} rules, {len(kg.nodes.obligations)} obligations, {len(kg.edges)} edges"
+    )
+
+    result = V3Validator(kg).run()
+
+    click.echo("\nv3 validation complete:")
+    click.echo(f"  Nodes: {result.total_nodes}")
+    click.echo(f"  Edges: {result.total_edges}")
+    click.echo(f"  Issues: {result.total_issues}")
+    if result.total_issues:
+        click.echo("\nIssues by type:")
+        by_type: dict[str, int] = {}
+        for issue in result.issues:
+            key = str(issue.issue_type)
+            by_type[key] = by_type.get(key, 0) + 1
+        for key in sorted(by_type):
+            click.echo(f"  {key}: {by_type[key]}")
+
+    payload = result.model_dump(mode="json")
+    if output_path:
+        with open(output_path, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, indent=2)
+        click.echo(f"\nResults saved to: {output_path}")
+    elif result.total_issues:
+        click.echo("\n" + json.dumps(payload, indent=2))
 
 
 @main.command()
