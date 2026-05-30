@@ -78,6 +78,8 @@ nav:
   - Get started:
       - getting-started.md
       - tutorials/first-rule.md
+  - Specification:
+      - "v3.0 (Draft)": specification-v3.md
   - Architecture:
       - architecture.md
       - knowledge-graph.md
