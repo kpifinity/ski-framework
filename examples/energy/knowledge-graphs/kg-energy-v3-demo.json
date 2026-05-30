@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "name": "Energy demo KG v3",
+    "schema_version": "3.0",
+    "sector": "energy",
+    "description": "DEMO ONLY - minimal illustrative v3 KG for the SKI Framework reference implementation. NOT a production compliance KG. Two rules with typed obligations, jurisdictional scope, effective-date intervals, and citations. Demonstrates spec v3.0 sections 3.1 through 3.5.",
+    "compiled_at": "2026-05-29T00:00:00Z"
+  },
+  "nodes": {
+    "subjects": [
+      {
+        "id": "facility.so2.discharge",
+        "type": "Subject",
+        "version": "v3demo-0001",
+        "name": "Facility SO2 stack discharge",
+        "description": "Sulfur dioxide emissions from a stationary stack source."
+      },
+      {
+        "id": "facility.wastewater.ph",
+        "type": "Subject",
+        "version": "v3demo-0002",
+        "name": "Facility wastewater pH",
+        "description": "Process wastewater pH at the point of discharge."
+      }
+    ],
+    "rules": [
+      {
+        "id": "energy.so2.cap",
+        "type": "Rule",
+        "version": "v3demo-0003",
+        "name": "SO2 emissions cap",
+        "risk_tier": "medium",
+        "description": "Demo rule: stack SO2 must not exceed 100 ppm."
+      },
+      {
+        "id": "energy.wastewater.ph_range",
+        "type": "Rule",
+        "version": "v3demo-0004",
+        "name": "Wastewater pH range",
+        "risk_tier": "low",
+        "description": "Demo rule: wastewater pH must remain between 6.0 and 8.5."
+      }
+    ],
+    "obligations": [
+      {
+        "id": "energy.so2.lte_100ppm",
+        "type": "Obligation",
+        "version": "v3demo-0005",
+        "obligation_type": "must_not_exceed",
+        "metric": "so2_ppm",
+        "value": 100,
+        "unit": "ppm",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "SO2 concentration must not exceed 100 ppm."
+      },
+      {
+        "id": "energy.wastewater.ph_within_6_8_5",
+        "type": "Obligation",
+        "version": "v3demo-0006",
+        "obligation_type": "must_be_within",
+        "metric": "ph",
+        "value": [6.0, 8.5],
+        "unit": "pH",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "Wastewater pH must remain within the range [6.0, 8.5]."
+      }
+    ],
+    "definitions": [],
+    "exemptions": [],
+    "precedents": [],
+    "jurisdictions": [
+      {
+        "id": "us.federal",
+        "type": "Jurisdiction",
+        "version": "v3demo-0007",
+        "name": "United States federal jurisdiction"
+      }
+    ],
+    "citations": [
+      {
+        "id": "cite.caa.40cfr60.2a",
+        "type": "Citation",
+        "version": "v3demo-0008",
+        "source_document": "Demo - illustrative reference to Clean Air Act 40 CFR 60 (NOT a real legal citation)",
+        "source_clause": "60.2(a)"
+      },
+      {
+        "id": "cite.cwa.40cfr136.3",
+        "type": "Citation",
+        "version": "v3demo-0009",
+        "source_document": "Demo - illustrative reference to Clean Water Act 40 CFR 136 (NOT a real legal citation)",
+        "source_clause": "136.3"
+      }
+    ]
+  },
+  "edges": [
+    {"type": "applies_to", "from": "energy.so2.cap", "to": "facility.so2.discharge"},
+    {"type": "applies_to", "from": "energy.wastewater.ph_range", "to": "facility.wastewater.ph"},
+    {"type": "consists_of", "from": "energy.so2.cap", "to": "energy.so2.lte_100ppm"},
+    {"type": "consists_of", "from": "energy.wastewater.ph_range", "to": "energy.wastewater.ph_within_6_8_5"},
+    {"type": "scoped_to", "from": "energy.so2.lte_100ppm", "to": "us.federal"},
+    {"type": "scoped_to", "from": "energy.wastewater.ph_within_6_8_5", "to": "us.federal"},
+    {"type": "cited_by", "from": "energy.so2.lte_100ppm", "to": "cite.caa.40cfr60.2a"},
+    {"type": "cited_by", "from": "energy.wastewater.ph_within_6_8_5", "to": "cite.cwa.40cfr136.3"}
+  ]
+}

@@ -188,6 +188,33 @@ referenced from each release entry.
   licensing policy. Added to the docs site nav under a new
   Specification section.
 
+### Added (tools, v3)
+- **`kg-validator` v3 schema support** added behind a `--schema v3`
+  flag on the existing `validate` command. The v2 path (flat rule
+  list) is unchanged and remains the default. The new
+  `kg_validator.v3` subpackage adds Pydantic v2 models for every v3
+  node and edge type per spec v3.0 §3.1–§3.2 (Subject, Rule,
+  Obligation, Definition, Exemption, Precedent, Jurisdiction,
+  Citation; applies_to, consists_of, defined_by, exempted_by,
+  amended_by, interpreted_by, scoped_to, cited_by), the closed
+  ObligationType enumeration from §3.3, the RiskTier enumeration
+  from §5.4, a JSON loader (`load_v3_kg`), and a `V3Validator`
+  running this first pass of the §3.6 validation suite (duplicate
+  node ids, dangling edges, edge target-type mismatches, rules with
+  no consists_of obligation, orphan obligations). Pydantic-layer
+  rejections cover missing `effective_date_start`, unknown
+  obligation types, unknown risk tiers, and unknown edge types.
+  Deferred to a follow-up: contradictory-obligation detection,
+  date-interval overlaps, cyclic precedent edges, definition-scope
+  checking.
+- **Demo v3 KG** at `examples/energy/knowledge-graphs/kg-energy-v3-demo.json`.
+  Two rules (SO2 cap, wastewater pH range) with typed obligations,
+  jurisdictional scope, and citations; loads and validates clean.
+- **`tools/kg-validator/tests/test_v3_validator.py`** — 20+ tests
+  covering schema rejection, every validation pass, the demo KG,
+  the obligation/edge/risk-tier enumerations against spec, and
+  JSON round-trip.
+
 ### Planned for v0.3.0
 - Per-shard horizontal scaling (Theme B): shard router, per-tenant
   config wiring through the sidecar, Postgres ledger partitioning,
