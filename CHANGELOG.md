@@ -163,6 +163,32 @@ referenced from each release entry.
   understand which framing matches main today versus which is in
   design. No engineering changes; tools and conformance docs continue
   to describe v2.1 until their respective v3 PRs land.
+
+### Added (spec)
+- **[Specification v3.0 (Draft)](./docs/specification-v3.md)** drafted
+  as the normative spec implementations of v3.0 must satisfy.
+  Restates the architecture in MUST/SHOULD/MAY language, defines the
+  Knowledge Graph schema (typed obligations, jurisdictional scope,
+  effective-date intervals, signatures, validation requirements),
+  specifies the verdict envelope (the five-verdict taxonomy is
+  preserved; the envelope is extended with kg_citations,
+  formalizable_assertions, verifier_result, model_provenance,
+  transcript_ref), defines the runtime pipeline, the risk-tier
+  governor with low/medium/high policies, the symbolic verifier's
+  AGREED/LLM_CONTRADICTION/NEURO_SYMBOLIC_DIVERGENCE/UNVERIFIABLE
+  statuses, sovereignty strict and advisory modes, the
+  /api/sovereignty attestation endpoint, the audit-ledger schema and
+  append-only enforcement, the verifiable-inference receipt
+  requirement at Level 3, the provenance re-verification replay
+  procedure, the three conformance levels redefined for verifiable
+  provenance, and the backwards-compatibility plan for v2.x ledger
+  entries, v2.x KGs, and the deprecated `track` field. The
+  specification supersedes v2.1 (external, at skiframework.org); it
+  is published under CC BY 4.0 in line with the project's spec
+  licensing policy. Added to the docs site nav under a new
+  Specification section.
+
+### Planned for v0.3.0
 - Per-shard horizontal scaling (Theme B): shard router, per-tenant
   config wiring through the sidecar, Postgres ledger partitioning,
   Kubernetes operator + CRDs.
