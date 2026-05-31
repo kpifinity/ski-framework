@@ -19,20 +19,25 @@ from typing import Any, Callable, Optional, Protocol
 # local definition if symbolic_evaluator is imported standalone (e.g. in
 # unit tests that do not load the runtime package).
 #
-# The ``as Verdict`` alias on the import is the PEP 484 explicit-re-export
-# form; mypy's --no-implicit-reexport needs it so symbolic_evaluator's
-# ``__init__.py`` can in turn re-export Verdict.
+# ``V3Verdict`` is imported under its native name so mypy treats it as an
+# explicit re-export (PEP 484, --no-implicit-reexport). The module-level
+# ``Verdict = V3Verdict`` alias below is a true module attribute that
+# ``__init__.py`` can re-export. The rewrite to v3 naming throughout the
+# symbolic_evaluator package happens in PR 10c.
 try:
-    from ski_model.v3.envelope import V3Verdict as Verdict
+    from ski_model.v3.envelope import V3Verdict as V3Verdict
 except ImportError:  # pragma: no cover
     from enum import Enum
 
-    class Verdict(str, Enum):  # type: ignore
+    class V3Verdict(str, Enum):  # type: ignore
         CLEAR = "CLEAR"
         FLAG = "FLAG"
         NULL_UNMAPPED = "NULL_UNMAPPED"
         NULL_STALE = "NULL_STALE"
         DISCRETIONARY = "DISCRETIONARY"
+
+
+Verdict = V3Verdict
 
 
 # --------------------------------------------------------------------------
