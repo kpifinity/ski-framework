@@ -4,10 +4,56 @@ All notable changes to this repository are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The **specification** version (currently v2.1) is tracked separately and
+The **specification** version (currently v3.0) is tracked separately and
 referenced from each release entry.
 
 ## [Unreleased]
+
+### Added (runtime, v3 cutover — PR 10b of 3)
+- **`ski_model.v3.evaluator.V3Evaluator`** — the KG-grounded LLM evaluator
+  that produces a `V3VerdictEnvelope` from a measurement and a KG snapshot
+  per spec v3.0 §5. Citations are validated against the snapshot; an LLM
+  that cites a node not in the snapshot has its verdict discarded and
+  replaced with `NULL_UNMAPPED` + verifier status `UNVERIFIABLE`. This is
+  the anti-hallucination floor of the architecture.
+- **`ski_model.v3.evaluator.FakeLLM`** — deterministic backend used by
+  tests and CI. Pattern-matches on the measurement so the evaluator can
+  be exercised end-to-end without secrets or network. Honours the full
+  provenance contract (sha256-prefixed hashes for every field).
+- **`ski_model.v3.evaluator.PROMPT_TEMPLATE`**,
+  **`PROMPT_TEMPLATE_ID="ski.v3.evaluate.1"`**, and
+  **`RESPONSE_GRAMMAR`** — the normative v3 prompt and structured-output
+  schema. Real backends ingest the grammar to enforce envelope shape.
+- **`v3/tests/test_evaluator.py`** (12 tests) and **`v3/tests/test_endpoint.py`**
+  (5 tests) covering happy-path verdicts, provenance population,
+  citation enforcement, unmapped snapshots, ledger persistence, and
+  JSON round-trip.
+
+### Changed (runtime, v3 cutover — PR 10b of 3)
+- **`POST /api/evaluate`** now returns `V3VerdictEnvelope` per spec
+  v3.0 §4. The request model is renamed `MeasurementRecord` and accepts
+  an additional `risk_tier` field (consumed by the symbolic verifier in
+  PR 10c).
+- **`/api/health`** now reports `runtime_version: "v3"`.
+- **`ski_model.__version__`** bumped from `0.1.0-alpha` to `3.0.0-alpha`.
+- **`ski_model.backends`**, **`ski_model.ledger_client`**, and
+  **`symbolic_evaluator.evaluator`** now import the verdict taxonomy from
+  `ski_model.v3.envelope` (`V3Verdict as Verdict`). The taxonomy values
+  are identical to v2.1 — five verdicts, no behavioural change. PR 10c
+  rewrites `symbolic_evaluator` as a true Symbolic Verifier.
+
+### Removed (runtime, v3 cutover — PR 10b of 3)
+- **`ski_model/verdicts.py`** — the v2 `Verdict` enum module. Replaced
+  by `ski_model.v3.envelope.V3Verdict`. The five-verdict taxonomy is
+  preserved at the type level (`V3Verdict as Verdict` aliases).
+- **`ski_model.server.VerdictResponse`** — the v2 envelope wrapper. Its
+  replacement is the spec-normative `V3VerdictEnvelope`.
+- **`ski_model.server.TelemetryRecord`** — renamed `MeasurementRecord`
+  to align with v3 terminology.
+
+### Tagged
+- **`v2.1-final`** — the final commit on the v2.1 architecture before
+  the v3 cutover. Recoverable via `git checkout v2.1-final`.
 
 ### Added (docs)
 - **MkDocs Material documentation site.** Published to GitHub Pages on
