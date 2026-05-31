@@ -9,6 +9,35 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (runtime, v3 — PR 11.7, jurisdiction-scoped KG snapshots)
+- **`KnowledgeGraph.scope_to(jurisdiction, as_of)`** — returns a v3
+  snapshot dict containing only obligations applicable to the tenant's
+  jurisdiction *and* effective at the measurement's timestamp. The
+  returned snapshot carries a ``scope`` block (``jurisdiction``,
+  ``as_of``, ``n_in``, ``n_out``) so the LLM transcript records *what
+  was sent* — auditors can replay the same scope and confirm.
+- **Effective-date scoping** filters on each rule's optional
+  ``effective_date`` and ``sunset_date`` (ISO-8601). Rules with no
+  effective date are treated as always-effective.
+- **Jurisdiction scoping** accepts the rule's ``jurisdiction`` as a
+  string or a list of strings. Universal sentinels (``"global"``,
+  ``"*"``, empty string) match any tenant. Comparison is
+  case-insensitive. Rules with no ``jurisdiction`` field pass any
+  tenant (treated as universal).
+- **`MeasurementRecord.jurisdiction`** (optional) — tenant-declared
+  jurisdiction (e.g. ``"us-ca"``, ``"eu"``). ``None`` means no
+  jurisdiction filter; all rules effective at the measurement's
+  timestamp are sent.
+- **`v3/tests/test_kg_scoping.py`** (16 tests) covering effective-date
+  scoping, jurisdiction scoping (string + list shapes), universal
+  sentinels, case-insensitivity, combined filters, and snapshot shape.
+
+### Changed (runtime, v3 — PR 11.7)
+- **`server.py`** now calls ``state.knowledge_graph.scope_to(...)``
+  instead of the unconditional ``_kg_to_v3_snapshot`` adapter.
+  Real-sized KGs no longer blow the LLM context window — the prompt
+  carries only the obligations applicable to the measurement.
+
 ### Added (verifier, v3 — PR 11.6, stateful predicates)
 - **Stateful predicate handlers** in `SymbolicVerifier`:
   - `must_average_within` — rolling-window arithmetic mean must fall

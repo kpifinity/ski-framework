@@ -124,6 +124,15 @@ class MeasurementRecord(BaseModel):
         default="standard",
         description="Risk tier per spec §5.4 (PR 10c uses this to select policy).",
     )
+    jurisdiction: Optional[str] = Field(
+        default=None,
+        description=(
+            "Tenant-declared jurisdiction (e.g. 'us-ca', 'eu', 'global'). When set, "
+            "the KG is scoped to obligations whose jurisdiction matches or is "
+            "universal ('global', '*'). None means 'no restriction' — all rules "
+            "effective at the measurement's timestamp are sent to the LLM."
+        ),
+    )
 
 
 class HealthStatus(BaseModel):
@@ -365,7 +374,15 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
 
     state.verdicts_produced += 1
 
-    snapshot = _kg_to_v3_snapshot(state.knowledge_graph)
+    # PR 11.7: scope the KG to the tenant's jurisdiction + measurement timestamp
+    # before sending it to the LLM. This prevents the prompt from blowing the
+    # model's context window on real-sized KGs, and records the scope in the
+    # snapshot's ``scope`` field so the transcript captures *what was sent*.
+    measurement_ts = _parse_telemetry_ts(measurement.timestamp)
+    snapshot = state.knowledge_graph.scope_to(
+        jurisdiction=measurement.jurisdiction,
+        as_of=measurement_ts,
+    )
 
     # PR 11: evaluator yields envelope + signed transcript; ledger persists both.
     # PR 11.6: subject/as_of/buffer are forwarded so stateful predicates
@@ -377,7 +394,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
         kg_snapshot=snapshot,
         risk_tier=measurement.risk_tier,
         subject=measurement.subject,
-        as_of=_parse_telemetry_ts(measurement.timestamp),
+        as_of=measurement_ts,
         buffer=state.telemetry_buffer,
     )
     envelope = result.envelope
