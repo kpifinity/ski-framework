@@ -12,7 +12,7 @@ Endpoints:
   POST /api/kg/load       — load a signed Knowledge Graph at runtime.
   GET  /api/health        — liveness + readiness.
   GET  /api/verdicts      — paginated verdict ledger (auth required).
-  GET  /api/canary        — determinism canary snapshot.
+  GET  /api/canary        — neuro-symbolic agreement-rate snapshot.
 
 It is NOT production ready. See README.md for the gap list. Single-worker
 enforcement is preserved from v2.1 (see docs/CONCURRENCY.md).
@@ -20,14 +20,13 @@ enforcement is preserved from v2.1 (see docs/CONCURRENCY.md).
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
 import json
 import logging
 import os
 import secrets
 import sys
-from contextlib import asynccontextmanager, suppress
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -46,11 +45,10 @@ except ImportError:  # pragma: no cover
     from symbolic_evaluator import SymbolicEvaluator
     from tag_registry import TagRegistry
 
-from .backends import InferenceBackend, build_backend
-from .canary import DeterminismCanary
 from .kg_loader import KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
 from .v3 import (
+    AgreementMonitor,
     TranscriptSigner,
     V3Evaluator,
     V3LLMBackend,
@@ -82,9 +80,7 @@ class _State:
     knowledge_graph: Optional[KnowledgeGraph] = None
     tag_registry: Optional[TagRegistry] = None
     symbolic_evaluator: Optional[SymbolicEvaluator] = None
-    canary_backend: Optional[InferenceBackend] = None
     ledger: Optional[LedgerClient] = None
-    canary: Optional[DeterminismCanary] = None
     telemetry_buffer: Optional[Any] = None
     tenant_id: str = "default"
     verdicts_produced: int = 0
@@ -94,6 +90,7 @@ class _State:
     evaluator: Optional[V3Evaluator] = None
     kg_version_hash: str = "sha256:" + "0" * 64
     transcript_signer: Optional[TranscriptSigner] = None
+    agreement_monitor: Optional[AgreementMonitor] = None
 
 
 state = _State()
@@ -253,9 +250,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         signer=state.transcript_signer,
     )
 
-    # Canary path keeps using the v2 backend abstraction until PR 12
-    # repurposes it as a neuro-symbolic agreement monitor.
-    state.canary_backend = build_backend()
     state.ledger = LedgerClient(os.getenv("LEDGER_DSN", ""))
     await state.ledger.initialize()
 
@@ -275,24 +269,25 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             exc,
         )
 
-    state.canary = DeterminismCanary(
-        backend=state.canary_backend,
-        interval_seconds=int(os.getenv("DETERMINISM_CANARY_INTERVAL", "300")),
+    # PR 12: neuro-symbolic agreement monitor replaces the v2 determinism
+    # canary. Tracks the rolling LLM↔verifier agreement rate across the
+    # last SKI_AGREEMENT_WINDOW evaluations; pages when the rate dips
+    # below SKI_AGREEMENT_THRESHOLD.
+    state.agreement_monitor = AgreementMonitor(
+        window_size=int(os.getenv("SKI_AGREEMENT_WINDOW", "1000")),
+        threshold=float(os.getenv("SKI_AGREEMENT_THRESHOLD", "0.95")),
     )
-    canary_task = asyncio.create_task(state.canary.run())
 
     logger.info(
-        "SKI Model ready (evaluator=v3, llm=%s, canary_backend=%s)",
+        "SKI Model ready (evaluator=v3, llm=%s, agreement_window=%d, agreement_threshold=%.3f)",
         state.llm_backend.name,
-        state.canary_backend.name,
+        state.agreement_monitor.window_size,
+        state.agreement_monitor.threshold,
     )
 
     try:
         yield
     finally:
-        canary_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await canary_task
         await state.ledger.close()
         logger.info("SKI Model stopping (verdicts_produced=%d)", state.verdicts_produced)
 
@@ -307,11 +302,16 @@ app = FastAPI(title="SKI Model Inference Engine", version=_VERSION, lifespan=lif
 
 @app.get("/api/health", response_model=HealthStatus)
 async def health_check() -> HealthStatus:
+    monitor = state.agreement_monitor
+    if monitor is None:
+        agreement_status = "not_started"
+    else:
+        agreement_status = "healthy" if monitor.is_healthy() else "degraded"
     return HealthStatus(
         status="healthy" if state.knowledge_graph else "no_kg",
         kg_loaded=state.knowledge_graph is not None,
         kg_signature_verified=bool(state.knowledge_graph and state.knowledge_graph.signature_verified),
-        canary_status=state.canary.last_status if state.canary else "not_started",
+        canary_status=agreement_status,
         verdicts_produced=state.verdicts_produced,
         timestamp=_now_iso(),
         runtime_version="v3",
@@ -410,6 +410,10 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
         track="v3-evaluator",
     )
 
+    # PR 12: record the verifier outcome for the agreement-rate monitor.
+    if state.agreement_monitor is not None:
+        state.agreement_monitor.record(envelope.verifier_result.status)
+
     return envelope
 
 
@@ -428,9 +432,16 @@ async def list_verdicts(limit: int = 100, offset: int = 0) -> Dict[str, Any]:
 
 @app.get("/api/canary", dependencies=[Depends(require_api_key)])
 async def canary_status() -> Dict[str, Any]:
-    if state.canary is None:
+    """Neuro-symbolic agreement monitor snapshot (PR 12).
+
+    The endpoint name is preserved from v2 for operator continuity; the
+    payload shape is the v3 monitor's :meth:`AgreementMonitor.snapshot`.
+    """
+    if state.agreement_monitor is None:
         return {"status": "not_started"}
-    return state.canary.snapshot()
+    snapshot = state.agreement_monitor.snapshot()
+    snapshot["status"] = "healthy" if snapshot["is_healthy"] else "degraded"
+    return snapshot
 
 
 # ============================================================================
