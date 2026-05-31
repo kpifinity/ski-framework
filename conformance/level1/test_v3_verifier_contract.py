@@ -17,14 +17,7 @@ import pytest
 
 
 def _verifier_source(repo_root: Path) -> str:
-    return (
-        repo_root
-        / "reference-implementation"
-        / "src"
-        / "ski_model"
-        / "v3"
-        / "verifier.py"
-    ).read_text()
+    return (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "verifier.py").read_text()
 
 
 @pytest.mark.level1
@@ -76,15 +69,7 @@ def test_verifier_supports_minimum_stateless_predicates(repo_root: Path) -> None
 @pytest.mark.level1
 def test_risk_tier_policy_module_exists(repo_root: Path) -> None:
     """A risk-tier policy module MUST exist per spec §5.4."""
-    path = (
-        repo_root
-        / "reference-implementation"
-        / "src"
-        / "ski_model"
-        / "v3"
-        / "policies"
-        / "risk_tier.py"
-    )
+    path = repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "policies" / "risk_tier.py"
     assert path.exists(), (
         "v3/policies/risk_tier.py is missing. Spec §5.4 requires a risk-tier "
         "policy module in every conformant runtime."
@@ -95,15 +80,7 @@ def test_risk_tier_policy_module_exists(repo_root: Path) -> None:
 def test_risk_tier_module_exposes_all_three_tiers(repo_root: Path) -> None:
     """RiskTier enum lists all three spec §5.4 tiers."""
     src = (
-        repo_root
-        / "reference-implementation"
-        / "src"
-        / "ski_model"
-        / "v3"
-        / "policies"
-        / "risk_tier.py"
+        repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "policies" / "risk_tier.py"
     ).read_text()
     for tier in ("tier-1", "tier-2", "tier-3"):
-        assert f'"{tier}"' in src, (
-            f"RiskTier enum is missing {tier!r} per spec §5.4."
-        )
+        assert f'"{tier}"' in src, f"RiskTier enum is missing {tier!r} per spec §5.4."
