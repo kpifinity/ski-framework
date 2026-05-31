@@ -107,7 +107,7 @@ class TestRequestPayload:
 
         # Last request is /api/generate; verify its body.
         requests = httpx_mock.get_requests()
-        generate_req = [r for r in requests if r.url.path == "/api/generate"][0]
+        generate_req = next(r for r in requests if r.url.path == "/api/generate")
         body: Dict[str, Any] = json.loads(generate_req.content)
         assert body["model"] == "test-model:1b"
         assert body["stream"] is False
