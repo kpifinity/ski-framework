@@ -1,9 +1,11 @@
-"""Inference backend abstraction.
+"""Inference backend abstraction (canary path only).
 
-The SKI Framework v2.1 specification permits any inference runtime so long
-as the determinism, sovereignty, and structured-output requirements are met.
-This module provides a thin abstraction so the rest of the codebase never
-depends on a specific vendor.
+The SKI Framework v3 architecture uses :class:`ski_model.v3.evaluator.V3Evaluator`
+as the primary inference path. This module is retained for the determinism
+canary (:class:`ski_model.canary.DeterminismCanary`), which exercises a
+fixed-input round-trip against the configured backend independently of the
+evaluator. PR 12 repurposes the canary as a neuro-symbolic agreement monitor
+and this module will be removed at that point.
 
   ollama     — Local LLM runtime (default). Conformant.
   anthropic  — Cloud API. NON-CONFORMANT DEMO MODE ONLY. Logs a warning on
@@ -21,7 +23,7 @@ from typing import Any, Protocol
 
 import httpx
 
-from .verdicts import Verdict
+from .v3.envelope import V3Verdict as Verdict
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,266 @@
+"""Tests for the v3 KG-grounded LLM evaluator.
+
+These tests use :class:`FakeLLM` so they run without secrets, without
+network, and deterministically. They cover:
+
+* Happy-path CLEAR + FLAG verdicts with valid citations.
+* Citation enforcement: bogus node ids force NULL_UNMAPPED.
+* Deterministic provenance: ModelProvenance is fully populated.
+* JSON round-trip from the produced envelope.
+* Empty / unmapped KG snapshots.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any, Dict
+
+import pytest
+
+from ski_model.v3 import (
+    FakeLLM,
+    PROMPT_TEMPLATE_ID,
+    V3Evaluator,
+    V3Verdict,
+    V3VerdictEnvelope,
+    VerifierStatus,
+)
+
+
+_KG_HASH = "sha256:" + "a" * 64
+
+
+def _kg_snapshot() -> Dict[str, Any]:
+    return {
+        "version": "v3demo-0007",
+        "obligations": [
+            {
+                "id": "energy.so2.lte_100ppm",
+                "metric": "so2_ppm",
+                "predicate": "must_not_exceed",
+                "value": 100,
+            },
+            {
+                "id": "water.ph.within_6_to_85",
+                "metric": "ph",
+                "predicate": "must_be_within",
+                "value": [6.0, 8.5],
+            },
+        ],
+        "definitions": [{"id": "def.units.ppm"}],
+    }
+
+
+def _evaluator(seed: int = 0) -> V3Evaluator:
+    return V3Evaluator(
+        llm=FakeLLM(),
+        kg_version_hash=_KG_HASH,
+        decoder_seed=seed,
+    )
+
+
+# ---- Happy paths --------------------------------------------------------------
+
+
+class TestHappyPath:
+    @pytest.mark.asyncio
+    async def test_clear_verdict_when_within_limit(self) -> None:
+        evaluator = _evaluator()
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 87},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:1",
+        )
+        assert env.verdict == V3Verdict.CLEAR.value
+        assert len(env.kg_citations) == 1
+        assert env.kg_citations[0].node_id == "energy.so2.lte_100ppm"
+        assert env.kg_citations[0].role == "obligation"
+        assert len(env.formalizable_assertions) == 1
+        assert env.formalizable_assertions[0].satisfied is True
+        assert env.formalizable_assertions[0].obligation_id == "energy.so2.lte_100ppm"
+
+    @pytest.mark.asyncio
+    async def test_flag_verdict_when_over_limit(self) -> None:
+        evaluator = _evaluator()
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 150},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:2",
+        )
+        assert env.verdict == V3Verdict.FLAG.value
+        assert env.formalizable_assertions[0].satisfied is False
+        assert env.formalizable_assertions[0].observed == 150
+
+    @pytest.mark.asyncio
+    async def test_within_range_predicate_works(self) -> None:
+        evaluator = _evaluator()
+        env = await evaluator.aevaluate(
+            measurement={"ph": 7.2},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:3",
+        )
+        assert env.verdict == V3Verdict.CLEAR.value
+        assert env.formalizable_assertions[0].obligation_id == "water.ph.within_6_to_85"
+
+
+# ---- Provenance ---------------------------------------------------------------
+
+
+class TestProvenance:
+    @pytest.mark.asyncio
+    async def test_all_provenance_fields_populated(self) -> None:
+        evaluator = _evaluator(seed=42)
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:4",
+        )
+        prov = env.model_provenance
+        assert prov.model_weight_hash.startswith("sha256:")
+        assert prov.kg_version_hash == _KG_HASH
+        assert prov.prompt_template_id == PROMPT_TEMPLATE_ID
+        assert prov.prompt_template_hash.startswith("sha256:")
+        assert prov.decoder_seed == 42
+        assert prov.structured_grammar_hash.startswith("sha256:")
+
+    @pytest.mark.asyncio
+    async def test_kg_version_hash_propagates(self) -> None:
+        unique_hash = "sha256:" + "b" * 64
+        evaluator = V3Evaluator(
+            llm=FakeLLM(), kg_version_hash=unique_hash, decoder_seed=0
+        )
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:5",
+        )
+        assert env.model_provenance.kg_version_hash == unique_hash
+
+
+# ---- Citation enforcement -----------------------------------------------------
+
+
+class _CitingFakeLLM(FakeLLM):
+    """A fake that always cites a fixed node_id, regardless of what is in the KG."""
+
+    def __init__(self, fake_node_id: str) -> None:
+        super().__init__()
+        self._fake_node_id = fake_node_id
+
+    async def evaluate(
+        self,
+        *,
+        measurement: Dict[str, Any],
+        kg_snapshot: Dict[str, Any],
+        seed: int,
+    ) -> Dict[str, Any]:
+        return {
+            "verdict": "CLEAR",
+            "reasoning": "Citing a node that isn't in the snapshot.",
+            "kg_citations": [
+                {
+                    "node_id": self._fake_node_id,
+                    "version": kg_snapshot.get("version", "x"),
+                    "role": "obligation",
+                }
+            ],
+            "formalizable_assertions": [],
+        }
+
+
+class TestCitationEnforcement:
+    @pytest.mark.asyncio
+    async def test_bogus_citation_forces_null_unmapped(self) -> None:
+        evaluator = V3Evaluator(
+            llm=_CitingFakeLLM(fake_node_id="hallucinated.obligation.999"),
+            kg_version_hash=_KG_HASH,
+            decoder_seed=0,
+        )
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:6",
+        )
+        assert env.verdict == V3Verdict.NULL_UNMAPPED.value
+        assert env.verifier_result.status == VerifierStatus.UNVERIFIABLE.value
+        assert any("hallucinated.obligation.999" in d for d in env.verifier_result.divergences)
+        assert env.kg_citations == []
+        assert env.formalizable_assertions == []
+
+    @pytest.mark.asyncio
+    async def test_definitions_count_as_valid_citation_targets(self) -> None:
+        evaluator = V3Evaluator(
+            llm=_CitingFakeLLM(fake_node_id="def.units.ppm"),
+            kg_version_hash=_KG_HASH,
+            decoder_seed=0,
+        )
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:7",
+        )
+        # def.units.ppm is in the snapshot's definitions, so citation is valid.
+        assert env.verdict == V3Verdict.CLEAR.value
+
+
+# ---- Empty / unmapped KG ------------------------------------------------------
+
+
+class TestUnmappedKG:
+    @pytest.mark.asyncio
+    async def test_empty_snapshot_returns_null_unmapped(self) -> None:
+        evaluator = _evaluator()
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot={"version": "empty", "obligations": []},
+            transcript_ref="ledger:t1/seq:8",
+        )
+        assert env.verdict == V3Verdict.NULL_UNMAPPED.value
+        assert env.kg_citations == []
+        assert env.formalizable_assertions == []
+
+    @pytest.mark.asyncio
+    async def test_measurement_without_matching_metric_returns_null_unmapped(self) -> None:
+        evaluator = _evaluator()
+        env = await evaluator.aevaluate(
+            measurement={"unrelated_metric": 999},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:9",
+        )
+        assert env.verdict == V3Verdict.NULL_UNMAPPED.value
+
+
+# ---- Verifier placeholder (until PR 10c wires the real verifier) --------------
+
+
+class TestVerifierPlaceholder:
+    @pytest.mark.asyncio
+    async def test_verifier_status_is_unverifiable_in_pr10b(self) -> None:
+        evaluator = _evaluator()
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:10",
+        )
+        # PR 10b's evaluator stamps UNVERIFIABLE because the verifier is
+        # wired in PR 10c. The presence of this assertion is a tripwire —
+        # PR 10c will replace this test with AGREED expectations.
+        assert env.verifier_result.status == VerifierStatus.UNVERIFIABLE.value
+        assert env.verifier_result.checked_assertions == 0
+
+
+# ---- JSON round-trip ----------------------------------------------------------
+
+
+class TestRoundTrip:
+    @pytest.mark.asyncio
+    async def test_envelope_round_trips(self) -> None:
+        evaluator = _evaluator()
+        original = await evaluator.aevaluate(
+            measurement={"so2_ppm": 87},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:11",
+        )
+        text = original.model_dump_json()
+        reparsed = V3VerdictEnvelope.model_validate(json.loads(text))
+        assert reparsed.model_dump(mode="json") == original.model_dump(mode="json")

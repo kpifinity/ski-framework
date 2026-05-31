@@ -1,8 +1,9 @@
 """Audit ledger client.
 
-Append-only writer for the v2.1 audit ledger. Hash-chains every entry and
-relies on database-side triggers to make UPDATE/DELETE impossible (see
-src/ledger/append_only.sql).
+Append-only writer for the SKI Framework v3 audit ledger. Hash-chains every
+entry and relies on database-side triggers to make UPDATE/DELETE impossible
+(see src/ledger/append_only.sql). PR 11 expands the ledger to record signed
+LLM transcripts and full model commitments per spec v3.0 §6.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from typing import Any, Optional
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
-from .verdicts import Verdict
+from .v3.envelope import V3Verdict as Verdict
 
 logger = logging.getLogger(__name__)
 
