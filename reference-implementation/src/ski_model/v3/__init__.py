@@ -35,7 +35,7 @@ from .evaluator import (
 from .policies import RiskTier, apply_risk_policy
 from .signing import TranscriptSigner, verify_signature
 from .transcript import LLMTranscript
-from .verifier import SymbolicVerifier
+from .verifier import BufferLike, SymbolicVerifier
 
 __all__ = [
     "PROMPT_TEMPLATE",
@@ -43,6 +43,7 @@ __all__ = [
     "PROMPT_TEMPLATE_ID",
     "RESPONSE_GRAMMAR",
     "STRUCTURED_GRAMMAR_HASH",
+    "BufferLike",
     "EvaluationResult",
     "FakeLLM",
     "FormalizableAssertion",

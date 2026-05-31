@@ -81,6 +81,15 @@ class FormalizableAssertion(BaseModel):
     observed: Union[float, int, str, List[Any], None] = None
     satisfied: bool
     obligation_id: str = Field(..., description="The KG obligation this assertion checks.")
+    window_seconds: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Time-window length in seconds for stateful predicates "
+            "(e.g. 86400 for a 24h rolling average). None for stateless "
+            "predicates."
+        ),
+    )
 
 
 # ---- Verifier result (§4.5) ----

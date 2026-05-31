@@ -9,6 +9,44 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (verifier, v3 — PR 11.6, stateful predicates)
+- **Stateful predicate handlers** in `SymbolicVerifier`:
+  - `must_average_within` — rolling-window arithmetic mean must fall
+    inside `value=[lo, hi]` over the last `window_seconds`.
+  - `must_not_exceed_in_window` — *no* observation in the last
+    `window_seconds` may exceed `value`.
+  Real obligations like "rolling 24h pH average within 6.0–8.5" and
+  "SO₂ peak in the last hour ≤ 100 ppm" are now mechanically
+  verifiable.
+- **`ski_model.v3.verifier.BufferLike`** — minimal Protocol describing
+  the telemetry-buffer interface the verifier needs (`window_query`).
+  The production `telemetry_buffer.TelemetryBuffer` already satisfies
+  this; tests use an in-memory `FakeBuffer`. Re-exported from
+  `ski_model.v3`.
+- **`SymbolicVerifier.acheck_assertion(...)`** and
+  **`SymbolicVerifier.averify(...)`** — async siblings of the sync
+  methods that handle stateful predicates. Accept optional `subject`,
+  `as_of`, and `buffer` kwargs; degrade to `UNVERIFIABLE` when any are
+  missing for a stateful predicate.
+- **`FormalizableAssertion.window_seconds`** — optional positive
+  integer field (envelope schema additive change, safe). Required for
+  stateful predicates.
+- **`v3/tests/test_verifier_stateful.py`** (~15 tests) covering AGREED,
+  LLM_CONTRADICTION, UNVERIFIABLE paths, multiple buffer return shapes,
+  mixed stateless+stateful envelopes, envelope round-trip, and sync
+  fallback degradation.
+
+### Changed (runtime, v3 — PR 11.6)
+- **`V3Evaluator.aevaluate`** and **`aevaluate_with_transcript`** now
+  forward optional `subject`, `as_of`, and `buffer` kwargs to
+  `SymbolicVerifier.averify(...)`. Stateless-only callers (most tests)
+  see no API change.
+- **`server.py`** passes `measurement.subject`, parsed
+  `measurement.timestamp`, and `state.telemetry_buffer` to the
+  evaluator. Stateful predicates emitted by future LLM backends
+  immediately become verifiable end-to-end. Without a wired buffer
+  they degrade to `UNVERIFIABLE` (operability issue, not correctness).
+
 ### Added (runtime, v3 — PR 11.5, real LLM backend)
 - **`ski_model.v3.backends.OllamaV3Backend`** — calls a local Ollama
   runtime over HTTP. Weights stay on the operator's hardware (satisfies

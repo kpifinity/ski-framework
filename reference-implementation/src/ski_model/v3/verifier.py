@@ -33,8 +33,10 @@ telemetry buffer and a database fixture; deferred to a follow-up PR.
 from __future__ import annotations
 
 import logging
+import statistics
 from dataclasses import dataclass
-from typing import Any, List, Optional, Sequence, Tuple
+from datetime import datetime
+from typing import Any, List, Optional, Protocol, Sequence, Tuple
 
 from .envelope import (
     FormalizableAssertion,
@@ -44,6 +46,33 @@ from .envelope import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---- Buffer protocol (telemetry history source) -------------------------------
+
+
+class BufferLike(Protocol):
+    """Minimal interface the verifier needs to evaluate stateful predicates.
+
+    The production telemetry buffer (``telemetry_buffer.TelemetryBuffer``)
+    satisfies this protocol; tests use a fake. Implementations are async
+    because real buffers issue database queries.
+
+    Returns:
+        A list of ``(timestamp, value)`` pairs covering the window
+        ``[as_of - window_seconds, as_of]`` for ``metric_path`` on
+        ``subject``, sorted ascending by timestamp. Empty list if no
+        samples in the window.
+    """
+
+    async def window_query(
+        self,
+        *,
+        subject: str,
+        as_of: datetime,
+        window_seconds: int,
+        metric_path: Optional[str] = None,
+    ) -> Any: ...
 
 
 # ---- Predicate handlers -------------------------------------------------------
@@ -133,6 +162,142 @@ _PREDICATE_HANDLERS = {
 }
 
 
+_STATEFUL_PREDICATES = frozenset({"must_average_within", "must_not_exceed_in_window"})
+
+
+def _extract_values(window_data: Any) -> List[float]:
+    """Coerce a buffer's window_query result into a list of floats.
+
+    Accepts:
+      * list of (timestamp, value) tuples
+      * list of dicts with a ``value`` key
+      * list of bare numerics
+
+    Non-numeric or malformed entries are dropped (with a log warning).
+    Returning a clean list lets the predicate handlers stay focused on
+    the statistical question, not the parsing.
+    """
+    values: List[float] = []
+    for entry in window_data or []:
+        if isinstance(entry, tuple) and len(entry) == 2:
+            _ts, v = entry
+        elif isinstance(entry, dict) and "value" in entry:
+            v = entry["value"]
+        else:
+            v = entry
+        if isinstance(v, bool):
+            # bool is an int subclass; reject explicitly.
+            logger.debug("Dropping boolean buffer value: %r", v)
+            continue
+        if isinstance(v, (int, float)):
+            values.append(float(v))
+    return values
+
+
+async def _check_must_average_within(
+    assertion: FormalizableAssertion,
+    *,
+    subject: Optional[str],
+    as_of: Optional[datetime],
+    buffer: Optional[BufferLike],
+) -> _CheckOutcome:
+    if buffer is None or subject is None or as_of is None:
+        return _CheckOutcome(
+            None,
+            "must_average_within requires a buffer, subject, and as_of timestamp.",
+        )
+    if assertion.window_seconds is None or assertion.window_seconds <= 0:
+        return _CheckOutcome(
+            None,
+            f"must_average_within requires a positive window_seconds; got {assertion.window_seconds!r}.",
+        )
+    if not (
+        isinstance(assertion.value, list)
+        and len(assertion.value) == 2
+        and all(isinstance(b, (int, float)) for b in assertion.value)
+    ):
+        return _CheckOutcome(
+            None,
+            f"must_average_within requires value=[lo, hi]; got {assertion.value!r}.",
+        )
+
+    data = await buffer.window_query(
+        subject=subject,
+        as_of=as_of,
+        window_seconds=assertion.window_seconds,
+        metric_path=assertion.metric,
+    )
+    values = _extract_values(data)
+    if not values:
+        return _CheckOutcome(
+            None,
+            f"No samples for metric {assertion.metric!r} in the last "
+            f"{assertion.window_seconds}s; cannot compute average.",
+        )
+
+    lo, hi = float(assertion.value[0]), float(assertion.value[1])
+    average = statistics.fmean(values)
+    ok = lo <= average <= hi
+    return _CheckOutcome(
+        ok,
+        f"average({assertion.metric}, {assertion.window_seconds}s)={average:.6g} "
+        f"in [{lo}, {hi}]: {ok} (n={len(values)})",
+    )
+
+
+async def _check_must_not_exceed_in_window(
+    assertion: FormalizableAssertion,
+    *,
+    subject: Optional[str],
+    as_of: Optional[datetime],
+    buffer: Optional[BufferLike],
+) -> _CheckOutcome:
+    if buffer is None or subject is None or as_of is None:
+        return _CheckOutcome(
+            None,
+            "must_not_exceed_in_window requires a buffer, subject, and as_of timestamp.",
+        )
+    if assertion.window_seconds is None or assertion.window_seconds <= 0:
+        return _CheckOutcome(
+            None,
+            f"must_not_exceed_in_window requires a positive window_seconds; got {assertion.window_seconds!r}.",
+        )
+    if not isinstance(assertion.value, (int, float)) or isinstance(assertion.value, bool):
+        return _CheckOutcome(
+            None,
+            f"must_not_exceed_in_window requires numeric value; got {assertion.value!r}.",
+        )
+
+    data = await buffer.window_query(
+        subject=subject,
+        as_of=as_of,
+        window_seconds=assertion.window_seconds,
+        metric_path=assertion.metric,
+    )
+    values = _extract_values(data)
+    if not values:
+        return _CheckOutcome(
+            None,
+            f"No samples for metric {assertion.metric!r} in the last "
+            f"{assertion.window_seconds}s; cannot check peak.",
+        )
+
+    threshold = float(assertion.value)
+    peak = max(values)
+    ok = peak <= threshold
+    return _CheckOutcome(
+        ok,
+        f"peak({assertion.metric}, {assertion.window_seconds}s)={peak:.6g} "
+        f"<= {threshold}: {ok} (n={len(values)})",
+    )
+
+
+_STATEFUL_HANDLERS = {
+    "must_average_within": _check_must_average_within,
+    "must_not_exceed_in_window": _check_must_not_exceed_in_window,
+}
+
+
 # ---- SymbolicVerifier ---------------------------------------------------------
 
 
@@ -149,18 +314,45 @@ class SymbolicVerifier:
     """
 
     def check_assertion(self, assertion: FormalizableAssertion) -> _CheckOutcome:
-        """Mechanically evaluate one assertion without consulting the LLM.
+        """Mechanically evaluate one stateless assertion.
 
         Returns ``mechanically_satisfied=None`` when the predicate cannot be
-        evaluated; the caller maps that to ``UNVERIFIABLE``.
+        evaluated; the caller maps that to ``UNVERIFIABLE``. Stateful
+        predicates always return ``None`` here — use :meth:`acheck_assertion`
+        (with a buffer) to actually evaluate them.
         """
         handler = _PREDICATE_HANDLERS.get(assertion.predicate)
-        if handler is None:
+        if handler is not None:
+            return handler(assertion.observed, assertion.value)
+        if assertion.predicate in _STATEFUL_PREDICATES:
             return _CheckOutcome(
                 None,
-                f"Predicate {assertion.predicate!r} is not mechanically verifiable in PR 10c.",
+                f"Predicate {assertion.predicate!r} is stateful; use averify(buffer=...).",
             )
-        return handler(assertion.observed, assertion.value)
+        return _CheckOutcome(
+            None,
+            f"Predicate {assertion.predicate!r} is not a known v3 predicate.",
+        )
+
+    async def acheck_assertion(
+        self,
+        assertion: FormalizableAssertion,
+        *,
+        subject: Optional[str],
+        as_of: Optional[datetime],
+        buffer: Optional[BufferLike],
+    ) -> _CheckOutcome:
+        """Async per-assertion check that handles both stateless and stateful predicates."""
+        handler = _PREDICATE_HANDLERS.get(assertion.predicate)
+        if handler is not None:
+            return handler(assertion.observed, assertion.value)
+        stateful = _STATEFUL_HANDLERS.get(assertion.predicate)
+        if stateful is None:
+            return _CheckOutcome(
+                None,
+                f"Predicate {assertion.predicate!r} is not a known v3 predicate.",
+            )
+        return await stateful(assertion, subject=subject, as_of=as_of, buffer=buffer)
 
     def verify(
         self,
@@ -252,5 +444,86 @@ class SymbolicVerifier:
             divergences=[],
         )
 
+    async def averify(
+        self,
+        assertions: Sequence[FormalizableAssertion],
+        *,
+        llm_verdict: V3Verdict,
+        subject: Optional[str] = None,
+        as_of: Optional[datetime] = None,
+        buffer: Optional[BufferLike] = None,
+    ) -> VerifierResult:
+        """Async sibling of :meth:`verify` that handles stateful predicates.
 
-__all__ = ["SymbolicVerifier"]
+        Stateless predicates produce the same result as :meth:`verify`.
+        Stateful predicates (e.g. ``must_average_within``,
+        ``must_not_exceed_in_window``) require ``subject``, ``as_of``,
+        and ``buffer``; when any of those is missing the predicate
+        yields ``UNVERIFIABLE``.
+        """
+        if not assertions:
+            return VerifierResult(
+                status=VerifierStatus.UNVERIFIABLE,
+                checked_assertions=0,
+                divergences=["No formalizable assertions to verify."],
+            )
+
+        divergences: List[str] = []
+        unverifiable_count = 0
+        contradictions: List[Tuple[FormalizableAssertion, _CheckOutcome]] = []
+        checked = 0
+
+        for assertion in assertions:
+            outcome = await self.acheck_assertion(assertion, subject=subject, as_of=as_of, buffer=buffer)
+            if outcome.mechanically_satisfied is None:
+                unverifiable_count += 1
+                divergences.append(f"[{assertion.obligation_id}] {outcome.reason}")
+                continue
+            checked += 1
+            if outcome.mechanically_satisfied != assertion.satisfied:
+                contradictions.append((assertion, outcome))
+                divergences.append(
+                    f"[{assertion.obligation_id}] LLM said satisfied={assertion.satisfied}, "
+                    f"verifier says {outcome.mechanically_satisfied}. {outcome.reason}"
+                )
+
+        if unverifiable_count > 0:
+            return VerifierResult(
+                status=VerifierStatus.UNVERIFIABLE,
+                checked_assertions=checked,
+                divergences=divergences,
+            )
+
+        if contradictions:
+            return VerifierResult(
+                status=VerifierStatus.LLM_CONTRADICTION,
+                checked_assertions=checked,
+                divergences=divergences,
+            )
+
+        all_satisfied = all(a.satisfied for a in assertions)
+        any_unsatisfied = any(not a.satisfied for a in assertions)
+
+        verdict_inconsistent = (llm_verdict == V3Verdict.CLEAR and not all_satisfied) or (
+            llm_verdict == V3Verdict.FLAG and not any_unsatisfied
+        )
+
+        if verdict_inconsistent:
+            return VerifierResult(
+                status=VerifierStatus.NEURO_SYMBOLIC_DIVERGENCE,
+                checked_assertions=checked,
+                divergences=[
+                    f"Per-assertion checks agree, but LLM verdict {llm_verdict.value!r} "
+                    f"is not consistent with the satisfied flags "
+                    f"(all_satisfied={all_satisfied}, any_unsatisfied={any_unsatisfied})."
+                ],
+            )
+
+        return VerifierResult(
+            status=VerifierStatus.AGREED,
+            checked_assertions=checked,
+            divergences=[],
+        )
+
+
+__all__ = ["BufferLike", "SymbolicVerifier"]

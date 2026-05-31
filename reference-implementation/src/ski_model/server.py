@@ -368,10 +368,17 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     snapshot = _kg_to_v3_snapshot(state.knowledge_graph)
 
     # PR 11: evaluator yields envelope + signed transcript; ledger persists both.
+    # PR 11.6: subject/as_of/buffer are forwarded so stateful predicates
+    # (rolling averages, window peaks) can be verified against the
+    # telemetry buffer. If the buffer is None, stateful predicates degrade
+    # to UNVERIFIABLE — operability problem, not a correctness one.
     result = await state.evaluator.aevaluate_with_transcript(
         measurement=measurement.measurement,
         kg_snapshot=snapshot,
         risk_tier=measurement.risk_tier,
+        subject=measurement.subject,
+        as_of=_parse_telemetry_ts(measurement.timestamp),
+        buffer=state.telemetry_buffer,
     )
     envelope = result.envelope
 

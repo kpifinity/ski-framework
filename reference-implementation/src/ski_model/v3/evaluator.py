@@ -36,7 +36,7 @@ from .envelope import (
 from .policies import apply_risk_policy
 from .signing import TranscriptSigner
 from .transcript import LLMTranscript, hash_pair, signing_message
-from .verifier import SymbolicVerifier
+from .verifier import BufferLike, SymbolicVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -376,6 +376,9 @@ class V3Evaluator:
         kg_snapshot: Dict[str, Any],
         transcript_ref: Optional[str] = None,
         risk_tier: str = "standard",
+        subject: Optional[str] = None,
+        as_of: Optional[datetime] = None,
+        buffer: Optional[BufferLike] = None,
     ) -> V3VerdictEnvelope:
         """Produce just the verdict envelope.
 
@@ -390,6 +393,9 @@ class V3Evaluator:
             kg_snapshot=kg_snapshot,
             transcript_ref=transcript_ref,
             risk_tier=risk_tier,
+            subject=subject,
+            as_of=as_of,
+            buffer=buffer,
         )
         return result.envelope
 
@@ -400,6 +406,9 @@ class V3Evaluator:
         kg_snapshot: Dict[str, Any],
         transcript_ref: Optional[str] = None,
         risk_tier: str = "standard",
+        subject: Optional[str] = None,
+        as_of: Optional[datetime] = None,
+        buffer: Optional[BufferLike] = None,
     ) -> EvaluationResult:
         """Produce an :class:`EvaluationResult` from a measurement + KG snapshot.
 
@@ -478,10 +487,18 @@ class V3Evaluator:
 
         # Build envelope from LLM output, then have the Symbolic Verifier
         # mechanically cross-check the formalizable assertions and stamp the
-        # real VerifierResult.
+        # real VerifierResult. Async averify handles stateful predicates
+        # against the optional telemetry buffer; falls back to identical
+        # behaviour to verify() when no buffer / subject / as_of provided.
         llm_verdict = V3Verdict(raw["verdict"])
         assertions = [FormalizableAssertion(**a) for a in raw.get("formalizable_assertions", [])]
-        verifier_result = self.verifier.verify(assertions, llm_verdict=llm_verdict)
+        verifier_result = await self.verifier.averify(
+            assertions,
+            llm_verdict=llm_verdict,
+            subject=subject,
+            as_of=as_of,
+            buffer=buffer,
+        )
 
         envelope = V3VerdictEnvelope(
             verdict=llm_verdict,
