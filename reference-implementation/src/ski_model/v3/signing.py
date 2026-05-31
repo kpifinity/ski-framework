@@ -77,10 +77,11 @@ class TranscriptSigner:
 
     @property
     def public_key_pem(self) -> str:
-        return self._public_key.public_bytes(
+        pem_bytes: bytes = self._public_key.public_bytes(
             encoding=serialization.Encoding.PEM,
             format=serialization.PublicFormat.SubjectPublicKeyInfo,
-        ).decode("ascii")
+        )
+        return pem_bytes.decode("ascii")
 
     @classmethod
     def auto_provision(cls, private_key_path: Optional[Path] = None) -> TranscriptSigner:
@@ -133,7 +134,8 @@ class TranscriptSigner:
 
     def sign(self, message: bytes) -> str:
         """Return a hex-encoded ed25519 signature over ``message``."""
-        return self._private_key.sign(message).hex()
+        signature_bytes: bytes = self._private_key.sign(message)
+        return signature_bytes.hex()
 
 
 def verify_signature(
@@ -159,8 +161,13 @@ class suppress_oserror:
     def __enter__(self) -> suppress_oserror:
         return self
 
-    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> bool:
-        return bool(exc_type is not None and issubclass(exc_type, OSError))
+    def __exit__(
+        self,
+        exc_type: Optional[type],
+        exc_val: Optional[BaseException],
+        exc_tb: object,
+    ) -> bool:
+        return exc_type is not None and issubclass(exc_type, OSError)
 
 
 __all__ = ["TranscriptSigner", "verify_signature"]
