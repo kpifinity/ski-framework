@@ -9,6 +9,39 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (runtime, v3 — PR 12, agreement monitor)
+- **`ski_model.v3.agreement_monitor.AgreementMonitor`** — rolling-window
+  tracker of LLM↔verifier agreement. Every produced
+  `V3VerdictEnvelope` feeds its `verifier_result.status` into the
+  monitor; `agreement_rate = AGREED / total` is recomputed on demand.
+  `is_healthy()` returns `True` iff the rate ≥ `threshold`. Default
+  window is the last 1000 evaluations; default threshold is `0.95`.
+  Both are configurable via `$SKI_AGREEMENT_WINDOW` and
+  `$SKI_AGREEMENT_THRESHOLD`. Thread-safe via an internal lock.
+- **`v3/tests/test_agreement_monitor.py`** (16 tests covering record /
+  snapshot / window-roll / threshold edge cases and validation).
+
+### Changed (runtime, v3 — PR 12)
+- **`/api/canary`** now returns the agreement-monitor snapshot instead
+  of the v2 determinism canary. Endpoint path preserved for operator
+  continuity; payload shape is new (`window_size`, `threshold`,
+  `observed`, `counts` per `VerifierStatus`, `agreement_rate`,
+  `is_healthy`, `status`).
+- **`/api/health`** ``canary_status`` field now reports
+  ``"healthy"`` / ``"degraded"`` / ``"not_started"`` based on the
+  agreement monitor.
+- **`server.py`** wires every evaluation through
+  ``state.agreement_monitor.record(envelope.verifier_result.status)``
+  after producing the envelope.
+
+### Removed (runtime, v3 — PR 12)
+- **`ski_model/canary.py`** — the v2 ``DeterminismCanary`` background
+  task. Replaced by the on-evaluation ``AgreementMonitor``.
+- **`ski_model/backends.py`** — the v2 ``InferenceBackend`` /
+  ``OllamaBackend`` / ``AnthropicDemoBackend`` abstraction. It was
+  only used by the v2 canary; v3 inference goes through
+  ``ski_model.v3.backends`` exclusively.
+
 ### Added (runtime, v3 — PR 11.7, jurisdiction-scoped KG snapshots)
 - **`KnowledgeGraph.scope_to(jurisdiction, as_of)`** — returns a v3
   snapshot dict containing only obligations applicable to the tenant's

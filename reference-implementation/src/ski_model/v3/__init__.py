@@ -7,6 +7,7 @@ mechanically cross-checks each :class:`FormalizableAssertion`, and the
 risk-tier policy (spec §5.4) post-processes the envelope.
 """
 
+from .agreement_monitor import AgreementMonitor
 from .backends import (
     PROMPT_TEMPLATE_HASH,
     STRUCTURED_GRAMMAR_HASH,
@@ -43,6 +44,7 @@ __all__ = [
     "PROMPT_TEMPLATE_ID",
     "RESPONSE_GRAMMAR",
     "STRUCTURED_GRAMMAR_HASH",
+    "AgreementMonitor",
     "BufferLike",
     "EvaluationResult",
     "FakeLLM",
