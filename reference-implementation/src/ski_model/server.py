@@ -51,11 +51,13 @@ from .canary import DeterminismCanary
 from .kg_loader import KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
 from .v3 import (
-    FakeLLM,
     TranscriptSigner,
     V3Evaluator,
     V3LLMBackend,
     V3VerdictEnvelope,
+)
+from .v3 import (
+    build_backend as build_v3_backend,
 )
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -191,18 +193,13 @@ def _compute_kg_version_hash(kg: KnowledgeGraph) -> str:
 def _build_v3_llm_backend() -> V3LLMBackend:
     """Select the v3 LLM backend.
 
-    PR 10b ships only the deterministic :class:`FakeLLM`. Real backends
-    (Ollama-v3, vLLM, Anthropic-v3) are a follow-up PR with their own
-    secret-handling story. ``SKI_V3_LLM_BACKEND=fake`` is the only accepted
-    value today; anything else raises a configuration error early so a
-    misconfigured deployment cannot silently fall through to the fake.
+    Delegates to :func:`ski_model.v3.build_backend`. ``SKI_V3_LLM_BACKEND``
+    controls the selection (``"fake"`` default, ``"ollama"`` for the
+    Ollama-v3 backend). PR 11.5 added the Ollama backend; future
+    additions (vLLM, etc.) extend the factory without touching the
+    server.
     """
-    name = os.getenv("SKI_V3_LLM_BACKEND", "fake").lower()
-    if name == "fake":
-        return FakeLLM()
-    raise RuntimeError(
-        f"SKI_V3_LLM_BACKEND={name!r} is not implemented in PR 10b. Set SKI_V3_LLM_BACKEND=fake or unset it."
-    )
+    return build_v3_backend()
 
 
 # ============================================================================
