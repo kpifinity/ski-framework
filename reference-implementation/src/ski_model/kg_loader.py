@@ -22,14 +22,18 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 logger = logging.getLogger(__name__)
+
+
+_UNIVERSAL_JURISDICTION_VALUES = frozenset({"global", "*", ""})
 
 
 @dataclass
@@ -57,7 +61,7 @@ class KnowledgeGraph:
             signature_verified = _verify_signature(metadata, rules, tag_registry, signature)
         elif require_signature:
             raise ValueError(
-                "KG has no signature block. Per the SKI Framework v2.1 "
+                "KG has no signature block. Per the SKI Framework v3 "
                 "Phase 1 → Phase 2 boundary, an unsigned KG must not be loaded "
                 "at runtime. Set KG_REQUIRE_SIGNATURE=false only for local demos."
             )
@@ -69,6 +73,105 @@ class KnowledgeGraph:
             metadata=metadata,
             signature_verified=signature_verified,
         )
+
+    def scope_to(
+        self,
+        *,
+        jurisdiction: Optional[str],
+        as_of: datetime,
+    ) -> dict[str, Any]:
+        """Return a v3 snapshot dict containing only applicable obligations.
+
+        An obligation is included when **all** of these hold:
+
+          * Its ``effective_date`` (if present) is ``<= as_of``.
+          * Its ``sunset_date`` (if present and not ``null``) is ``>= as_of``.
+          * Its ``jurisdiction`` field is either absent, set to a universal
+            sentinel (``"global"``, ``"*"``, empty string), or matches the
+            ``jurisdiction`` argument exactly. If ``jurisdiction`` is
+            ``None`` (no tenant restriction supplied) all jurisdictions
+            pass through.
+
+        The returned dict is the v3 evaluator's expected snapshot shape:
+        ``{"version": ..., "obligations": [...], "definitions": [...],
+        "scope": {"jurisdiction": ..., "as_of": ..., "n_in": ..., "n_out": ...}}``.
+        The ``scope`` block is recorded so the LLM transcript carries the
+        framework's view of *what was sent* — an auditor can replay the
+        same scope and confirm.
+        """
+        n_in = len(self.rules)
+        kept: list[dict[str, Any]] = [
+            rule for rule in self.rules if _rule_is_in_scope(rule, jurisdiction=jurisdiction, as_of=as_of)
+        ]
+        snapshot: dict[str, Any] = {
+            "version": self.version,
+            "obligations": kept,
+            "definitions": self.metadata.get("definitions", []),
+            "scope": {
+                "jurisdiction": jurisdiction,
+                "as_of": as_of.isoformat(),
+                "n_in": n_in,
+                "n_out": len(kept),
+            },
+        }
+        return snapshot
+
+
+def _parse_iso_date(value: Any) -> Optional[datetime]:
+    """Parse an ISO-8601 date or datetime string; return None on failure.
+
+    Bare dates (``YYYY-MM-DD``) are read as midnight UTC so they compare
+    cleanly against the measurement timestamp.
+    """
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        # Accept both date-only and full datetimes.
+        if "T" in value:
+            return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.fromisoformat(value + "T00:00:00+00:00")
+    except ValueError:
+        return None
+
+
+def _rule_is_in_scope(
+    rule: dict[str, Any],
+    *,
+    jurisdiction: Optional[str],
+    as_of: datetime,
+) -> bool:
+    """True iff ``rule`` is effective at ``as_of`` and applies to ``jurisdiction``."""
+    effective_at = _parse_iso_date(rule.get("effective_date"))
+    if effective_at is not None and effective_at > as_of:
+        return False
+
+    sunset_raw = rule.get("sunset_date")
+    if sunset_raw is not None:
+        sunset_at = _parse_iso_date(sunset_raw)
+        if sunset_at is not None and sunset_at < as_of:
+            return False
+
+    if jurisdiction is None:
+        return True
+
+    rule_jurisdiction = rule.get("jurisdiction")
+    if rule_jurisdiction is None:
+        return True
+    if isinstance(rule_jurisdiction, str):
+        normalised = rule_jurisdiction.strip().lower()
+        if normalised in _UNIVERSAL_JURISDICTION_VALUES:
+            return True
+        return normalised == jurisdiction.strip().lower()
+    if isinstance(rule_jurisdiction, list):
+        # KG authors can list multiple jurisdictions. Any match wins.
+        wanted = jurisdiction.strip().lower()
+        for item in rule_jurisdiction:
+            if isinstance(item, str):
+                norm = item.strip().lower()
+                if norm in _UNIVERSAL_JURISDICTION_VALUES or norm == wanted:
+                    return True
+        return False
+    return False
 
 
 def load_signed_kg(path: Path, *, require_signature: bool) -> KnowledgeGraph:
