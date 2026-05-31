@@ -9,6 +9,74 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (runtime, v3 — PR 11, audit trail expansion)
+- **`ski_model.v3.signing.TranscriptSigner`** — ed25519 signing keypair
+  for LLM transcripts per spec §6.3. `auto_provision()` generates a fresh
+  keypair on first run (default at `$SKI_TRANSCRIPT_KEY_PATH` →
+  `/app/keys/transcript.ed25519`), persists it with mode `0600` on POSIX
+  and writes the matching `.pub` PEM alongside. `signing_key_id` is the
+  sha256 of the public-key bytes, prefixed `sha256:`, so an auditor can
+  look up the right key during rotation.
+- **`ski_model.v3.signing.verify_signature`** — standalone helper for
+  independent auditors. Does not require a `TranscriptSigner`; just a PEM
+  public key.
+- **`ski_model.v3.transcript.LLMTranscript`** — provider-neutral signed
+  record of one LLM evaluation call (spec §6.2). Captures the canonical
+  prompt, canonical structured-output dict, both sha256 hashes, ed25519
+  signature, `signing_key_id`, opaque `backend_name` / `backend_metadata`
+  tags, and timestamps. **No vendor wire-format leaks** — Anthropic
+  Messages blobs, OpenAI ChatCompletion shapes, Ollama responses, etc.
+  do not reach the ledger. `extra="forbid"` enforces this.
+- **`ski_model.v3.evaluator.EvaluationResult`** — `(envelope, transcript)`
+  pair returned by the new `V3Evaluator.aevaluate_with_transcript(...)`.
+  The simpler `aevaluate(...)` still returns just `V3VerdictEnvelope` so
+  existing callers and tests don't break.
+- **`V3Evaluator.signer`** — optional `TranscriptSigner` field. When
+  supplied, every evaluation produces a signed `LLMTranscript`. When
+  `None`, the envelope is still produced but no transcript is emitted.
+- **`LedgerClient.append_v3(envelope, transcript, ...)`** — writes the
+  full envelope and the signed transcript into the new ledger columns.
+  Preserves the existing hash chain.
+- **`reference-implementation/src/ledger/migrations/0002_transcript_columns.sql`**
+  — adds `envelope_json`, `envelope_hash`, `transcript_json`,
+  `transcript_signature`, `signing_key_id`, `verifier_status` columns
+  and indices. Relaxes the legacy `track` CHECK so v3 entries
+  (`'v3-evaluator'`) are accepted, and adds a new CHECK constraining
+  `verifier_status` to the four spec-normative values.
+- **`v3/tests/test_signing.py`** (9 tests) and
+  **`v3/tests/test_transcript.py`** (12 tests).
+
+### Changed (runtime, v3 — PR 11)
+- **`/api/evaluate`** now calls `aevaluate_with_transcript(...)` and
+  persists via `ledger.append_v3(...)`. Every verdict is recorded with
+  its envelope + signed transcript; an auditor can independently replay
+  the LLM call from the ledger.
+- **`V3Evaluator`** renders the *canonical* prompt from `PROMPT_TEMPLATE`
+  with the measurement and KG snapshot bound to it. This is the
+  framework's view of what was asked; real backends may format
+  internally (chat templates, system messages, etc.), but the
+  audit-trail prompt is the framework's canonical form. This is the
+  **LLM-agnostic** part — every backend signs against the same prompt.
+- **`V3Evaluator.aevaluate(...)`** kept as a backward-compatible
+  envelope-only return; production callers use
+  `aevaluate_with_transcript(...)` to get the transcript.
+- **`server.py`** lifespan provisions a `TranscriptSigner` and injects
+  it into `V3Evaluator`.
+- **Bug fix:** the ledger `track` CHECK constraint previously rejected
+  `'v3-evaluator'` (only `'symbolic'` and `'llm'` were allowed). PR
+  10b/10c wrote `'v3-evaluator'` but this only mattered for real
+  Postgres — the `FakeLedger` in tests didn't enforce the CHECK. The
+  0002 migration replaces the CHECK with a permissive non-empty-string
+  rule.
+
+### Conformance impact (PR 11)
+- Real Postgres deployments need migration `0002_transcript_columns.sql`
+  applied before upgrading. The migration is forward-only.
+- Production deployments MUST provision a transcript signing key.
+  Auto-provisioning at first start writes the key to disk; deployments
+  with stricter key-management policies override
+  `SKI_TRANSCRIPT_KEY_PATH` and pre-place the key.
+
 ### Added (conformance, v3 — PR 10d)
 - **`conformance/level1/test_v3_envelope_shape.py`** (7 tests) — asserts
   every spec v3.0 §4.2 required `V3VerdictEnvelope` field, the §4.6

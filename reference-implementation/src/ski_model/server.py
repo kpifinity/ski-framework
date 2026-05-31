@@ -50,7 +50,13 @@ from .backends import InferenceBackend, build_backend
 from .canary import DeterminismCanary
 from .kg_loader import KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
-from .v3 import FakeLLM, V3Evaluator, V3LLMBackend, V3Verdict, V3VerdictEnvelope
+from .v3 import (
+    FakeLLM,
+    TranscriptSigner,
+    V3Evaluator,
+    V3LLMBackend,
+    V3VerdictEnvelope,
+)
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -85,6 +91,7 @@ class _State:
     llm_backend: Optional[V3LLMBackend] = None
     evaluator: Optional[V3Evaluator] = None
     kg_version_hash: str = "sha256:" + "0" * 64
+    transcript_signer: Optional[TranscriptSigner] = None
 
 
 state = _State()
@@ -228,10 +235,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     state.symbolic_evaluator = SymbolicEvaluator()
     state.llm_backend = _build_v3_llm_backend()
+    state.transcript_signer = TranscriptSigner.auto_provision()
+    logger.info(
+        "Transcript signer ready (key_id=%s)",
+        state.transcript_signer.key_id[:24] + "…",
+    )
     state.evaluator = V3Evaluator(
         llm=state.llm_backend,
         kg_version_hash=state.kg_version_hash,
         decoder_seed=int(os.getenv("SKI_MODEL_SEED", "0")),
+        signer=state.transcript_signer,
     )
 
     # Canary path keeps using the v2 backend abstraction until PR 12
@@ -354,28 +367,25 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
             logger.warning("Buffer append failed for %s: %r", measurement.measurement_id, exc)
 
     state.verdicts_produced += 1
-    transcript_ref = f"ledger:{state.tenant_id}/seq:{state.verdicts_produced:012d}"
 
     snapshot = _kg_to_v3_snapshot(state.knowledge_graph)
 
-    envelope = await state.evaluator.aevaluate(
+    # PR 11: evaluator yields envelope + signed transcript; ledger persists both.
+    result = await state.evaluator.aevaluate_with_transcript(
         measurement=measurement.measurement,
         kg_snapshot=snapshot,
-        transcript_ref=transcript_ref,
         risk_tier=measurement.risk_tier,
     )
+    envelope = result.envelope
 
-    # Persist a minimal ledger entry. PR 11 expands the ledger schema to
-    # store the full envelope (LLM transcript, model commitments, citations)
-    # with signing.
-    await state.ledger.append(
-        verdict=V3Verdict(envelope.verdict),
+    await state.ledger.append_v3(
+        envelope=envelope,
+        transcript=result.transcript,
         telemetry_id=measurement.measurement_id,
         telemetry_hash=_hash_measurement(measurement),
         rule_id=_first_obligation_id(envelope),
         kg_version=state.knowledge_graph.version,
         ski_model_version=_VERSION,
-        reasoning=envelope.reasoning,
         track="v3-evaluator",
     )
 

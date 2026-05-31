@@ -17,8 +17,11 @@ agreement / divergence data. Until then the evaluator stamps
 
 from __future__ import annotations
 
+import json
 import logging
+import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Protocol
 
 from .envelope import (
@@ -31,6 +34,8 @@ from .envelope import (
     VerifierStatus,
 )
 from .policies import apply_risk_policy
+from .signing import TranscriptSigner
+from .transcript import LLMTranscript, hash_pair, signing_message
 from .verifier import SymbolicVerifier
 
 logger = logging.getLogger(__name__)
@@ -315,8 +320,26 @@ class FakeLLM:
 
 
 @dataclass
+class EvaluationResult:
+    """Output of :meth:`V3Evaluator.aevaluate` — envelope + signed transcript.
+
+    The envelope is what the API returns to the caller; the transcript is
+    what the audit ledger records. They share a ``transcript_ref`` so an
+    auditor can join them.
+
+    ``transcript`` is ``Optional`` so deployments without an audit ledger
+    (e.g. integration tests) can still exercise the evaluator. When the
+    evaluator is constructed without a :class:`TranscriptSigner` no
+    transcript is produced.
+    """
+
+    envelope: V3VerdictEnvelope
+    transcript: Optional[LLMTranscript]
+
+
+@dataclass
 class V3Evaluator:
-    """KG-grounded LLM evaluator producing :class:`V3VerdictEnvelope`.
+    """KG-grounded LLM evaluator producing :class:`EvaluationResult`.
 
     Parameters
     ----------
@@ -332,39 +355,89 @@ class V3Evaluator:
         The :class:`SymbolicVerifier` used to mechanically cross-check
         the LLM's formalizable assertions. Default: a fresh stateless
         :class:`SymbolicVerifier` instance.
+    signer:
+        Optional :class:`TranscriptSigner` for producing signed
+        :class:`LLMTranscript` records. When ``None``, the evaluator
+        still produces an envelope but :attr:`EvaluationResult.transcript`
+        is ``None``. Production deployments MUST configure a signer per
+        spec §6.3.
     """
 
     llm: V3LLMBackend
     kg_version_hash: str
     decoder_seed: int = 0
     verifier: SymbolicVerifier = field(default_factory=SymbolicVerifier)
+    signer: Optional[TranscriptSigner] = None
 
     async def aevaluate(
         self,
         *,
         measurement: Dict[str, Any],
         kg_snapshot: Dict[str, Any],
-        transcript_ref: str,
+        transcript_ref: Optional[str] = None,
         risk_tier: str = "standard",
     ) -> V3VerdictEnvelope:
-        """Produce a :class:`V3VerdictEnvelope` from a measurement + KG snapshot.
+        """Produce just the verdict envelope.
+
+        Convenience wrapper around :meth:`aevaluate_with_transcript` for
+        callers that don't need the signed transcript (tests, simple
+        clients). Production callers that write to the audit ledger
+        should use :meth:`aevaluate_with_transcript` and persist both
+        sides per spec §6.
+        """
+        result = await self.aevaluate_with_transcript(
+            measurement=measurement,
+            kg_snapshot=kg_snapshot,
+            transcript_ref=transcript_ref,
+            risk_tier=risk_tier,
+        )
+        return result.envelope
+
+    async def aevaluate_with_transcript(
+        self,
+        *,
+        measurement: Dict[str, Any],
+        kg_snapshot: Dict[str, Any],
+        transcript_ref: Optional[str] = None,
+        risk_tier: str = "standard",
+    ) -> EvaluationResult:
+        """Produce an :class:`EvaluationResult` from a measurement + KG snapshot.
 
         Flow:
-          1. Call the LLM with the measurement and KG snapshot.
-          2. Validate citations against the snapshot. Citing a node not in
+          1. Render the canonical prompt from the spec PROMPT_TEMPLATE.
+          2. Call the LLM backend.
+          3. Validate citations against the snapshot. Citing a node not in
              the snapshot forces verdict to ``NULL_UNMAPPED`` and verifier
              status ``UNVERIFIABLE``.
-          3. Mechanically verify each formalizable assertion via
+          4. Mechanically verify each formalizable assertion via
              :class:`SymbolicVerifier`; stamp the real
              :class:`VerifierResult` on the envelope.
-          4. Apply the risk-tier policy per spec §5.4 — verdict may be
-             downgraded to ``DISCRETIONARY`` and human attestation may be
-             flagged as required.
+          5. Apply the risk-tier policy per spec §5.4.
+          6. If a signer is configured, sign the (canonical prompt,
+             canonical response) pair and emit an :class:`LLMTranscript`.
         """
+        started_at = datetime.now(timezone.utc)
+        canonical_prompt = self._render_canonical_prompt(measurement, kg_snapshot)
         raw = await self.llm.evaluate(
             measurement=measurement,
             kg_snapshot=kg_snapshot,
             seed=self.decoder_seed,
+        )
+        completed_at = datetime.now(timezone.utc)
+
+        # Build the transcript first so its id is available for transcript_ref.
+        transcript = self._build_transcript(
+            canonical_prompt=canonical_prompt,
+            response=raw,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+        effective_transcript_ref = (
+            transcript_ref
+            if transcript_ref is not None
+            else f"transcript:{transcript.transcript_id}"
+            if transcript is not None
+            else "transcript:unsigned"
         )
 
         # Citation enforcement: every cited node MUST exist in the snapshot.
@@ -384,7 +457,7 @@ class V3Evaluator:
                 "Forcing verdict to NULL_UNMAPPED.",
                 invalid,
             )
-            return V3VerdictEnvelope(
+            envelope = V3VerdictEnvelope(
                 verdict=V3Verdict.NULL_UNMAPPED,
                 reasoning=(
                     f"Citation enforcement: LLM cited nodes {invalid!r} that are not "
@@ -399,8 +472,9 @@ class V3Evaluator:
                     divergences=[f"Invalid citation: {n}" for n in invalid],
                 ),
                 model_provenance=self._build_provenance(),
-                transcript_ref=transcript_ref,
+                transcript_ref=effective_transcript_ref,
             )
+            return EvaluationResult(envelope=envelope, transcript=transcript)
 
         # Build envelope from LLM output, then have the Symbolic Verifier
         # mechanically cross-check the formalizable assertions and stamp the
@@ -416,12 +490,13 @@ class V3Evaluator:
             formalizable_assertions=assertions,
             verifier_result=verifier_result,
             model_provenance=self._build_provenance(),
-            transcript_ref=transcript_ref,
+            transcript_ref=effective_transcript_ref,
         )
 
         # Risk-tier policy may downgrade verdict to DISCRETIONARY and / or
         # flag human attestation as required, per spec §5.4.
-        return apply_risk_policy(envelope, risk_tier=risk_tier)
+        final_envelope = apply_risk_policy(envelope, risk_tier=risk_tier)
+        return EvaluationResult(envelope=final_envelope, transcript=transcript)
 
     def _build_provenance(self) -> ModelProvenance:
         return ModelProvenance(
@@ -431,6 +506,59 @@ class V3Evaluator:
             prompt_template_hash=self.llm.prompt_template_hash,
             decoder_seed=self.decoder_seed,
             structured_grammar_hash=self.llm.structured_grammar_hash,
+        )
+
+    def _render_canonical_prompt(self, measurement: Dict[str, Any], kg_snapshot: Dict[str, Any]) -> str:
+        """Render PROMPT_TEMPLATE with canonical JSON bindings.
+
+        The result is the *framework-defined* canonical prompt for this
+        evaluation. Real LLM backends may format the prompt differently
+        internally (chat templates, system messages, etc.) — that is their
+        observability concern, not the audit contract. What we record is
+        the framework's view of what was asked.
+        """
+        return PROMPT_TEMPLATE.format(
+            measurement_json=json.dumps(
+                measurement, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ),
+            kg_snapshot_json=json.dumps(
+                kg_snapshot, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+            ),
+        )
+
+    def _build_transcript(
+        self,
+        *,
+        canonical_prompt: str,
+        response: Dict[str, Any],
+        started_at: datetime,
+        completed_at: datetime,
+    ) -> Optional[LLMTranscript]:
+        """Build and sign an :class:`LLMTranscript` if a signer is configured.
+
+        Returns ``None`` when no :class:`TranscriptSigner` is attached;
+        the evaluator still produces an envelope but transcripts cannot
+        be audited.
+        """
+        if self.signer is None:
+            return None
+
+        req_hash, resp_hash = hash_pair(request_text=canonical_prompt, response=response)
+        message = signing_message(request_hash=req_hash, response_hash=resp_hash)
+        signature_hex = self.signer.sign(message)
+
+        return LLMTranscript(
+            transcript_id=str(uuid.uuid4()),
+            request_canonical=canonical_prompt,
+            request_hash=req_hash,
+            response_canonical=response,
+            response_hash=resp_hash,
+            signature_hex=signature_hex,
+            signing_key_id=self.signer.key_id,
+            backend_name=self.llm.name,
+            backend_metadata={},
+            started_at=started_at,
+            completed_at=completed_at,
         )
 
 

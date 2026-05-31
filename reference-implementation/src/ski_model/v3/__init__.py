@@ -21,24 +21,30 @@ from .evaluator import (
     PROMPT_TEMPLATE,
     PROMPT_TEMPLATE_ID,
     RESPONSE_GRAMMAR,
+    EvaluationResult,
     FakeLLM,
     V3Evaluator,
     V3LLMBackend,
 )
 from .policies import RiskTier, apply_risk_policy
+from .signing import TranscriptSigner, verify_signature
+from .transcript import LLMTranscript
 from .verifier import SymbolicVerifier
 
 __all__ = [
     "PROMPT_TEMPLATE",
     "PROMPT_TEMPLATE_ID",
     "RESPONSE_GRAMMAR",
+    "EvaluationResult",
     "FakeLLM",
     "FormalizableAssertion",
     "KGCitation",
     "KGCitationRole",
+    "LLMTranscript",
     "ModelProvenance",
     "RiskTier",
     "SymbolicVerifier",
+    "TranscriptSigner",
     "V3Evaluator",
     "V3LLMBackend",
     "V3Verdict",
@@ -46,4 +52,5 @@ __all__ = [
     "VerifierResult",
     "VerifierStatus",
     "apply_risk_policy",
+    "verify_signature",
 ]
