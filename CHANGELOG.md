@@ -133,6 +133,36 @@ referenced from each release entry.
   (Ruff, Pylance, mypy, Even Better TOML, YAML, EditorConfig, GitHub
   Actions, Mermaid). Forwards ports 8000 / 8001 / 5432 / 8765.
 
+### Added (runtime, v3 — PR 10a of 3)
+- **v3 verdict envelope contract** at
+  `reference-implementation/src/ski_model/v3/envelope.py`. Implements
+  spec v3.0 §4.1–§4.6 as Pydantic v2 models: the five-verdict taxonomy
+  (CLEAR / FLAG / NULL_UNMAPPED / NULL_STALE / DISCRETIONARY, preserved
+  from v2.1), KG citations with `node_id`/`version`/`role`, formalizable
+  assertions, the verifier result with status enum (AGREED /
+  LLM_CONTRADICTION / NEURO_SYMBOLIC_DIVERGENCE / UNVERIFIABLE), model
+  provenance with the six required hash + id fields enforcing the
+  `sha256:` prefix at the Pydantic layer, the optional fast-path marker
+  per §5.6, and the optional human-attestation field per §5.4. Both
+  ConfigDicts that own `model_*` fields opt out of Pydantic's reserved
+  namespace via `protected_namespaces=()` since the field names are
+  normative per spec and cannot be renamed.
+- **25 envelope unit tests** at
+  `reference-implementation/src/ski_model/v3/tests/test_envelope.py`
+  covering the verdict taxonomy, verifier status enum, KG citation
+  roles, every `ModelProvenance` required field, the `sha256:` hash
+  format, negative-case rejections, empty-assertion / UNVERIFIABLE for
+  rules with no formalizable subset, the `verdict_path: "fast"`
+  optional marker, and JSON round-trip for two representative envelope
+  shapes. Verified passing under Python 3.10 + pydantic 2.6.3.
+- **Scope note.** The `SKI_RUNTIME_VERSION` dispatch and the
+  `/api/evaluate/v3` stub were originally planned for this PR but
+  consistently truncated `server.py` mid-edit (the file's size, ~16KB,
+  appears to trigger a write-flush bug independent of OneDrive). Both
+  land in PR 10b alongside the LLM evaluator, either via a single-file
+  rewrite of `server.py` or by extracting the dispatch into a
+  `_v3_routes.py` module wired in with a single one-line import.
+
 ### Added (direction)
 - **[RFC 0002 — SKI v3.0: Neuro-Symbolic Pivot](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)**
   drafted. Proposes inverting the runtime so a sovereign KG-grounded
