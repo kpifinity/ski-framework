@@ -7,6 +7,12 @@ mechanically cross-checks each :class:`FormalizableAssertion`, and the
 risk-tier policy (spec §5.4) post-processes the envelope.
 """
 
+from .backends import (
+    PROMPT_TEMPLATE_HASH,
+    STRUCTURED_GRAMMAR_HASH,
+    OllamaV3Backend,
+    build_backend,
+)
 from .envelope import (
     FormalizableAssertion,
     KGCitation,
@@ -33,8 +39,10 @@ from .verifier import SymbolicVerifier
 
 __all__ = [
     "PROMPT_TEMPLATE",
+    "PROMPT_TEMPLATE_HASH",
     "PROMPT_TEMPLATE_ID",
     "RESPONSE_GRAMMAR",
+    "STRUCTURED_GRAMMAR_HASH",
     "EvaluationResult",
     "FakeLLM",
     "FormalizableAssertion",
@@ -42,6 +50,7 @@ __all__ = [
     "KGCitationRole",
     "LLMTranscript",
     "ModelProvenance",
+    "OllamaV3Backend",
     "RiskTier",
     "SymbolicVerifier",
     "TranscriptSigner",
@@ -52,5 +61,6 @@ __all__ = [
     "VerifierResult",
     "VerifierStatus",
     "apply_risk_policy",
+    "build_backend",
     "verify_signature",
 ]

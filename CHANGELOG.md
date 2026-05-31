@@ -9,6 +9,45 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (runtime, v3 — PR 11.5, real LLM backend)
+- **`ski_model.v3.backends.OllamaV3Backend`** — calls a local Ollama
+  runtime over HTTP. Weights stay on the operator's hardware (satisfies
+  the "Sovereign" requirement). Sends `temperature=0`, fixed seed,
+  `top_p=1.0`, `top_k=1`, `format="json"` for deterministic
+  structured output. `model_weight_hash` is the actual digest from
+  Ollama's `/api/show` endpoint; falls back to
+  `sha256("ollama:" + model_name)` (vendor commitment) when Ollama is
+  unreachable. Malformed structured output is mapped to `DISCRETIONARY`
+  per spec §5.2 — never guessed at.
+- **`ski_model.v3.backends.build_backend()`** — factory that reads
+  `$SKI_V3_LLM_BACKEND` (`"fake"` default, `"ollama"`) and returns a
+  configured `V3LLMBackend`. Unknown names raise so a misconfigured
+  deployment cannot silently fall through to a default.
+- **`ski_model.v3.backends.PROMPT_TEMPLATE_HASH`** and
+  **`STRUCTURED_GRAMMAR_HASH`** — sha256 over the canonical framework
+  prompt and structured-output grammar. Every conformant backend
+  reports these in `ModelProvenance`. Replaces the PR 10b
+  `FakeLLM` placeholder hashes (`sha256:1*64`, `sha256:2*64`) with
+  real values — even tests now produce real provenance.
+- **`v3/tests/test_backends_hashes.py`** (4 tests),
+  **`v3/tests/test_backends_factory.py`** (5 tests),
+  **`v3/tests/test_backends_ollama.py`** (9 tests using
+  `pytest-httpx` to mock Ollama).
+
+### Changed (runtime, v3 — PR 11.5)
+- **`server.py`** delegates LLM backend construction to
+  `v3.build_backend()`. Setting `SKI_V3_LLM_BACKEND=ollama` (plus
+  `OLLAMA_BASE_URL`, `SKI_MODEL_NAME`, etc.) now wires real KG-grounded
+  inference end-to-end with the same audit-trail, verifier, and
+  risk-tier infrastructure as the FakeLLM path.
+
+### Conformance impact (PR 11.5)
+- `SKI_V3_LLM_BACKEND=fake` is the default — CI remains hermetic.
+- `SKI_V3_LLM_BACKEND=ollama` requires a reachable Ollama instance with
+  the named model pulled. Auditors who want to verify a verdict need
+  the same model weights (digest matches the
+  `model_provenance.model_weight_hash` recorded in the envelope).
+
 ### Added (runtime, v3 — PR 11, audit trail expansion)
 - **`ski_model.v3.signing.TranscriptSigner`** — ed25519 signing keypair
   for LLM transcripts per spec §6.3. `auto_provision()` generates a fresh
