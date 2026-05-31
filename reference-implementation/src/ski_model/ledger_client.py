@@ -18,6 +18,8 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from .v3.envelope import V3Verdict as Verdict
+from .v3.envelope import V3VerdictEnvelope
+from .v3.transcript import LLMTranscript
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +152,119 @@ class LedgerClient:
                     "ski_model_version": ski_model_version,
                     "reasoning": reasoning,
                     "track": track,
+                },
+            )
+
+    async def append_v3(
+        self,
+        *,
+        envelope: V3VerdictEnvelope,
+        transcript: Optional[LLMTranscript],
+        telemetry_id: str,
+        telemetry_hash: str,
+        rule_id: Optional[str],
+        kg_version: Optional[str],
+        ski_model_version: str,
+        track: str = "v3-evaluator",
+    ) -> None:
+        """Append a v3 ledger entry with envelope + signed transcript.
+
+        The envelope JSON, the canonical envelope hash, and the (optional)
+        transcript JSON / signature / key_id are all persisted so an
+        auditor can independently replay the verdict per spec §6.
+        The entry_hash chain continues; both the verdict-line columns and
+        the new envelope_hash column are populated so the existing v2 hash
+        chain stays unbroken.
+        """
+        assert self._session_factory is not None
+
+        envelope_json = envelope.model_dump(mode="json")
+        envelope_canonical = json.dumps(
+            envelope_json, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+        envelope_hash = "sha256:" + hashlib.sha256(envelope_canonical).hexdigest()
+
+        transcript_json = transcript.model_dump(mode="json") if transcript is not None else None
+        transcript_signature = transcript.signature_hex if transcript is not None else None
+        signing_key_id = transcript.signing_key_id if transcript is not None else None
+
+        async with self._session_factory() as session, session.begin():
+            row = (
+                await session.execute(
+                    text(
+                        "SELECT sequence_number, entry_hash FROM ledger_entries "
+                        "ORDER BY sequence_number DESC LIMIT 1"
+                    )
+                )
+            ).first()
+            if row is None:
+                sequence_number = 1
+                previous_hash = "0" * 64
+            else:
+                sequence_number = int(row[0]) + 1
+                previous_hash = str(row[1])
+
+            timestamp_iso = datetime.now(timezone.utc).isoformat()
+            payload = canonical_entry_payload(
+                sequence_number=sequence_number,
+                previous_hash=previous_hash,
+                timestamp_iso=timestamp_iso,
+                verdict=str(envelope.verdict),
+                telemetry_id=telemetry_id,
+                telemetry_hash=telemetry_hash,
+                rule_id=rule_id,
+                kg_version=kg_version,
+                ski_model_version=ski_model_version,
+                reasoning=envelope.reasoning,
+                track=track,
+            )
+            entry_hash = hashlib.sha256(payload).hexdigest()
+
+            await session.execute(
+                text(
+                    """
+                        INSERT INTO ledger_entries (
+                            sequence_number, previous_hash, entry_hash, timestamp,
+                            verdict, telemetry_id, telemetry_hash, rule_id,
+                            knowledge_graph_version, ski_model_version,
+                            reasoning, track,
+                            envelope_json, envelope_hash,
+                            transcript_json, transcript_signature, signing_key_id,
+                            verifier_status
+                        ) VALUES (
+                            :seq, :prev, :hash, :ts,
+                            :verdict, :tid, :thash, :rule_id,
+                            :kg_version, :ski_model_version,
+                            :reasoning, :track,
+                            CAST(:envelope_json AS JSONB), :envelope_hash,
+                            CAST(:transcript_json AS JSONB), :transcript_signature, :signing_key_id,
+                            :verifier_status
+                        )
+                        """
+                ),
+                {
+                    "seq": sequence_number,
+                    "prev": previous_hash,
+                    "hash": entry_hash,
+                    "ts": timestamp_iso,
+                    "verdict": str(envelope.verdict),
+                    "tid": telemetry_id,
+                    "thash": telemetry_hash,
+                    "rule_id": rule_id,
+                    "kg_version": kg_version,
+                    "ski_model_version": ski_model_version,
+                    "reasoning": envelope.reasoning,
+                    "track": track,
+                    "envelope_json": json.dumps(envelope_json, ensure_ascii=False),
+                    "envelope_hash": envelope_hash,
+                    "transcript_json": (
+                        json.dumps(transcript_json, ensure_ascii=False)
+                        if transcript_json is not None
+                        else None
+                    ),
+                    "transcript_signature": transcript_signature,
+                    "signing_key_id": signing_key_id,
+                    "verifier_status": str(envelope.verifier_result.status),
                 },
             )
 
