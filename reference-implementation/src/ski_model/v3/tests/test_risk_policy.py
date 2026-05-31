@@ -13,6 +13,7 @@ import pytest
 from ski_model.v3 import (
     FormalizableAssertion,
     KGCitation,
+    KGCitationRole,
     ModelProvenance,
     RiskTier,
     V3Verdict,
@@ -34,7 +35,9 @@ def _envelope(
     return V3VerdictEnvelope(
         verdict=verdict,
         reasoning="for tests",
-        kg_citations=[KGCitation(node_id="ob.x", version="v1", role="obligation")],
+        kg_citations=[
+            KGCitation(node_id="ob.x", version="v1", role=KGCitationRole.OBLIGATION)
+        ],
         formalizable_assertions=[
             FormalizableAssertion(
                 predicate="must_not_exceed",
