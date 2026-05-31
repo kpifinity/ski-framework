@@ -9,6 +9,26 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (conformance, v3 — PR 10d)
+- **`conformance/level1/test_v3_envelope_shape.py`** (7 tests) — asserts
+  every spec v3.0 §4.2 required `V3VerdictEnvelope` field, the §4.6
+  `ModelProvenance` required fields, the §4.5 four-status
+  `VerifierStatus` taxonomy, the §4.3 citation roles, and the `extra=
+  "forbid"` envelope config.
+- **`conformance/level1/test_v3_verifier_contract.py`** (7 tests) — asserts
+  the runtime ships a `SymbolicVerifier` and a risk-tier policy module
+  per spec §5.3 / §5.4, that the verifier names all four
+  `VerifierStatus` values, that it handles the five minimum stateless
+  predicates, and that `RiskTier` lists all three tiers.
+
+### Changed (conformance, v3 — PR 10d)
+- **`conformance/level1/test_verdict_taxonomy.py`** rewritten to read
+  `ski_model/v3/envelope.py` instead of the removed
+  `ski_model/verdicts.py`. Added an explicit guard
+  (`test_legacy_verdicts_module_is_removed`) that fails if the legacy
+  module reappears.
+- Docstring updated from `v2.1 § B3 + Axiom 2` to `v3.0 §4.1`.
+
 ### Added (runtime, v3 — PR 10c of 3, closes the neuro-symbolic loop)
 - **`ski_model.v3.verifier.SymbolicVerifier`** — mechanically cross-checks
   every `FormalizableAssertion` the LLM emits against the rule engine,
