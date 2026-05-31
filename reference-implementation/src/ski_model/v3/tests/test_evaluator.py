@@ -125,9 +125,7 @@ class TestProvenance:
     @pytest.mark.asyncio
     async def test_kg_version_hash_propagates(self) -> None:
         unique_hash = "sha256:" + "b" * 64
-        evaluator = V3Evaluator(
-            llm=FakeLLM(), kg_version_hash=unique_hash, decoder_seed=0
-        )
+        evaluator = V3Evaluator(llm=FakeLLM(), kg_version_hash=unique_hash, decoder_seed=0)
         env = await evaluator.aevaluate(
             measurement={"so2_ppm": 50},
             kg_snapshot=_kg_snapshot(),

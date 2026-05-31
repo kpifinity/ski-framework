@@ -194,8 +194,7 @@ def _build_v3_llm_backend() -> V3LLMBackend:
     if name == "fake":
         return FakeLLM()
     raise RuntimeError(
-        f"SKI_V3_LLM_BACKEND={name!r} is not implemented in PR 10b. "
-        "Set SKI_V3_LLM_BACKEND=fake or unset it."
+        f"SKI_V3_LLM_BACKEND={name!r} is not implemented in PR 10b. Set SKI_V3_LLM_BACKEND=fake or unset it."
     )
 
 
@@ -352,14 +351,10 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
                 measurement=measurement.measurement,
             )
         except Exception as exc:
-            logger.warning(
-                "Buffer append failed for %s: %r", measurement.measurement_id, exc
-            )
+            logger.warning("Buffer append failed for %s: %r", measurement.measurement_id, exc)
 
     state.verdicts_produced += 1
-    transcript_ref = (
-        f"ledger:{state.tenant_id}/seq:{state.verdicts_produced:012d}"
-    )
+    transcript_ref = f"ledger:{state.tenant_id}/seq:{state.verdicts_produced:012d}"
 
     snapshot = _kg_to_v3_snapshot(state.knowledge_graph)
 
@@ -426,17 +421,13 @@ def _parse_telemetry_ts(value: str) -> datetime:
     try:
         return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (TypeError, ValueError):
-        logger.warning(
-            "Malformed telemetry timestamp %r; falling back to wall clock.", value
-        )
+        logger.warning("Malformed telemetry timestamp %r; falling back to wall clock.", value)
         return datetime.now(timezone.utc)
 
 
 def _hash_measurement(measurement: MeasurementRecord) -> str:
     return hashlib.sha256(
-        json.dumps(measurement.model_dump(), sort_keys=True, separators=(",", ":")).encode(
-            "utf-8"
-        )
+        json.dumps(measurement.model_dump(), sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
 

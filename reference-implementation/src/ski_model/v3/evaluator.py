@@ -264,7 +264,11 @@ class FakeLLM:
         limit: Any = matched.get("value")
 
         satisfied = True
-        if predicate == "must_not_exceed" and isinstance(observed, (int, float)) and isinstance(limit, (int, float)):
+        if (
+            predicate == "must_not_exceed"
+            and isinstance(observed, (int, float))
+            and isinstance(limit, (int, float))
+        ):
             satisfied = observed <= limit
         elif (
             predicate == "must_be_within"
@@ -358,14 +362,10 @@ class V3Evaluator:
 
         # Citation enforcement: every cited node MUST exist in the snapshot.
         valid_node_ids = {
-            ob["id"]
-            for ob in kg_snapshot.get("obligations", [])
-            if isinstance(ob, dict) and "id" in ob
+            ob["id"] for ob in kg_snapshot.get("obligations", []) if isinstance(ob, dict) and "id" in ob
         }
         valid_node_ids.update(
-            d["id"]
-            for d in kg_snapshot.get("definitions", [])
-            if isinstance(d, dict) and "id" in d
+            d["id"] for d in kg_snapshot.get("definitions", []) if isinstance(d, dict) and "id" in d
         )
 
         cited_node_ids = [c.get("node_id") for c in raw.get("kg_citations", [])]
