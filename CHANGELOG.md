@@ -9,6 +9,38 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (runtime, v3 — PR 10c of 3, closes the neuro-symbolic loop)
+- **`ski_model.v3.verifier.SymbolicVerifier`** — mechanically cross-checks
+  every `FormalizableAssertion` the LLM emits against the rule engine,
+  per spec v3.0 §4.5. Returns a `VerifierResult` whose `status` is one
+  of `AGREED` / `LLM_CONTRADICTION` / `NEURO_SYMBOLIC_DIVERGENCE` /
+  `UNVERIFIABLE`. Stateless predicates supported in this PR:
+  `must_not_exceed`, `must_be_at_least`, `must_be_within`, `must_equal`,
+  `must_not_equal`. Stateful predicates (window queries, time-bounded
+  checks) are deferred to a follow-up PR.
+- **`ski_model.v3.policies.apply_risk_policy`** — implements spec v3.0
+  §5.4 risk-tier policy. tier-1 obligations require `AGREED`; tier-2
+  tolerates `LLM_CONTRADICTION` with `human_attestation`; tier-3 is
+  permissive. Verdict downgrades to `DISCRETIONARY` are recorded in
+  `V3VerdictEnvelope.notes` so the audit ledger captures the rationale.
+- **`ski_model.v3.policies.RiskTier`** enum and case-insensitive alias
+  resolution (`"high"`, `"standard"`, `"low"`, etc.) for tenant-facing
+  tier strings.
+- **`v3/tests/test_verifier.py`** (20 tests across AGREED, LLM_CONTRADICTION,
+  NEURO_SYMBOLIC_DIVERGENCE, UNVERIFIABLE) and
+  **`v3/tests/test_risk_policy.py`** (14 tests covering all three tiers
+  and alias resolution).
+
+### Changed (runtime, v3 — PR 10c of 3)
+- **`V3Evaluator`** now constructs a `SymbolicVerifier` by default
+  (override via the new `verifier` field) and applies the risk-tier
+  policy after the LLM returns. The `UNVERIFIABLE` placeholder
+  `VerifierResult` from PR 10b is gone; every envelope now carries the
+  real verifier outcome.
+- **`v3/tests/test_evaluator.py`** — happy-path expectations updated
+  from `UNVERIFIABLE` to `AGREED`; the `TestVerifierPlaceholder`
+  tripwire class replaced with `TestVerifierWired`.
+
 ### Added (runtime, v3 cutover — PR 10b of 3)
 - **`ski_model.v3.evaluator.V3Evaluator`** — the KG-grounded LLM evaluator
   that produces a `V3VerdictEnvelope` from a measurement and a KG snapshot

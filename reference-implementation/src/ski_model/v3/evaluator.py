@@ -18,7 +18,7 @@ agreement / divergence data. Until then the evaluator stamps
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Protocol
 
 from .envelope import (
@@ -30,6 +30,8 @@ from .envelope import (
     VerifierResult,
     VerifierStatus,
 )
+from .policies import apply_risk_policy
+from .verifier import SymbolicVerifier
 
 logger = logging.getLogger(__name__)
 
@@ -326,11 +328,16 @@ class V3Evaluator:
         bound to. Recorded in :class:`ModelProvenance` for replay.
     decoder_seed:
         Deterministic decoding seed. Default 0.
+    verifier:
+        The :class:`SymbolicVerifier` used to mechanically cross-check
+        the LLM's formalizable assertions. Default: a fresh stateless
+        :class:`SymbolicVerifier` instance.
     """
 
     llm: V3LLMBackend
     kg_version_hash: str
     decoder_seed: int = 0
+    verifier: SymbolicVerifier = field(default_factory=SymbolicVerifier)
 
     async def aevaluate(
         self,
@@ -344,15 +351,15 @@ class V3Evaluator:
 
         Flow:
           1. Call the LLM with the measurement and KG snapshot.
-          2. Validate citations against the snapshot.
-          3. If any citation references a node not in the snapshot, force
-             verdict to ``NULL_UNMAPPED`` and verifier status
-             ``UNVERIFIABLE``.
-          4. Build the envelope with full :class:`ModelProvenance`.
-
-        PR 10b emits ``VerifierResult(status=UNVERIFIABLE, checked_assertions=0)``
-        because the Symbolic Verifier wrapper is not wired yet — that is
-        PR 10c.
+          2. Validate citations against the snapshot. Citing a node not in
+             the snapshot forces verdict to ``NULL_UNMAPPED`` and verifier
+             status ``UNVERIFIABLE``.
+          3. Mechanically verify each formalizable assertion via
+             :class:`SymbolicVerifier`; stamp the real
+             :class:`VerifierResult` on the envelope.
+          4. Apply the risk-tier policy per spec §5.4 — verdict may be
+             downgraded to ``DISCRETIONARY`` and human attestation may be
+             flagged as required.
         """
         raw = await self.llm.evaluate(
             measurement=measurement,
@@ -395,23 +402,26 @@ class V3Evaluator:
                 transcript_ref=transcript_ref,
             )
 
-        # Build envelope from LLM output.
+        # Build envelope from LLM output, then have the Symbolic Verifier
+        # mechanically cross-check the formalizable assertions and stamp the
+        # real VerifierResult.
+        llm_verdict = V3Verdict(raw["verdict"])
+        assertions = [FormalizableAssertion(**a) for a in raw.get("formalizable_assertions", [])]
+        verifier_result = self.verifier.verify(assertions, llm_verdict=llm_verdict)
+
         envelope = V3VerdictEnvelope(
-            verdict=V3Verdict(raw["verdict"]),
+            verdict=llm_verdict,
             reasoning=raw["reasoning"],
             kg_citations=[KGCitation(**c) for c in raw.get("kg_citations", [])],
-            formalizable_assertions=[
-                FormalizableAssertion(**a) for a in raw.get("formalizable_assertions", [])
-            ],
-            verifier_result=VerifierResult(
-                status=VerifierStatus.UNVERIFIABLE,
-                checked_assertions=0,
-                divergences=["PR 10b: Symbolic Verifier not wired (lands in PR 10c)."],
-            ),
+            formalizable_assertions=assertions,
+            verifier_result=verifier_result,
             model_provenance=self._build_provenance(),
             transcript_ref=transcript_ref,
         )
-        return envelope
+
+        # Risk-tier policy may downgrade verdict to DISCRETIONARY and / or
+        # flag human attestation as required, per spec §5.4.
+        return apply_risk_policy(envelope, risk_tier=risk_tier)
 
     def _build_provenance(self) -> ModelProvenance:
         return ModelProvenance(

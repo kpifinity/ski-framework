@@ -227,23 +227,32 @@ class TestUnmappedKG:
         assert env.verdict == V3Verdict.NULL_UNMAPPED.value
 
 
-# ---- Verifier placeholder (until PR 10c wires the real verifier) --------------
+# ---- Verifier integration (real wiring as of PR 10c) -------------------------
 
 
-class TestVerifierPlaceholder:
+class TestVerifierWired:
     @pytest.mark.asyncio
-    async def test_verifier_status_is_unverifiable_in_pr10b(self) -> None:
+    async def test_happy_path_yields_agreed(self) -> None:
         evaluator = _evaluator()
         env = await evaluator.aevaluate(
             measurement={"so2_ppm": 50},
             kg_snapshot=_kg_snapshot(),
             transcript_ref="ledger:t1/seq:10",
         )
-        # PR 10b's evaluator stamps UNVERIFIABLE because the verifier is
-        # wired in PR 10c. The presence of this assertion is a tripwire —
-        # PR 10c will replace this test with AGREED expectations.
-        assert env.verifier_result.status == VerifierStatus.UNVERIFIABLE.value
-        assert env.verifier_result.checked_assertions == 0
+        assert env.verifier_result.status == VerifierStatus.AGREED.value
+        assert env.verifier_result.checked_assertions == 1
+        assert env.verifier_result.divergences == []
+
+    @pytest.mark.asyncio
+    async def test_flag_path_yields_agreed_when_llm_and_verifier_agree(self) -> None:
+        evaluator = _evaluator()
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 150},
+            kg_snapshot=_kg_snapshot(),
+            transcript_ref="ledger:t1/seq:10b",
+        )
+        assert env.verdict == V3Verdict.FLAG.value
+        assert env.verifier_result.status == VerifierStatus.AGREED.value
 
 
 # ---- JSON round-trip ----------------------------------------------------------

@@ -1,9 +1,10 @@
-"""SKI Framework v3 runtime — public types and evaluator.
+"""SKI Framework v3 runtime — public types, evaluator, and verifier.
 
 PR 10a landed the verdict envelope contract per spec v3.0 §4. PR 10b
-ships the KG-grounded LLM evaluator and a deterministic ``FakeLLM``
-backend. PR 10c lands the Symbolic Verifier wrapper that turns the
-``VerifierResult`` placeholder into real agreement / divergence data.
+shipped the KG-grounded LLM evaluator and the deterministic ``FakeLLM``
+backend. PR 10c closes the neuro-symbolic loop: :class:`SymbolicVerifier`
+mechanically cross-checks each :class:`FormalizableAssertion`, and the
+risk-tier policy (spec §5.4) post-processes the envelope.
 """
 
 from .envelope import (
@@ -24,6 +25,8 @@ from .evaluator import (
     V3Evaluator,
     V3LLMBackend,
 )
+from .policies import RiskTier, apply_risk_policy
+from .verifier import SymbolicVerifier
 
 __all__ = [
     "PROMPT_TEMPLATE",
@@ -34,10 +37,13 @@ __all__ = [
     "KGCitation",
     "KGCitationRole",
     "ModelProvenance",
+    "RiskTier",
+    "SymbolicVerifier",
     "V3Evaluator",
     "V3LLMBackend",
     "V3Verdict",
     "V3VerdictEnvelope",
     "VerifierResult",
     "VerifierStatus",
+    "apply_risk_policy",
 ]
