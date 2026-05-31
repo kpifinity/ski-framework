@@ -80,12 +80,13 @@ def _install_test_state() -> _FakeLedger:
     server.state.ledger = ledger  # type: ignore[assignment]
     server.state.llm_backend = fake_llm
     server.state.evaluator = evaluator
-    server.state.canary = None  # the /api/health handler tolerates this
     server.state.tag_registry = None
     server.state.telemetry_buffer = None
     server.state.tenant_id = "tenant.test"
     server.state.verdicts_produced = 0
     server.state.kg_version_hash = evaluator.kg_version_hash
+    # PR 12: agreement monitor; the /api/health handler tolerates None.
+    server.state.agreement_monitor = None
     return ledger
 
 
