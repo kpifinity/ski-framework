@@ -18,14 +18,13 @@ from typing import Any, Dict
 import pytest
 
 from ski_model.v3 import (
-    FakeLLM,
     PROMPT_TEMPLATE_ID,
+    FakeLLM,
     V3Evaluator,
     V3Verdict,
     V3VerdictEnvelope,
     VerifierStatus,
 )
-
 
 _KG_HASH = "sha256:" + "a" * 64
 

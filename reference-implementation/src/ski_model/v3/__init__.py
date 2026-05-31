@@ -26,14 +26,14 @@ from .evaluator import (
 )
 
 __all__ = [
+    "PROMPT_TEMPLATE",
+    "PROMPT_TEMPLATE_ID",
+    "RESPONSE_GRAMMAR",
     "FakeLLM",
     "FormalizableAssertion",
     "KGCitation",
     "KGCitationRole",
     "ModelProvenance",
-    "PROMPT_TEMPLATE",
-    "PROMPT_TEMPLATE_ID",
-    "RESPONSE_GRAMMAR",
     "V3Evaluator",
     "V3LLMBackend",
     "V3Verdict",

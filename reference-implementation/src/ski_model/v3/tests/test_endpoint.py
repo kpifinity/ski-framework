@@ -4,7 +4,7 @@ The full server lifespan touches a Knowledge Graph file, a database engine,
 and a background canary task — none of which we want CI to depend on. These
 tests therefore:
 
-  * Set environment to disable the API key requirement.
+  * Set environment via :mod:`conftest` to disable the API key requirement.
   * Patch :class:`ski_model.server.state` with hand-rolled in-memory
     substitutes (KG, evaluator, ledger).
   * Drive the FastAPI handler directly via :class:`fastapi.testclient.TestClient`.
@@ -19,26 +19,14 @@ What we cover:
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
+from fastapi.testclient import TestClient
 
-def _enable_no_auth_mode() -> None:
-    """Disable the API-key requirement BEFORE importing the server module."""
-    os.environ["API_KEY_REQUIRED"] = "false"
-    os.environ["SKI_V3_LLM_BACKEND"] = "fake"
-
-
-_enable_no_auth_mode()
-
-# Import AFTER the env vars are set so the module-level constants pick them up.
-from fastapi.testclient import TestClient  # noqa: E402
-
-from ski_model import server  # noqa: E402
-from ski_model.kg_loader import KnowledgeGraph  # noqa: E402
-from ski_model.v3 import FakeLLM, V3Evaluator, V3VerdictEnvelope  # noqa: E402
-
+from ski_model import server
+from ski_model.kg_loader import KnowledgeGraph
+from ski_model.v3 import FakeLLM, V3Evaluator, V3VerdictEnvelope
 
 # ---- In-memory test doubles ---------------------------------------------------
 
