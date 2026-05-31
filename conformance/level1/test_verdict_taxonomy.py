@@ -41,31 +41,15 @@ def test_schema_does_not_admit_null_alone(repo_root: Path) -> None:
 @pytest.mark.level1
 def test_v3_verdict_enum_has_all_five(repo_root: Path) -> None:
     """The reference v3 ``V3Verdict`` enum lists all five canonical verdicts."""
-    src = (
-        repo_root
-        / "reference-implementation"
-        / "src"
-        / "ski_model"
-        / "v3"
-        / "envelope.py"
-    ).read_text()
+    src = (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "envelope.py").read_text()
     for verdict in REQUIRED_VERDICTS:
-        assert f'{verdict} = "{verdict}"' in src, (
-            f"v3/envelope.py V3Verdict enum is missing {verdict}"
-        )
+        assert f'{verdict} = "{verdict}"' in src, f"v3/envelope.py V3Verdict enum is missing {verdict}"
 
 
 @pytest.mark.level1
 def test_v3_verdict_enum_does_not_define_bare_null(repo_root: Path) -> None:
     """The v3 ``V3Verdict`` enum must NOT define a bare ``NULL`` member."""
-    src = (
-        repo_root
-        / "reference-implementation"
-        / "src"
-        / "ski_model"
-        / "v3"
-        / "envelope.py"
-    ).read_text()
+    src = (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "envelope.py").read_text()
     for prohibited in PROHIBITED_VERDICTS:
         bare = f'{prohibited} = "{prohibited}"'
         assert bare not in src, (
@@ -76,13 +60,7 @@ def test_v3_verdict_enum_does_not_define_bare_null(repo_root: Path) -> None:
 @pytest.mark.level1
 def test_legacy_verdicts_module_is_removed(repo_root: Path) -> None:
     """The v2 ``verdicts.py`` module must be gone — v3 owns the taxonomy."""
-    legacy = (
-        repo_root
-        / "reference-implementation"
-        / "src"
-        / "ski_model"
-        / "verdicts.py"
-    )
+    legacy = repo_root / "reference-implementation" / "src" / "ski_model" / "verdicts.py"
     assert not legacy.exists(), (
         "Legacy ski_model/verdicts.py still present. v3 cutover should have removed it; "
         "import V3Verdict from ski_model.v3.envelope instead."
