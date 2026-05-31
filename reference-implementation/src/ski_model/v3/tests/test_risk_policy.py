@@ -35,9 +35,7 @@ def _envelope(
     return V3VerdictEnvelope(
         verdict=verdict,
         reasoning="for tests",
-        kg_citations=[
-            KGCitation(node_id="ob.x", version="v1", role=KGCitationRole.OBLIGATION)
-        ],
+        kg_citations=[KGCitation(node_id="ob.x", version="v1", role=KGCitationRole.OBLIGATION)],
         formalizable_assertions=[
             FormalizableAssertion(
                 predicate="must_not_exceed",
