@@ -107,7 +107,7 @@ def load_v3_kg(path: str) -> KnowledgeGraphV3:
     on success.
 
     Schema-level validity is necessary but not sufficient. Run
-    :class:`kg_validator.v3.V3Validator` against the loaded KG to
+    :class:`kg_validator.V3Validator` against the loaded KG to
     surface the cross-cutting issues from spec §3.6.
     """
     text = Path(path).read_text(encoding="utf-8")

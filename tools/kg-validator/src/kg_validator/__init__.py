@@ -1,16 +1,45 @@
-"""
-KG Validator - Validate and review extracted compliance rules
-"""
+"""kg-validator — schema and §3.6 cross-cutting validation for v3 KGs."""
 
-from .models import ConflictPair, ValidationIssue, ValidationResult
-from .validator import Validator
+from .loader import KnowledgeGraphV3, load_v3_kg
+from .models import (
+    Citation,
+    Definition,
+    Edge,
+    EdgeType,
+    Exemption,
+    Jurisdiction,
+    Obligation,
+    ObligationType,
+    Precedent,
+    RiskTier,
+    Rule,
+    Subject,
+    V3IssueType,
+    V3ValidationIssue,
+    V3ValidationResult,
+)
+from .validator import V3Validator
 
-__version__ = "1.0.0"
+__version__ = "3.0.0"
 __author__ = "KpiFinity"
 
 __all__ = [
-    "ConflictPair",
-    "ValidationIssue",
-    "ValidationResult",
-    "Validator",
+    "Citation",
+    "Definition",
+    "Edge",
+    "EdgeType",
+    "Exemption",
+    "Jurisdiction",
+    "KnowledgeGraphV3",
+    "Obligation",
+    "ObligationType",
+    "Precedent",
+    "RiskTier",
+    "Rule",
+    "Subject",
+    "V3IssueType",
+    "V3ValidationIssue",
+    "V3ValidationResult",
+    "V3Validator",
+    "load_v3_kg",
 ]

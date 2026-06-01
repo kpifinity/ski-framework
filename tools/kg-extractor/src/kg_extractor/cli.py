@@ -1,6 +1,19 @@
+"""Command-line interface for kg-extractor (v3).
+
+The extractor reads a regulatory document, asks the configured LLM
+backend to produce a flat rule list, then wraps the rules into a
+v3 KG JSON file ready to be consumed by ``kg-validator`` and the
+SKI Model runtime.
+
+PR 10e — v2-only paths retired:
+
+* ``extract`` and ``batch`` now emit v3 KG JSON by default.
+* The ``filter --confidence`` subcommand is renamed ``filter
+  --quality`` to reflect the ``ExtractionQuality`` rename (the field
+  on the rule is no longer called ``confidence``).
 """
-Command-line interface for KG Extractor
-"""
+
+from __future__ import annotations
 
 import json
 import os
@@ -8,26 +21,61 @@ from typing import Optional
 
 import click
 
+from . import __version__
 from .extractor import Extractor
+from .v3_emitter import emit_v3_kg
 
 
 @click.group()
-def main():
-    """Extract compliance rules from regulatory documents"""
+def main() -> None:
+    """Extract v3 KGs from regulatory documents."""
 
 
 @main.command()
-@click.option("--file", "-f", required=True, help="Input document file")
+@click.option("--file", "-f", required=True, help="Input document file.")
 @click.option(
-    "--sector", "-s", default="general", help="Industry sector (energy, finance, manufacturing, defense)"
+    "--sector",
+    "-s",
+    default="general",
+    help="Industry sector (energy, finance, manufacturing, defense).",
 )
-@click.option("--output", "-o", default=None, help="Output JSON file (default: stdout)")
-@click.option("--document-type", "-t", default="regulation", help="Type of document")
-def extract(file: str, sector: str, output: Optional[str], document_type: str):
-    """Extract rules from a document"""
+@click.option(
+    "--output",
+    "-o",
+    default=None,
+    help="Output v3 KG JSON file (default: stdout).",
+)
+@click.option("--document-type", "-t", default="regulation", help="Type of document.")
+@click.option(
+    "--jurisdiction",
+    "-j",
+    default="global",
+    show_default=True,
+    help="Jurisdiction id for every rule in this run (e.g., 'us.federal', 'eu', 'global').",
+)
+@click.option(
+    "--jurisdiction-name",
+    default=None,
+    help="Human-readable jurisdiction name (defaults to --jurisdiction).",
+)
+@click.option(
+    "--emit-raw",
+    is_flag=True,
+    default=False,
+    help="Emit the raw extractor output (flat rule list) instead of a v3 KG. For debugging only.",
+)
+def extract(
+    file: str,
+    sector: str,
+    output: Optional[str],
+    document_type: str,
+    jurisdiction: str,
+    jurisdiction_name: Optional[str],
+    emit_raw: bool,
+) -> None:
+    """Extract rules from a document and emit a v3 KG."""
     try:
         click.echo(f"Extracting rules from: {file}")
-
         extractor = Extractor()
         result = extractor.extract_from_file(
             file_path=file,
@@ -35,49 +83,60 @@ def extract(file: str, sector: str, output: Optional[str], document_type: str):
             document_type=document_type,
         )
 
-        # Prepare output
-        output_data = result.to_json()
-
-        # Print summary
         click.echo("\nExtraction complete:")
         click.echo(f"  Total rules: {result.metadata.total_rules_extracted}")
         click.echo(f"  Duration: {result.metadata.extraction_duration_seconds:.2f} seconds")
-        click.echo("  Confidence breakdown:")
+        click.echo("  Extraction-quality breakdown:")
+        for quality, count in result.metadata.rules_by_quality.items():
+            click.echo(f"    {quality}: {count}")
 
-        for confidence, count in result.metadata.rules_by_confidence.items():
-            click.echo(f"    {confidence}: {count}")
+        payload = (
+            result.to_json()
+            if emit_raw
+            else emit_v3_kg(
+                result,
+                jurisdiction=jurisdiction,
+                jurisdiction_name=jurisdiction_name,
+                sector=sector,
+            )
+        )
 
-        # Output results
         if output:
-            with open(output, "w") as f:
-                json.dump(output_data, f, indent=2)
+            with open(output, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
             click.echo(f"\nResults saved to: {output}")
         else:
-            click.echo("\n" + json.dumps(output_data, indent=2))
+            click.echo("\n" + json.dumps(payload, indent=2))
 
-        # Print warnings if any
         if result.warnings:
             click.echo("\nWarnings:")
             for warning in result.warnings:
-                click.echo(f"  ⚠️  {warning}")
+                click.echo(f"  - {warning}")
 
     except FileNotFoundError as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except ValueError as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @main.command()
-@click.option("--input-dir", "-i", required=True, help="Directory with document files")
-@click.option("--output-dir", "-o", required=True, help="Output directory for results")
-@click.option("--sector", "-s", default="general", help="Industry sector")
-def batch(input_dir: str, output_dir: str, sector: str):
-    """Extract rules from multiple documents"""
+@click.option("--input-dir", "-i", required=True, help="Directory with document files.")
+@click.option("--output-dir", "-o", required=True, help="Output directory for v3 KG files.")
+@click.option("--sector", "-s", default="general", help="Industry sector.")
+@click.option(
+    "--jurisdiction",
+    "-j",
+    default="global",
+    show_default=True,
+    help="Jurisdiction id applied to every KG produced in this batch.",
+)
+def batch(input_dir: str, output_dir: str, sector: str, jurisdiction: str) -> None:
+    """Extract v3 KGs from multiple documents."""
     try:
         if not os.path.exists(input_dir):
             raise FileNotFoundError(f"Input directory not found: {input_dir}")
@@ -103,45 +162,58 @@ def batch(input_dir: str, output_dir: str, sector: str):
                     sector=sector,
                 )
 
-                # Save output
-                output_filename = f"{os.path.splitext(filename)[0]}-rules.json"
+                kg_payload = emit_v3_kg(result, jurisdiction=jurisdiction, sector=sector)
+
+                output_filename = f"{os.path.splitext(filename)[0]}-kg-v3.json"
                 output_path = os.path.join(output_dir, output_filename)
+                with open(output_path, "w", encoding="utf-8") as f:
+                    json.dump(kg_payload, f, indent=2)
 
-                with open(output_path, "w") as f:
-                    json.dump(result.to_json(), f, indent=2)
-
-                click.echo(f" ✓ {result.metadata.total_rules_extracted} rules")
+                click.echo(f" OK {result.metadata.total_rules_extracted} rules")
 
             except Exception as e:
-                click.echo(f" ✗ Error: {e!s}")
+                click.echo(f" FAIL: {e!s}")
 
         click.echo(f"\nResults saved to: {output_dir}")
 
     except FileNotFoundError as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except Exception as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @main.command()
-@click.option("--confidence", "-c", default="DISCRETIONARY", help="Filter by confidence level")
-@click.option("--input", "-i", required=True, help="Input JSON file with extracted rules")
-@click.option("--output", "-o", default=None, help="Output file for filtered rules")
-def filter(confidence: str, input: str, output: Optional[str]):
-    """Filter rules by confidence level"""
+@click.option(
+    "--quality",
+    "-q",
+    default="DISCRETIONARY",
+    show_default=True,
+    type=click.Choice(["EXPLICIT", "DISCRETIONARY", "CONFLICTING"], case_sensitive=False),
+    help="Extraction quality to filter on.",
+)
+@click.option(
+    "--input",
+    "-i",
+    required=True,
+    help="Input flat-rule JSON file (the --emit-raw output of `extract`).",
+)
+@click.option("--output", "-o", default=None, help="Output file for filtered rules.")
+def filter(quality: str, input: str, output: Optional[str]) -> None:
+    """Filter raw extracted rules by extraction quality."""
     try:
-        with open(input) as f:
+        with open(input, encoding="utf-8") as f:
             data = json.load(f)
 
         rules = data.get("rules", [])
-        filtered = [r for r in rules if r.get("confidence") == confidence]
+        target = quality.upper()
+        filtered = [r for r in rules if (r.get("extraction_quality") or "").upper() == target]
 
-        click.echo(f"Filtered {len(filtered)}/{len(rules)} rules with confidence: {confidence}")
+        click.echo(f"Filtered {len(filtered)}/{len(rules)} rules with extraction_quality: {target}")
 
         if output:
-            with open(output, "w") as f:
+            with open(output, "w", encoding="utf-8") as f:
                 json.dump({"rules": filtered}, f, indent=2)
             click.echo(f"Results saved to: {output}")
         else:
@@ -149,47 +221,49 @@ def filter(confidence: str, input: str, output: Optional[str]):
 
     except FileNotFoundError as e:
         click.echo(f"Error: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
     except json.JSONDecodeError as e:
         click.echo(f"Error: Invalid JSON in {input}: {e!s}", err=True)
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @main.command()
-def examples():
-    """Show usage examples"""
+def examples() -> None:
+    """Show usage examples."""
     examples_text = """
-KG Extractor Examples:
+kg-extractor examples (v3):
 
-1. Extract rules from a single document:
-   kg-extractor extract --file regulation.txt --sector energy
+1. Extract a v3 KG from a document:
+   kg-extractor extract --file regulation.txt --sector energy \\
+       --jurisdiction us.federal --output kg-extracted-v3.json
 
-2. Extract and save to JSON:
-   kg-extractor extract --file law.pdf --sector finance --output rules.json
+2. Validate the emitted KG:
+   kg-validator validate --input kg-extracted-v3.json
 
 3. Batch process multiple documents:
-   kg-extractor batch --input-dir ./regulations --output-dir ./extracted --sector energy
+   kg-extractor batch --input-dir ./regulations --output-dir ./kgs \\
+       --sector energy --jurisdiction us.federal
 
-4. Filter rules by confidence level:
-   kg-extractor filter --input rules.json --confidence EXPLICIT --output explicit-only.json
+4. Inspect the raw flat rules (debugging only):
+   kg-extractor extract --file regulation.txt --emit-raw --output flat-rules.json
 
-5. Using Python API:
-   from kg_extractor import Extractor
+5. Filter flat rules by extraction quality:
+   kg-extractor filter --input flat-rules.json --quality EXPLICIT \\
+       --output explicit-only.json
+
+6. Python API:
+   from kg_extractor import Extractor, emit_v3_kg
 
    extractor = Extractor()
    result = extractor.extract_from_file("regulation.txt", sector="energy")
-
-   for rule in result.rules:
-       print(f"{rule.subject} {rule.relation} {rule.object}")
+   kg = emit_v3_kg(result, jurisdiction="us.federal", sector="energy")
 """
     click.echo(examples_text)
 
 
 @main.command()
-def version():
-    """Show version"""
-    from . import __version__
-
+def version() -> None:
+    """Show version."""
     click.echo(f"kg-extractor {__version__}")
 
 

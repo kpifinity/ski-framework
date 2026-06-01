@@ -1,30 +1,39 @@
 # kg-extractor
 
-> **⚠ STATUS: EARLY ALPHA (v0.1.0a0).** Alpha-quality tooling. See the
-> repo root `README.md` for the project-wide status.
+> **Status:** v3.0 — first production-target release.
 
 Extract structured compliance rules from regulatory documents
-(LLM-assisted) for use in SKI Knowledge Graphs.
+(LLM-assisted) and emit a **v3 Knowledge Graph** ready for
+`kg-validator` and the SKI Model runtime.
 
 `kg-extractor` is a **Phase 1 (compilation)** tool. The output goes
-through `kg-validator` (human review) and is then signed before
-crossing the sovereign boundary. The extractor's LLM backend may be
-local or cloud — its output is not part of the runtime path.
+through `kg-validator` (schema + §3.6 validation passes) and is then
+signed before crossing the sovereign boundary. The extractor's LLM
+backend may be local or cloud — its output is not part of the runtime
+path.
 
-## Highlights (v2.1)
+## Highlights (v3.0)
 
-- **LLM backend is pluggable.** Default is **Ollama** (local). Cloud
+- **Emits v3 KG JSON by default.** Each extracted rule is wrapped into
+  the typed-graph shape from spec v3.0 §3: a Rule node, an Obligation
+  with a guessed `obligation_type` and numeric `value`/`unit`, a
+  Subject, a Citation, and the four edges connecting them
+  (`applies_to`, `consists_of`, `scoped_to`, `cited_by`).
+- **`--jurisdiction` flag.** Every KG carries a Jurisdiction node and
+  every rule is `scoped_to` it. Defaults to `global`.
+- **Pluggable LLM backend.** Default is **Ollama** (local). Cloud
   backends (`anthropic`, `openai`) exist for compilation-phase use only.
 - **Deterministic by default.** Temperature 0, fixed seed, recorded
   prompt SHA-256 in extraction metadata for reproducibility audits.
 - **`IMPLIED` is prohibited (B2.1 Anchor Constraint).** The prompt
   instructs the model not to emit `IMPLIED` and the parser downgrades
-  any that slip through to `DISCRETIONARY` with a warning. Rules cannot
-  be inferred beyond source text.
-- **No more PyPDF2.** Replaced with `pypdf` (PyPDF2 is deprecated and
-  carries known CVEs).
-- **Source-version binding.** Every rule records the
-  `source_document_version` so updates are traceable.
+  any that slip through to `DISCRETIONARY` with a warning. Rules
+  cannot be inferred beyond source text.
+- **`extraction_quality` replaces `confidence`.** The per-rule trust
+  signal is now `extraction_quality` (EXPLICIT / DISCRETIONARY /
+  CONFLICTING) — a Phase-1 authoring concept, separate from the
+  runtime's categorical verdict (Axiom 2 prohibits confidence scores
+  in the audit trail).
 
 ## Installation
 
@@ -35,74 +44,44 @@ pip install -e tools/kg-extractor
 ## Quick start
 
 ```bash
-# Default backend is local Ollama. Pull the model once:
-docker exec ski-ollama ollama pull qwen2.5:7b-instruct
+# Extract a v3 KG from a regulation:
+kg-extractor extract --file regulation.txt --sector energy \
+    --jurisdiction us.federal \
+    --output kg-extracted-v3.json
 
-# Extract:
-kg-extractor extract \
-  --file regulatory-doc.pdf \
-  --sector energy \
-  --source-document-version "2025-12-31" \
-  --output extracted-rules.json
+# Validate the emitted KG:
+kg-validator validate --input kg-extracted-v3.json
+
+# Batch:
+kg-extractor batch --input-dir ./regulations --output-dir ./kgs \
+    --sector energy --jurisdiction us.federal
+
+# Debugging — dump the raw flat-rule list before wrapping:
+kg-extractor extract --file regulation.txt --emit-raw --output flat.json
 ```
 
-To use a cloud backend (compilation phase only — do not use at runtime):
+## Architecture
 
-```bash
-KG_EXTRACTOR_LLM_BACKEND=anthropic ANTHROPIC_API_KEY=... \
-kg-extractor extract --file regulatory-doc.pdf --sector energy
+```
+kg_extractor/
+├── __init__.py     public API: Extractor, ExtractionResult, ExtractionQuality, emit_v3_kg
+├── extractor.py    chunk → LLM → flat ComplianceRule list
+├── models.py       ComplianceRule, ExtractionResult, ExtractionQuality enum
+├── backends.py     Ollama / Anthropic / OpenAI backends (compilation phase only)
+├── v3_emitter.py   wraps ExtractionResult into a v3 KG dict (spec §3 shape)
+├── utils.py        chunking, document parsing, rule validation
+└── cli.py          click-based CLI (`extract`, `batch`, `filter`, `examples`, `version`)
 ```
 
-## Output format
+## Notes on `extraction_quality`
 
-```json
-{
-  "rules": [
-    {
-      "id": "rule_0_0",
-      "subject": "Facility SO2 discharge",
-      "relation": "must_not_exceed",
-      "object": "100 ppm",
-      "source_document": "regulatory-doc.pdf",
-      "source_clause": "Section 112(b)(1)",
-      "source_document_version": "2025-12-31",
-      "confidence": "EXPLICIT",
-      "reasoning": "The regulation explicitly states 'sulfur dioxide emissions shall not exceed 100 ppm'."
-    }
-  ],
-  "metadata": {
-    "document_name": "regulatory-doc.pdf",
-    "sector": "energy",
-    "extraction_timestamp": "2026-05-22T10:30:00Z",
-    "total_rules_extracted": 12,
-    "backend": "ollama",
-    "model_used": "qwen2.5:7b-instruct",
-    "model_file_sha256": "...",
-    "temperature": 0.0,
-    "seed": 42,
-    "prompt_sha256": "..."
-  },
-  "warnings": []
-}
-```
+- **EXPLICIT** — the LLM produced a verbatim source quote in
+  `reasoning`. The rule is safe to ship without further review.
+- **DISCRETIONARY** — the LLM could not anchor the rule in a verbatim
+  source quote. A human reviewer must approve before shipping.
+- **CONFLICTING** — the LLM detected internal contradiction in the
+  source. Surface for legal review.
 
-The extractor produces draft rules. **Every rule must be reviewed by a
-qualified human via `kg-validator` before signing.** B2.3 Universal
-Coverage forbids auto-approval.
-
-## Environment variables
-
-| Variable | Default | Notes |
-|---|---|---|
-| `KG_EXTRACTOR_LLM_BACKEND` | `ollama` | `ollama`, `anthropic`, `openai`. Cloud backends are Phase 1 only. |
-| `KG_EXTRACTOR_MODEL` | `qwen2.5:7b-instruct` | Model name for the active backend. |
-| `KG_EXTRACTOR_TEMPERATURE` | `0` | Do not raise without recording the change. |
-| `KG_EXTRACTOR_SEED` | `42` | Recorded into extraction metadata. |
-| `KG_EXTRACTOR_MODEL_FILE_SHA256` | unset | If set, recorded into metadata for audit. |
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | |
-| `ANTHROPIC_API_KEY` | unset | Required only for `anthropic` backend. |
-| `OPENAI_API_KEY` | unset | Required only for `openai` backend. |
-
-## Licensing
-
-Apache 2.0 — see [`../../LICENSE`](../../LICENSE).
+This is **not** a confidence score in the probabilistic sense. The
+runtime never reads it. It exists solely to drive the Phase-1
+human-review queue.

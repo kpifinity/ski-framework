@@ -1,9 +1,13 @@
-"""
-Tests for KG Extractor
-"""
+"""Tests for kg-extractor."""
 
 import pytest
-from kg_extractor.models import ComplianceRule, ConfidenceLevel
+from kg_extractor import emit_v3_kg
+from kg_extractor.models import (
+    ComplianceRule,
+    ExtractionMetadata,
+    ExtractionQuality,
+    ExtractionResult,
+)
 from kg_extractor.utils import chunk_text, validate_rule
 
 
@@ -27,7 +31,6 @@ class TestChunking:
         """Chunks should overlap"""
         text = "word " * 100
         chunks = chunk_text(text, max_chunk_size=100, overlap=20)
-        # Check that second chunk overlaps with first
         if len(chunks) > 1:
             assert text.find(chunks[1]) < text.find(chunks[0]) + len(chunks[0])
 
@@ -44,7 +47,7 @@ class TestRuleValidation:
             object="100 ppm",
             source_document="Clean Air Act",
             source_clause="Section 112",
-            confidence=ConfidenceLevel.EXPLICIT,
+            extraction_quality=ExtractionQuality.EXPLICIT,
             reasoning="Rule clearly stated",
         )
         assert validate_rule(rule) is True
@@ -58,7 +61,7 @@ class TestRuleValidation:
             object="100 ppm",
             source_document="Clean Air Act",
             source_clause="Section 112",
-            confidence=ConfidenceLevel.EXPLICIT,
+            extraction_quality=ExtractionQuality.EXPLICIT,
             reasoning="Rule clearly stated",
         )
         assert validate_rule(rule) is False
@@ -72,17 +75,32 @@ class TestRuleValidation:
             object="100 ppm",
             source_document="Clean Air Act",
             source_clause="Section 112",
-            confidence=ConfidenceLevel.EXPLICIT,
+            extraction_quality=ExtractionQuality.EXPLICIT,
             reasoning="Rule clearly stated",
         )
         assert validate_rule(rule) is False
+
+
+def _sample_metadata(quality_counts):
+    return ExtractionMetadata(
+        document_name="test.txt",
+        document_type="regulation",
+        sector="energy",
+        extraction_timestamp="2026-05-21T00:00:00Z",
+        total_rules_extracted=sum(quality_counts.values()),
+        rules_by_quality=quality_counts,
+        extraction_duration_seconds=1.0,
+        backend="anthropic",
+        model_used="claude-opus",
+        temperature=0.0,
+    )
 
 
 class TestExtractionResult:
     """Test extraction result utilities"""
 
     def test_get_explicit_rules(self):
-        """Should filter rules by confidence level"""
+        """Should filter rules by extraction quality"""
         rule1 = ComplianceRule(
             id="1",
             subject="A",
@@ -90,7 +108,7 @@ class TestExtractionResult:
             object="C",
             source_document="Doc",
             source_clause="Clause",
-            confidence=ConfidenceLevel.EXPLICIT,
+            extraction_quality=ExtractionQuality.EXPLICIT,
             reasoning="Test",
         )
         rule2 = ComplianceRule(
@@ -100,25 +118,11 @@ class TestExtractionResult:
             object="F",
             source_document="Doc",
             source_clause="Clause",
-            confidence=ConfidenceLevel.DISCRETIONARY,
+            extraction_quality=ExtractionQuality.DISCRETIONARY,
             reasoning="Test",
         )
 
-        from kg_extractor.models import ExtractionMetadata, ExtractionResult
-
-        metadata = ExtractionMetadata(
-            document_name="test.txt",
-            document_type="regulation",
-            sector="energy",
-            extraction_timestamp="2026-05-21T00:00:00Z",
-            total_rules_extracted=2,
-            rules_by_confidence={"EXPLICIT": 1, "DISCRETIONARY": 1},
-            extraction_duration_seconds=1.0,
-            backend="anthropic",
-            model_used="claude-opus",
-            temperature=0.0,
-        )
-
+        metadata = _sample_metadata({"EXPLICIT": 1, "DISCRETIONARY": 1})
         result = ExtractionResult(rules=[rule1, rule2], metadata=metadata)
 
         explicit_rules = result.get_explicit_rules()
@@ -128,6 +132,69 @@ class TestExtractionResult:
         discretionary_rules = result.get_discretionary_rules()
         assert len(discretionary_rules) == 1
         assert discretionary_rules[0].id == "2"
+
+
+class TestV3Emitter:
+    """PR 10e: extraction result wraps into a v3 KG dict."""
+
+    def _result_with_one_explicit_rule(self):
+        rule = ComplianceRule(
+            id="r1",
+            subject="Facility SO2 discharge",
+            relation="must_not_exceed",
+            object="100 ppm",
+            source_document="Clean Air Act",
+            source_clause="Section 112",
+            extraction_quality=ExtractionQuality.EXPLICIT,
+            reasoning="Section 112: facilities must not exceed 100 ppm SO2",
+        )
+        return ExtractionResult(rules=[rule], metadata=_sample_metadata({"EXPLICIT": 1}))
+
+    def test_emit_v3_kg_basic_shape(self):
+        result = self._result_with_one_explicit_rule()
+        kg = emit_v3_kg(result, jurisdiction="us.federal", sector="energy")
+
+        assert kg["metadata"]["schema_version"] == "3.0"
+        assert kg["metadata"]["sector"] == "energy"
+        assert len(kg["nodes"]["rules"]) == 1
+        assert len(kg["nodes"]["obligations"]) == 1
+        assert len(kg["nodes"]["subjects"]) == 1
+        assert len(kg["nodes"]["jurisdictions"]) == 1
+        assert len(kg["nodes"]["citations"]) == 1
+
+    def test_emit_v3_kg_obligation_type_guess(self):
+        result = self._result_with_one_explicit_rule()
+        kg = emit_v3_kg(result)
+        obligation = kg["nodes"]["obligations"][0]
+        assert obligation["obligation_type"] == "must_not_exceed"
+        assert obligation["value"] == 100
+        assert obligation["unit"] == "ppm"
+
+    def test_emit_v3_kg_edges_form_complete_graph(self):
+        result = self._result_with_one_explicit_rule()
+        kg = emit_v3_kg(result, jurisdiction="us.federal")
+        edge_types = sorted(e["type"] for e in kg["edges"])
+        assert edge_types == [
+            "applies_to",
+            "cited_by",
+            "consists_of",
+            "scoped_to",
+        ]
+
+    def test_emit_v3_kg_unknown_relation_falls_to_discretionary(self):
+        rule = ComplianceRule(
+            id="r2",
+            subject="X",
+            relation="ought_to_be_purple",  # not in the mapping
+            object="purple",
+            source_document="Doc",
+            source_clause="Cl",
+            extraction_quality=ExtractionQuality.DISCRETIONARY,
+            reasoning="Edge case",
+        )
+        result = ExtractionResult(rules=[rule], metadata=_sample_metadata({"DISCRETIONARY": 1}))
+        kg = emit_v3_kg(result)
+        assert kg["nodes"]["obligations"][0]["obligation_type"] == "discretionary"
 
 
 if __name__ == "__main__":
