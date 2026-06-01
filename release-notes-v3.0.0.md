@@ -1,0 +1,135 @@
+# SKI Framework v3.0.0 — Neuro-Symbolic Pivot
+
+**Released:** 2026-06-01
+
+The first version of the SKI Framework we market. RFC 0002 (Accepted)
+is implemented end-to-end. Every architectural commitment in the v2
+line — strict mypy on the deterministic core, replay determinism, the
+canary, the conformance suite — is rebuilt around a different shape of
+defensibility: *verifiable provenance* of a neuro-symbolic decision
+instead of bit-identical replay of a rule engine.
+
+## What's in the box
+
+**A KG-grounded sovereign LLM is the primary reasoner.** On every
+verdict, the local LLM (Ollama by default; `V3LLMBackend` protocol for
+pluggability) reads the obligations applicable to the tenant's
+jurisdiction and the measurement's effective date, runs structured
+generation with `temperature=0` and a fixed seed, and emits a verdict,
+reasoning, KG citations, and a structured set of *formalizable
+assertions*.
+
+**The Symbolic Verifier mechanically cross-checks every formalizable
+assertion.** For each assertion, the verifier evaluates the underlying
+predicate against the same telemetry and emits `AGREED`,
+`LLM_CONTRADICTION`, `NEURO_SYMBOLIC_DIVERGENCE`, or `UNVERIFIABLE`.
+Five stateless predicates plus three stateful (`window_count`,
+`window_sum`, `window_avg`) are supported.
+
+**The Risk-Tier Governor is strict.** Risk tier per obligation is
+declared in the KG (spec §5.4). The caller cannot self-declare a tier.
+The strictest tier across the applicable obligations wins; default is
+`tier-2`.
+
+**Signed LLM transcripts.** Every evaluation produces an
+`LLMTranscript` signed with the runtime's own ed25519 key
+(auto-provisioned at `$SKI_TRANSCRIPT_KEY_PATH`). Auditors can
+independently replay any verdict via the signature plus the ledger's
+`transcript_json` and `envelope_json` columns. Backend-agnostic by
+construction — no provider wire format reaches the ledger.
+
+**Jurisdiction-scoped KG snapshots.** `KnowledgeGraph.scope_to` returns
+only the obligations applicable to a tenant's jurisdiction (and
+effective at the measurement's timestamp). Real-sized KGs no longer
+blow the LLM context window, and the snapshot's `scope` block travels
+in the signed transcript so an auditor can confirm *what was sent*.
+
+**Agreement monitor.** Replaces the v2 determinism canary. A rolling
+window of the last N verifier statuses; `agreement_rate = AGREED /
+total`. Pages on a sustained drop below the configured threshold
+(default 0.95).
+
+**Conformance reorganised around verifiable provenance.** Three levels:
+
+- **Provenance** — every verdict envelope is complete, the Symbolic
+  Verifier ran, citations exist, the agreement monitor is mounted, and
+  the verdict taxonomy is exactly the five canonical values.
+- **Durability** — the KG is signed; the Risk-Tier Governor is strict;
+  the audit ledger is append-only at the DB layer; the hash chain
+  recomputes entry hashes (not just chain linkage); replay reproduces
+  historical verdicts.
+- **Sovereignty** — operable air-gapped, tamper-evident, end-to-end
+  signed. (Scaffolded; harness is the v3.1 milestone.)
+
+## Tools
+
+`kg-extractor` and `kg-validator` ship at `3.0.0` and emit / consume
+the v3 typed-graph shape directly. The extractor's
+`ConfidenceLevel → ExtractionQuality` rename reflects that this is the
+extractor's authoring-time signal, separate from the runtime's
+prohibited confidence score.
+
+## Breaking changes from the v2 line
+
+- `MeasurementRecord.risk_tier` is removed. The KG-side governor wins.
+  v2-shape payloads parse without error (Pydantic silently drops the
+  unknown field); a regression test pins the behavior.
+- `ski_model/canary.py` and `ski_model/backends.py` are gone. The
+  agreement monitor replaces the canary; the `ski_model.v3.backends`
+  package replaces the v2 inference-backend abstraction.
+- `kg-validator` no longer accepts the flat-rule-list (v2) shape. The
+  CLI exposes a single `validate` subcommand. `review`,
+  `detect-conflicts`, `detect-duplicates`, and HTML `report` are
+  retired.
+- `confidence` on extracted rules is renamed `extraction_quality`.
+- Conformance markers `level1` / `level2` / `level3` are renamed
+  `provenance` / `durability` / `sovereignty`. Pytest invocations
+  selecting by marker need to update.
+
+## What's NOT in v3.0.0
+
+- **Sovereignty conformance harness.** The six tests are scaffolded
+  with spec citations and `pytest.skip()`. The harness (network
+  sandbox, `--network=none` container, destructive-DB tamper rig,
+  subprocess startup, transcript inspection) is the v3.1 milestone.
+- **Full-fidelity LLM-emitted typed obligations.** `kg-extractor`
+  produces v3 KGs today via a deterministic wrap of its flat-rule
+  output (`emit_v3_kg`); a follow-up will have the LLM emit the typed
+  obligation directly.
+- **Horizontal scaling.** Per-shard scaling, shard router, ledger
+  partitioning, and the Kubernetes operator land in v3.2.
+
+## Migrating from v0.2.x
+
+No schema migration is required. v0.2 ledgers upgrade in place — v3
+adds nullable columns for the signed transcript, model provenance
+hashes, KG citations, and verifier status; existing rows continue to
+verify under `audit-ledger verify`.
+
+API changes:
+
+- Stop sending `risk_tier` on `/api/evaluate` requests (the field is
+  silently dropped but logging warns once per shape).
+- Switch CI invocations from `pytest -m level1` to
+  `pytest -m provenance` (and `level2` → `durability`).
+- If you call `kg-validator validate` programmatically, drop the
+  `--schema` flag — v3 is the only path.
+- If you build on `kg_extractor.ComplianceRule`, rename `confidence` →
+  `extraction_quality`.
+
+## Acknowledgements
+
+The release closes the v3 pivot proposed in
+[RFC 0002](docs/RFCs/0002-v3-neuro-symbolic-pivot.md). Thanks to
+everyone who reviewed the architectural direction during the RFC's
+feedback window and to the upstream Ollama, Pydantic, and FastAPI
+maintainers whose work this builds on.
+
+## Full ship log
+
+See [`CHANGELOG.md`](CHANGELOG.md#300--2026-06-01) for the complete
+list of changes. Source-of-truth references:
+
+- Specification: [`docs/specification-v3.md`](docs/specification-v3.md)
+- RFC: [`docs/RFCs/0002-v3-neuro-symbolic-pivot.md`](docs/RFCs/0002-v3-neuro-symbolic-pivot.md)
+- Conformance methodology: [`docs/CONFORMANCE.md`](docs/CONFORMANCE.md)
