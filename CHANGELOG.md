@@ -9,6 +9,25 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+_(no unreleased changes — v3.0.0 was just cut)_
+
+## [3.0.0] — 2026-06-01
+
+**The neuro-symbolic pivot ships.** RFC 0002 is Accepted and implemented
+across PRs 8–14 of the v3 stream. The KG-grounded sovereign LLM is the
+primary reasoner on every verdict; the Symbolic Verifier mechanically
+cross-checks the formalizable subset; the strict Risk-Tier Governor
+reads the tier from the KG itself (no caller self-declaration); every
+verdict carries a signed LLM transcript with KG citations and the
+verifier's per-assertion result. The audit story moves from
+*deterministic replay* to *verifiable provenance*. Conformance is
+reorganised around three levels — Provenance, Durability, Sovereignty.
+
+The release version of the runtime is `3.0.0` (was `3.0.0-alpha`); the
+tools (`audit-ledger`, `kg-extractor`, `kg-validator`,
+`ski-model-deploy`) jump from `0.2.1` to `3.0.0` to align with the
+framework version.
+
 ### Changed (docs, v3 — PR 10f, v3 release-ready sweep)
 - **`README.md`** — flipped from "v2.1 released / v3.0 in design" to
   "v3.0 current". Quick-start section rewritten without the v2.1

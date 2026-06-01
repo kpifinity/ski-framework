@@ -18,11 +18,12 @@ abstract: >
   provenance: signed model weights, signed knowledge-graph version, signed
   language-model transcript, knowledge-graph citations, and the symbolic
   verifier's per-assertion result, all hash-chained into an append-only audit
-  ledger. The released reference implementation (Apache 2.0) currently
-  implements specification v2.1, a hybrid runtime of a Symbolic Evaluator
-  (Track 1) and a bounded local language model (Track 2) gated by a governed
-  Tag Registry; specification v3.0 inverting the runtime is in design per RFC
-  0002 with the rollout scheduled across the upcoming release stream.
+  ledger. The reference implementation (Apache 2.0) implements
+  specification v3.0 per RFC 0002: the KG-grounded sovereign LLM is the
+  primary reasoner on every verdict, the Symbolic Verifier mechanically
+  cross-checks the formalizable subset, and the strict Risk-Tier
+  Governor reads the tier from the KG itself (the caller cannot
+  self-declare).
 keywords:
   - compliance
   - regulated industries
@@ -33,13 +34,13 @@ keywords:
   - audit defensibility
   - on-premise LLM
   - SKI Framework
-version: "0.1.0-alpha"
-date-released: "2026-05-22"
+version: "3.0.0"
+date-released: "2026-06-01"
 license: "Apache-2.0 AND CC-BY-4.0"
 license-url: "https://github.com/kpifinity/ski-framework/blob/main/LICENSE"
 references:
   - type: standard
-    title: "SKI Framework Specification v2.1"
+    title: "SKI Framework Specification v3.0"
     authors:
       - name: "KpiFinity Inc."
     year: 2026
