@@ -94,12 +94,16 @@ def _install_test_state() -> _FakeLedger:
 
 
 def _measurement_payload(value: int) -> Dict[str, Any]:
+    # PR 13: ``risk_tier`` is intentionally still included to prove
+    # that v2-shape callers don't crash — the field is silently
+    # ignored, and the tier is derived from the KG by the
+    # RiskTierGovernor. See ``test_strict_governor_ignores_caller_risk_tier``.
     return {
         "measurement_id": f"meas-{value}",
         "timestamp": "2026-01-15T12:00:00Z",
         "subject": "emissions",
         "measurement": {"so2_ppm": value},
-        "risk_tier": "standard",
+        "risk_tier": "tier-3",
     }
 
 
@@ -154,12 +158,42 @@ def test_evaluate_returns_null_unmapped_for_unknown_metric() -> None:
                 "timestamp": "2026-01-15T12:00:00Z",
                 "subject": "unknown",
                 "measurement": {"unrelated_metric": 1},
-                "risk_tier": "standard",
             },
         )
     assert resp.status_code == 200, resp.text
     envelope = V3VerdictEnvelope.model_validate(resp.json())
     assert envelope.verdict == "NULL_UNMAPPED"
+
+
+def test_strict_governor_ignores_caller_risk_tier() -> None:
+    """The strict-governor invariant (PR 13).
+
+    The caller sends ``"risk_tier": "tier-3"`` — the most permissive
+    tier. The KG rule has no ``risk_tier`` field, so the governor
+    returns the default tier-2. The endpoint must accept the request
+    and the chosen tier must come from the KG, not the caller.
+
+    We assert this indirectly: the request succeeds (200) and the
+    envelope's verdict is computed normally. A non-200 here would mean
+    Pydantic rejected the field; a corrupted envelope would mean the
+    caller's tier influenced policy. Neither is acceptable.
+    """
+    _install_test_state()
+    with TestClient(server.app) as client:
+        _install_test_state()
+        resp = client.post(
+            "/api/evaluate",
+            json={
+                "measurement_id": "meas-strict",
+                "timestamp": "2026-01-15T12:00:00Z",
+                "subject": "emissions",
+                "measurement": {"so2_ppm": 50},
+                "risk_tier": "tier-3",  # ignored — strict governor wins
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    envelope = V3VerdictEnvelope.model_validate(resp.json())
+    assert envelope.verdict == "CLEAR"
 
 
 def test_evaluate_records_to_ledger() -> None:

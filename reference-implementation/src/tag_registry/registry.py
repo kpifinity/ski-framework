@@ -1,9 +1,20 @@
-"""Tag Registry implementation."""
+"""Tag Registry + Risk-Tier Governor.
+
+The Tag Registry compiled subjects → rule IDs in v2. In v3 the same
+package houses the :class:`RiskTierGovernor` (spec §5.4) — the
+authoritative source for *which risk tier applies to each
+obligation*. The server consults the governor at evaluation time so
+callers can never self-downgrade their compliance posture.
+
+The strict-governor rule is enforced at the API boundary: the
+``MeasurementRecord`` shape no longer carries a caller-declared
+``risk_tier``. The tier is derived from the obligations themselves.
+"""
 
 from __future__ import annotations
 
 import re
-from typing import Any, Optional
+from typing import Any, ClassVar, Iterable, Optional
 
 _WHITESPACE_RE = re.compile(r"\s+")
 
@@ -54,3 +65,86 @@ class TagRegistry:
 
     def subjects(self) -> list[str]:
         return list(self._mapping.keys())
+
+
+# ============================================================================
+# Risk-Tier Governor (spec v3.0 §5.4)
+# ============================================================================
+
+
+class RiskTierGovernor:
+    """The authoritative source of risk tier per obligation.
+
+    The governor reads each KG rule's optional ``risk_tier`` field and
+    answers: *"given this set of obligations applicable to a measurement,
+    what is the strictest tier among them?"*
+
+    The strictest tier wins. ``tier-1`` is strictest; ``tier-3`` is the
+    most permissive. Rules with no ``risk_tier`` field default to
+    ``tier-2`` (the standard tier).
+
+    Strictness:
+
+      tier-1  ≻  tier-2  ≻  tier-3
+
+    Callers cannot influence the governor's verdict — that is the whole
+    point of the strict-governor design. A tenant in a tier-1
+    jurisdiction cannot send ``risk_tier=tier-3`` to evade the policy.
+    """
+
+    DEFAULT_TIER: ClassVar[str] = "tier-2"
+    _TIER_RANK: ClassVar[dict[str, int]] = {"tier-1": 1, "tier-2": 2, "tier-3": 3}
+    _ALIASES: ClassVar[dict[str, str]] = {
+        "tier-1": "tier-1",
+        "tier1": "tier-1",
+        "high": "tier-1",
+        "high-risk": "tier-1",
+        "tier-2": "tier-2",
+        "tier2": "tier-2",
+        "standard": "tier-2",
+        "default": "tier-2",
+        "tier-3": "tier-3",
+        "tier3": "tier-3",
+        "low": "tier-3",
+        "low-risk": "tier-3",
+    }
+
+    @classmethod
+    def canonicalise(cls, raw: Any) -> str:
+        """Normalise a tier string to ``tier-1`` / ``tier-2`` / ``tier-3``.
+
+        Unknown / missing / non-string inputs collapse to
+        :attr:`DEFAULT_TIER`. The aliases ``"high"``, ``"standard"``,
+        ``"low"``, etc. are recognised.
+        """
+        if not isinstance(raw, str):
+            return cls.DEFAULT_TIER
+        key = raw.strip().lower()
+        return cls._ALIASES.get(key, cls.DEFAULT_TIER)
+
+    @classmethod
+    def strictest_tier(cls, rules: Iterable[dict[str, Any]]) -> str:
+        """The strictest tier across ``rules``; ``DEFAULT_TIER`` when empty.
+
+        Each rule's ``risk_tier`` field (if any) is canonicalised; the
+        minimum rank (i.e. the strictest tier) wins. Empty input yields
+        the default tier so a runtime with zero applicable obligations
+        defaults to the standard policy rather than the permissive one.
+        """
+        ranks = [cls._TIER_RANK[cls.canonicalise(r.get("risk_tier"))] for r in rules]
+        if not ranks:
+            return cls.DEFAULT_TIER
+        best = min(ranks)
+        for tier, rank in cls._TIER_RANK.items():
+            if rank == best:
+                return tier
+        return cls.DEFAULT_TIER  # unreachable
+
+    @classmethod
+    def tier_for_snapshot(cls, kg_snapshot: dict[str, Any]) -> str:
+        """Convenience: strictest tier across a scoped-KG snapshot's obligations.
+
+        Reads ``kg_snapshot["obligations"]`` (the shape produced by
+        :meth:`ski_model.kg_loader.KnowledgeGraph.scope_to`).
+        """
+        return cls.strictest_tier(kg_snapshot.get("obligations", []))

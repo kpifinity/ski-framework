@@ -39,11 +39,11 @@ from pydantic import BaseModel, Field
 # raw script via the container CMD when WORKDIR is /app.
 try:
     from symbolic_evaluator import SymbolicEvaluator
-    from tag_registry import TagRegistry
+    from tag_registry import RiskTierGovernor, TagRegistry
 except ImportError:  # pragma: no cover
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from symbolic_evaluator import SymbolicEvaluator
-    from tag_registry import TagRegistry
+    from tag_registry import RiskTierGovernor, TagRegistry
 
 from .kg_loader import KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
@@ -116,10 +116,6 @@ class MeasurementRecord(BaseModel):
     measurement: Dict[str, Any] = Field(
         default_factory=dict,
         description="Structured measurement values keyed by metric name.",
-    )
-    risk_tier: str = Field(
-        default="standard",
-        description="Risk tier per spec §5.4 (PR 10c uses this to select policy).",
     )
     jurisdiction: Optional[str] = Field(
         default=None,
@@ -392,7 +388,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     result = await state.evaluator.aevaluate_with_transcript(
         measurement=measurement.measurement,
         kg_snapshot=snapshot,
-        risk_tier=measurement.risk_tier,
+        risk_tier=RiskTierGovernor.tier_for_snapshot(snapshot),
         subject=measurement.subject,
         as_of=measurement_ts,
         buffer=state.telemetry_buffer,
