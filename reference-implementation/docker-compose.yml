@@ -251,8 +251,8 @@ services:
     image: dpage/pgadmin4:8.5
     container_name: ski-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:?PGADMIN_EMAIL is required if pgadmin profile is enabled}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:?PGADMIN_PASSWORD is required if pgadmin profile is enabled}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-}
     ports:
       - "5050:80"
     volumes:
