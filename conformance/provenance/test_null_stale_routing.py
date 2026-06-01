@@ -1,8 +1,11 @@
-"""SKI Framework v2.1 § B4.4 — NULL_STALE routing.
+"""SKI Framework v3.0 §4.1 + §5.3 — NULL_STALE routing.
 
-A rule with `requires_recent_within_seconds` must produce a NULL_STALE
-verdict when the buffer has no record for the subject within the
-window. This is the freshness path that v0.1 stubbed and v0.2 wires.
+A rule with ``requires_recent_within_seconds`` must produce a
+NULL_STALE verdict when the telemetry buffer has no record for the
+subject within the freshness window. NULL_STALE is one of the five
+spec-normative verdicts and is therefore a provenance-level concern:
+the runtime must distinguish "couldn't answer because the data is
+stale" from "couldn't answer because the subject is unmapped".
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.level2
+@pytest.mark.provenance
 def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> None:
     """Symbolic Evaluator returns NULL_STALE when the freshness gate fails."""
     import sys
@@ -29,7 +32,6 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
     from symbolic_evaluator import Verdict
     from symbolic_evaluator.evaluator import SymbolicEvaluator
 
-    # An in-memory buffer with one very old sample.
     class _EmptyBuffer:
         async def window_query(self, **_: object) -> Any:
             class _R:
@@ -72,7 +74,7 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
     assert decision.verdict == Verdict.NULL_STALE, decision.reasoning
 
 
-@pytest.mark.level2
+@pytest.mark.provenance
 def test_schema_has_telemetry_buffer_with_append_only(repo_root: Path) -> None:
     """B5.2 extension — the buffer must be append-only at the DB layer."""
     sql = (repo_root / "reference-implementation" / "src" / "ledger" / "telemetry_buffer.sql").read_text()
@@ -84,7 +86,7 @@ def test_schema_has_telemetry_buffer_with_append_only(repo_root: Path) -> None:
     assert "ledger_block_update_delete" in sql, "Buffer triggers must reuse the ledger append-only function."
 
 
-@pytest.mark.level2
+@pytest.mark.provenance
 def test_rfc_documents_authoritative_clock(repo_root: Path) -> None:
     """The design must commit to using telemetry timestamps as the clock."""
     rfc = (repo_root / "docs" / "RFCs" / "0001-stateful-evaluation.md").read_text()

@@ -1,8 +1,14 @@
-"""SKI Framework v2.1 § B4.4 — Window predicate semantics.
+"""SKI Framework v3.0 §5.3 — Stateful predicate provenance.
 
-window_count, window_sum, and window_avg must produce correct verdicts
-against a fixed buffer state. These tests use an in-memory fake buffer;
-the integration test suite exercises a live Postgres.
+``window_count``, ``window_sum``, and ``window_avg`` predicates must
+produce correct verdicts against a fixed buffer state. Stateful
+predicates participate in the verifier's mechanical cross-check (PR
+11.6), so their correctness is a provenance-level concern: a wrong
+window computation would silently corrupt the AGREED / CONTRADICTION
+signal.
+
+These tests use an in-memory fake buffer; the durability suite
+exercises the live Postgres path.
 """
 
 from __future__ import annotations
@@ -91,7 +97,7 @@ def _run(coro: Coroutine[Any, Any, Any]) -> Any:
     return asyncio.get_event_loop().run_until_complete(coro)
 
 
-@pytest.mark.level2
+@pytest.mark.provenance
 def test_window_count_correctness() -> None:
     _setup_path()
     from symbolic_evaluator import Verdict
@@ -117,7 +123,7 @@ def test_window_count_correctness() -> None:
     assert d.verdict == Verdict.FLAG, d.reasoning
 
 
-@pytest.mark.level2
+@pytest.mark.provenance
 def test_window_sum_handles_missing_metric_path() -> None:
     _setup_path()
     from symbolic_evaluator import Verdict
@@ -125,7 +131,6 @@ def test_window_sum_handles_missing_metric_path() -> None:
 
     now = datetime(2026, 5, 22, 12, 0, 0, tzinfo=timezone.utc)
     buf = FakeBuffer()
-    # All rows have measurement.x but the rule asks for measurement.y.value
     for i in range(3):
         buf.add("subj", now - timedelta(seconds=i + 1), {"x": 1})
 
@@ -145,7 +150,7 @@ def test_window_sum_handles_missing_metric_path() -> None:
     assert d.verdict == Verdict.NULL_UNMAPPED
 
 
-@pytest.mark.level2
+@pytest.mark.provenance
 def test_window_avg_at_boundary_is_clear() -> None:
     """Boundary case: avg exactly equal to limit with `lte` is CLEAR, not FLAG."""
     _setup_path()

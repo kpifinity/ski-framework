@@ -15,7 +15,7 @@ jobs:
   # ====================================================================
 
   conformance:
-    name: SKI conformance tests (Level 1)
+    name: SKI conformance tests (Provenance + Durability)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
-      - run: pytest conformance/ -q -m "level1 or level2" --tb=short
+      - run: pytest conformance/ -q -m "provenance or durability" --tb=short
 
   codeql:
     name: CodeQL (Python)

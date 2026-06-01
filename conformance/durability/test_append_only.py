@@ -1,8 +1,8 @@
-"""SKI Framework v2.1 § B5.2 — Append-only audit ledger.
+"""SKI Framework v3.0 §6 — Append-only audit ledger.
 
 The audit ledger MUST refuse UPDATE, DELETE, and TRUNCATE on
-`ledger_entries`. Enforcement at the application layer alone is
-insufficient — the spec requires DB-level enforcement so that an
+``ledger_entries``. Enforcement at the application layer alone is
+insufficient — durability requires DB-level enforcement so that an
 insider with INSERT/SELECT privileges cannot rewrite history.
 
 This test asserts the triggers ship in the schema. If a live ledger is
@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 
-@pytest.mark.level1
+@pytest.mark.durability
 def test_append_only_triggers_present_in_schema(repo_root: Path) -> None:
     sql = (repo_root / "reference-implementation" / "src" / "ledger" / "append_only.sql").read_text()
     for op in ("BEFORE UPDATE", "BEFORE DELETE", "BEFORE TRUNCATE"):
@@ -24,7 +24,7 @@ def test_append_only_triggers_present_in_schema(repo_root: Path) -> None:
     assert "ledger_block_update_delete" in sql, "Append-only trigger function missing."
 
 
-@pytest.mark.level1
+@pytest.mark.durability
 @pytest.mark.requires_ledger
 def test_live_update_is_refused(require_ledger: str) -> None:
     pytest.importorskip("sqlalchemy")
@@ -32,7 +32,6 @@ def test_live_update_is_refused(require_ledger: str) -> None:
 
     engine = create_engine(require_ledger)
     with engine.begin() as conn:
-        # Ensure at least one row exists for the UPDATE attempt.
         rows = conn.execute(text("SELECT id FROM ledger_entries ORDER BY id LIMIT 1")).all()
         if not rows:
             pytest.skip("Ledger is empty; cannot test UPDATE refusal without a row.")
