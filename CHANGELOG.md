@@ -9,6 +9,32 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Changed (conformance, v3 — PR 14, verifiable-provenance reorg)
+- **Conformance suite reorganised around verifiable provenance.** The
+  three levels are now ``provenance/`` (L1), ``durability/`` (L2),
+  ``sovereignty/`` (L3). Old ``level1/`` and ``level2/`` directories
+  are removed; their tests are redistributed by what they actually
+  prove (envelope completeness vs audit-chain durability).
+- **`conformance/provenance/`** — every verdict carries a complete,
+  verifier-checked provenance record (envelope shape, ModelProvenance
+  hashes, verifier statuses, KGCitationRoles, agreement monitor,
+  NULL_STALE routing, window-predicate correctness).
+- **`conformance/durability/`** — provenance is signed, replayable,
+  and audit-chained (signed KG required, strict risk-tier governor,
+  append-only triggers, hash-chain entry recomputation, replay CLI,
+  live-deployment determinism, coverage register).
+- **`conformance/sovereignty/`** — scaffolded only. Six skipped tests
+  with spec citations: no-outbound-calls, air-gapped boot, tamper
+  resistance, single-worker enforcement, jurisdiction scope capture,
+  signed LLM transcript. Harness is the v3.1 milestone.
+- **`docs/CONFORMANCE.md`** rewritten with the v3.0 mapping tables;
+  the Level 1 / Level 2 / Level 3 framing is renamed to Provenance /
+  Durability / Sovereignty throughout.
+- **`pytest.ini` markers**: ``level1`` / ``level2`` / ``level3``
+  retired in favour of ``provenance`` / ``durability`` /
+  ``sovereignty``. CI invocations and self-asserted-conformance
+  release notes need to update their marker selection.
+
 ### Added (runtime, v3 — PR 13, risk-tier governor)
 - **`tag_registry.RiskTierGovernor`** — the authoritative source of
   risk tier per obligation (spec v3.0 §5.4). Reads each KG rule's

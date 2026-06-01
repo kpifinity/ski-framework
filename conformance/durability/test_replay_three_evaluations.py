@@ -1,11 +1,15 @@
-"""SKI Framework v2.1 § Axiom 2 + B3.4 — Determinism.
+"""SKI Framework v3.0 § Axiom 2 — Replay determinism, live deployment.
 
-Identical input must yield identical verdict across N runs. This test
-sends the same telemetry record three times and asserts the verdict
-plus rule_id are stable.
+Identical input must yield identical verdict across N runs against a
+deployed runtime. The v3 LLM is non-deterministic at the model level;
+the spec-normative claim is that ``decoder_seed`` plus the recorded
+prompt template, KG version, and risk-tier policy must collapse the
+output back to a deterministic envelope. This test posts the same
+record three times against a live endpoint and asserts the verdict +
+rule_id are stable.
 
 Skips if no live deployment is provided (the static analogue is
-test_canary_active.py).
+``test_agreement_monitor.py``).
 """
 
 from __future__ import annotations
@@ -21,7 +25,7 @@ _RECORD = {
 }
 
 
-@pytest.mark.level1
+@pytest.mark.durability
 @pytest.mark.requires_live_deployment
 def test_three_identical_evaluations_match(require_live: tuple[str, str], insecure: bool) -> None:
     endpoint, api_key = require_live

@@ -1,10 +1,11 @@
 """SKI Framework v3.0 §7.2 — Neuro-symbolic agreement monitor.
 
-A Level 1 conformant v3 implementation runs a continuous LLM↔verifier
-agreement-rate monitor and exposes its snapshot. The v2 ``DeterminismCanary``
-(periodic fixed-input replay against the LLM backend) is gone; PR 12
-replaced it with the on-evaluation :class:`AgreementMonitor` which tracks
-how often the LLM and the symbolic verifier agree.
+A Provenance-level conformant v3 implementation runs a continuous
+LLM↔verifier agreement-rate monitor and exposes its snapshot. The v2
+``DeterminismCanary`` (periodic fixed-input replay against the LLM
+backend) is gone; PR 12 replaced it with the on-evaluation
+:class:`AgreementMonitor` which tracks how often the LLM and the
+symbolic verifier agree.
 
 This test asserts the runtime ships the new monitor module and exposes
 the expected snapshot keys.
@@ -27,7 +28,7 @@ _EXPECTED_SNAPSHOT_KEYS = {
 }
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_agreement_monitor_module_present() -> None:
     """The v3 runtime must ship the agreement-monitor module per spec §7.2."""
     monitor = (
@@ -45,7 +46,7 @@ def test_agreement_monitor_module_present() -> None:
     assert "is_healthy" in text, "Monitor must expose an is_healthy signal."
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_legacy_canary_module_is_removed() -> None:
     """The v2 ``canary.py`` and ``backends.py`` modules must be gone.
 
@@ -65,7 +66,7 @@ def test_legacy_canary_module_is_removed() -> None:
     )
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 @pytest.mark.requires_live_deployment
 def test_live_agreement_monitor_endpoint(require_live: tuple[str, str], insecure: bool) -> None:
     """``/api/canary`` returns the agreement-monitor snapshot (path preserved)."""
@@ -74,8 +75,6 @@ def test_live_agreement_monitor_endpoint(require_live: tuple[str, str], insecure
         r = client.get(f"{endpoint.rstrip('/')}/api/canary", headers={"x-api-key": api_key})
         r.raise_for_status()
         data = r.json()
-    # Either the monitor is fully populated or the server is reporting
-    # not_started (no evaluations yet). Both shapes are conformant.
     if data.get("status") == "not_started":
         return
     missing = _EXPECTED_SNAPSHOT_KEYS - set(data.keys())

@@ -21,7 +21,7 @@ REQUIRED_VERDICTS = {"CLEAR", "FLAG", "NULL_UNMAPPED", "NULL_STALE", "DISCRETION
 PROHIBITED_VERDICTS = {"NULL"}
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_schema_has_all_five_verdicts(repo_root: Path) -> None:
     """The ledger SQL schema constrains ``verdict`` to the five-verdict set."""
     schema = (repo_root / "reference-implementation" / "src" / "ledger" / "schema.sql").read_text()
@@ -29,7 +29,7 @@ def test_schema_has_all_five_verdicts(repo_root: Path) -> None:
         assert f"'{verdict}'" in schema, f"schema.sql is missing verdict {verdict!r}"
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_schema_does_not_admit_null_alone(repo_root: Path) -> None:
     """Pre-v2.1 ``NULL`` (without _UNMAPPED/_STALE) must NOT appear in the schema CHECK."""
     schema = (repo_root / "reference-implementation" / "src" / "ledger" / "schema.sql").read_text()
@@ -38,7 +38,7 @@ def test_schema_does_not_admit_null_alone(repo_root: Path) -> None:
     )
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_v3_verdict_enum_has_all_five(repo_root: Path) -> None:
     """The reference v3 ``V3Verdict`` enum lists all five canonical verdicts."""
     src = (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "envelope.py").read_text()
@@ -46,7 +46,7 @@ def test_v3_verdict_enum_has_all_five(repo_root: Path) -> None:
         assert f'{verdict} = "{verdict}"' in src, f"v3/envelope.py V3Verdict enum is missing {verdict}"
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_v3_verdict_enum_does_not_define_bare_null(repo_root: Path) -> None:
     """The v3 ``V3Verdict`` enum must NOT define a bare ``NULL`` member."""
     src = (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "envelope.py").read_text()
@@ -57,7 +57,7 @@ def test_v3_verdict_enum_does_not_define_bare_null(repo_root: Path) -> None:
         )
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_legacy_verdicts_module_is_removed(repo_root: Path) -> None:
     """The v2 ``verdicts.py`` module must be gone — v3 owns the taxonomy."""
     legacy = repo_root / "reference-implementation" / "src" / "ski_model" / "verdicts.py"

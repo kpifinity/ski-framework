@@ -1,9 +1,9 @@
-"""SKI Framework v2.1 § B5.2 — Ledger hash chain integrity.
+"""SKI Framework v3.0 §6 — Ledger hash chain integrity.
 
-`verify_integrity` must (a) check the chain linkage AND (b) recompute
+``verify_integrity`` must (a) check the chain linkage AND (b) recompute
 the entry hash from the canonical payload. A chain-linkage-only checker
 is insufficient — an insider who modifies a row and recomputes the
-chain forward would pass it.
+chain forward would pass it. Durable provenance requires both checks.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-@pytest.mark.level1
+@pytest.mark.durability
 def test_canonical_serialization_is_documented() -> None:
     p = REPO_ROOT / "tools" / "audit-ledger" / "src" / "audit_ledger" / "canonical.py"
     assert p.exists(), "Canonical serialization module is missing."
@@ -27,9 +27,9 @@ def test_canonical_serialization_is_documented() -> None:
             assert required in text, f"Canonical serialization must use {required}."
 
 
-@pytest.mark.level1
+@pytest.mark.durability
 def test_verify_integrity_recomputes_entry_hash() -> None:
-    """Static check: the verifier loads `canonical_entry_payload` and hashes it."""
+    """Static check: the verifier loads ``canonical_entry_payload`` and hashes it."""
     ledger_py = (REPO_ROOT / "tools" / "audit-ledger" / "src" / "audit_ledger" / "ledger.py").read_text()
     assert "canonical_entry_payload" in ledger_py, (
         "ledger.verify_integrity must import canonical_entry_payload to recompute the entry hash."
@@ -42,7 +42,7 @@ def test_verify_integrity_recomputes_entry_hash() -> None:
     )
 
 
-@pytest.mark.level1
+@pytest.mark.durability
 @pytest.mark.requires_ledger
 def test_live_verify_integrity_passes(require_ledger: str) -> None:
     """If a ledger DSN is supplied, the live verifier must pass on a fresh ledger."""

@@ -20,7 +20,7 @@ def _verifier_source(repo_root: Path) -> str:
     return (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "verifier.py").read_text()
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_verifier_module_exists(repo_root: Path) -> None:
     """The v3 runtime must ship a SymbolicVerifier module."""
     path = repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "verifier.py"
@@ -30,14 +30,14 @@ def test_verifier_module_exists(repo_root: Path) -> None:
     )
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_verifier_class_is_named_symbolic_verifier(repo_root: Path) -> None:
     """The verifier class MUST be exposed under the spec-normative name."""
     src = _verifier_source(repo_root)
     assert "class SymbolicVerifier" in src, "SymbolicVerifier class not found in v3/verifier.py."
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_verifier_emits_all_four_statuses(repo_root: Path) -> None:
     """The verifier reads/emits all four VerifierStatus values."""
     src = _verifier_source(repo_root)
@@ -48,7 +48,7 @@ def test_verifier_emits_all_four_statuses(repo_root: Path) -> None:
         )
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_verifier_supports_minimum_stateless_predicates(repo_root: Path) -> None:
     """The verifier must handle at least the five minimum stateless predicates."""
     src = _verifier_source(repo_root)
@@ -66,7 +66,7 @@ def test_verifier_supports_minimum_stateless_predicates(repo_root: Path) -> None
         )
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_risk_tier_policy_module_exists(repo_root: Path) -> None:
     """A risk-tier policy module MUST exist per spec §5.4."""
     path = repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "policies" / "risk_tier.py"
@@ -76,7 +76,7 @@ def test_risk_tier_policy_module_exists(repo_root: Path) -> None:
     )
 
 
-@pytest.mark.level1
+@pytest.mark.provenance
 def test_risk_tier_module_exposes_all_three_tiers(repo_root: Path) -> None:
     """RiskTier enum lists all three spec §5.4 tiers."""
     src = (
