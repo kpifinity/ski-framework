@@ -13,20 +13,22 @@ Architectural changes to the SKI Framework follow an RFC process.
 
 See [Governance](../governance.md) for the full process.
 
-## Accepted
+## Accepted (implemented)
 
 - [RFC 0001 — Stateful evaluation](0001-stateful-evaluation.md)
   — Authoritative-clock semantics, telemetry buffer, deterministic
   replay. Landed in v0.2.0.
-
-## Draft
-
 - [RFC 0002 — SKI v3.0: Neuro-Symbolic Pivot](0002-v3-neuro-symbolic-pivot.md)
   — Inverts the runtime: KG-grounded sovereign LLM as primary reasoner,
   Symbolic Evaluator repositioned as an independent verifier of the LLM's
   output, Knowledge Graph elevated from routing table to typed semantic
   substrate. Replaces *deterministic replay* with *verifiable provenance*
-  as the defensibility story. Target: v3.0.0.
+  as the defensibility story. Implemented across PRs 8–14 of the v3
+  stream. Landed in **v3.0.0** (2026-06-01).
+
+## Draft
+
+_(none currently)_
 
 ## Templates
 

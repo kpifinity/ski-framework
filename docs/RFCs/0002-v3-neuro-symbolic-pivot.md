@@ -2,10 +2,12 @@
 
 | | |
 |---|---|
-| **Status** | Draft |
+| **Status** | Accepted — implemented |
 | **Author(s)** | KpiFinity Inc. |
 | **Created** | 2026-05-27 |
-| **Last updated** | 2026-05-27 |
+| **Accepted** | 2026-05-30 |
+| **Implemented** | 2026-06-01 (v3.0.0; PRs 8–14) |
+| **Last updated** | 2026-06-01 |
 | **Supersedes** | — |
 | **Superseded by** | — |
 

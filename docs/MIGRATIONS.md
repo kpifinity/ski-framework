@@ -20,8 +20,9 @@ and are versioned alongside the spec.
 
 | Revision | Spec version | What it does |
 |---|---|---|
-| `001_baseline` | v2.1 / v0.1.0-alpha | Captures the v0.1 baseline (already-deployed `ledger_entries` + append-only triggers) without modification |
+| `001_baseline` | v2.0 / v0.1.0-alpha | Captures the v0.1 baseline (already-deployed `ledger_entries` + append-only triggers) without modification |
 | `002_telemetry_buffer` | v2.1 / v0.2.0 | Adds `tenants`, `telemetry_buffer` (RANGE-partitioned), buffer append-only triggers, `schema_version` column on `ledger_entries`, default `tenant` row, default daily partition |
+| _(no revision)_ | v3.0 / v3.0.0 | v3 introduced no breaking schema changes. The runtime extends the ledger with nullable columns for the signed LLM transcript, model provenance hashes, KG citations, and verifier status; v0.2 ledgers upgrade in place without a migration script and continue to verify under `audit-ledger verify`. |
 
 ## Running migrations
 

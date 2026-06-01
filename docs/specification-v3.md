@@ -7,7 +7,7 @@ hide:
 
 | | |
 |---|---|
-| **Status** | Draft (pending RFC 0002 acceptance) |
+| **Status** | Active (RFC 0002 accepted; implemented in v3.0.0) |
 | **Editor** | KpiFinity Inc. |
 | **License** | CC BY 4.0 |
 | **Supersedes** | SKI Framework Specification v2.1 |
