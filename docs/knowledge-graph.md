@@ -1,9 +1,16 @@
-# Knowledge Graph schema (v2.1)
+# Knowledge Graph schema (v3.0)
 
 > **License:** CC BY 4.0. See [LICENSE-docs.md](../LICENSE-docs.md).
+> **Status:** v3 is current. This page describes the v3 typed-graph
+> shape (spec §3); the **authoritative** schema reference is in
+> [`specification-v3.md`](specification-v3.md) and the Pydantic models
+> in [`tools/kg-validator/src/kg_validator/models.py`](https://github.com/kpifinity/ski-framework/blob/main/tools/kg-validator/src/kg_validator/models.py).
+> This page is being rewritten to match the v3 typed-graph shape; until
+> then, treat the spec doc and the Pydantic models as the source of
+> truth and use this page as background context only.
 
-A SKI Knowledge Graph is a single signed JSON document. This is the
-authoritative description of its shape. A reference JSON Schema lives at
+A SKI Knowledge Graph is a single signed JSON document. A reference
+JSON Schema lives at
 [`docs/schemas/knowledge-graph.schema.json`](./schemas/knowledge-graph.schema.json)
 (generated from this document).
 

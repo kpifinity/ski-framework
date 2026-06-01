@@ -9,6 +9,39 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Changed (docs, v3 — PR 10f, v3 release-ready sweep)
+- **`README.md`** — flipped from "v2.1 released / v3.0 in design" to
+  "v3.0 current". Quick-start section rewritten without the v2.1
+  caveat. Architecture section consolidated to the single v3 path
+  (no more Track 1 / Track 2 split). Conformance table now lists
+  Provenance / Durability / Sovereignty. Roadmap moved v3.0 from
+  "planned" to "shipped" and added v3.1 / v3.2. Legacy v2 line moved
+  to a "Superseded" subsection. Citation string updated to v3.0.0.
+- **`docs/index.md`** — same flip: success status block, current spec
+  badge v3.0, no "in design" caveats. Quick start cleaned.
+- **`docs/RFCs/index.md`** — RFC 0002 moved from Draft to "Accepted
+  (implemented)" with the implementation date and PR range.
+- **`docs/RFCs/0002-v3-neuro-symbolic-pivot.md`** — status table now
+  reads "Accepted — implemented" with accepted/implemented dates.
+- **`docs/MIGRATIONS.md`** — added a v3.0 row noting no schema
+  migration was required; v0.2 ledgers upgrade in place.
+- **`docs/glossary.md`** — full rewrite for the v3 vocabulary.
+  Added: Agreement monitor, Extraction quality, Formalizable
+  assertion, Jurisdictional scope, LLM transcript, Risk-Tier
+  Governor, Symbolic Verifier, Verdict envelope, Verifier status.
+  Retired / renamed: Determinism canary (marked retired with a
+  pointer to Agreement monitor), Track 1 / Track 2 (gone — single v3
+  path), Symbolic Evaluator (entry merged into Symbolic Verifier).
+- **`docs/getting-started.md`** — status banner updated; "Core
+  concepts in five minutes" rewritten around the v3 vocabulary
+  (Risk-Tier Governor, KG-grounded LLM evaluator, Symbolic Verifier).
+- **`docs/specification-v3.md`** — status table updated from "Draft
+  (pending RFC 0002 acceptance)" to "Active (RFC 0002 accepted;
+  implemented in v3.0.0)".
+- **`docs/knowledge-graph.md`** and **`docs/ARCHITECTURE.md`** — status
+  banners point readers to the v3 spec / RFC 0002 as the
+  authoritative references; full rewrites tracked as a follow-up.
+
 ### Changed (compilation tools, v3 — PR 10e, strip v2 paths)
 - **`kg-validator` is v3-only.** The flat-rule-list (`v2`) shape is no
   longer supported. The v3 subpackage has been flattened to the top

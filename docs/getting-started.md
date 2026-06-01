@@ -1,7 +1,8 @@
 # Getting started with the SKI Framework
 
-> **⚠ STATUS: EARLY ALPHA (v0.1.0-alpha).** The specification is stable
-> at v2.1. The reference implementation and tools are alpha.
+> **Status:** v3.0 — first production-target release. Specification at
+> v3.0; reference implementation, tools, and conformance suite are
+> aligned.
 
 This guide orients you to the framework and points to the right next
 document for each role.
@@ -18,21 +19,31 @@ and human primacy.
 The framework defines a **two-phase architecture**:
 
 - **Phase 1 — offline compilation.** Regulatory documents are turned
-  into a signed Knowledge Graph through a probabilistic, human-validated
-  process.
-- **Phase 2 — runtime evaluation.** Telemetry is evaluated against the
-  signed Knowledge Graph inside the sovereign boundary, deterministically.
+  into a signed v3 Knowledge Graph through a probabilistic,
+  human-validated process (`kg-extractor` produces the v3 KG; the
+  `kg-validator` runs the spec §3.6 validation passes).
+- **Phase 2 — runtime evaluation.** Telemetry is evaluated by a
+  KG-grounded local LLM inside the sovereign boundary; the Symbolic
+  Verifier mechanically cross-checks every formalizable assertion;
+  every verdict carries signed provenance.
 
 ## Core concepts in five minutes
 
-1. **Knowledge Graph** — set of structured compliance rules, signed.
-2. **Tag Registry** — compile-time mapping from telemetry subject to
-   rule. Runtime tag inference is architecturally prohibited.
-3. **Symbolic Evaluator (Track 1)** — deterministic predicate evaluator
-   used for the bulk of rules. Outputs `CLEAR` / `FLAG` / `NULL_*`.
-4. **SKI Model (Track 2)** — bounded local LLM for the small fraction of
-   rules that require natural-language interpretation. Temperature 0,
-   seeded, structured output, with a determinism canary.
+1. **Knowledge Graph** — typed graph of obligations, subjects,
+   definitions, exemptions, precedents, jurisdictions, citations
+   (spec §3). Signed Ed25519. The runtime refuses to load an unsigned
+   KG.
+2. **Risk-Tier Governor** — the strict KG-side source of risk tier per
+   obligation (spec §5.4). The caller cannot self-declare a tier; the
+   strictest tier across applicable obligations wins.
+3. **SKI Model evaluator** — the KG-grounded local LLM that produces
+   the verdict, reasoning, KG citations, and formalizable assertions.
+   Temperature 0, fixed seed, structured generation against the
+   scoped KG snapshot.
+4. **Symbolic Verifier** — mechanically cross-checks each formalizable
+   assertion against the same telemetry. Emits one of four statuses:
+   AGREED, LLM_CONTRADICTION, NEURO_SYMBOLIC_DIVERGENCE,
+   UNVERIFIABLE.
 5. **Verdicts** — exactly five: `CLEAR`, `FLAG`, `NULL_UNMAPPED`,
    `NULL_STALE`, `DISCRETIONARY`. No scores, no confidence intervals.
 6. **Audit ledger** — append-only, hash-chained, append-only at the

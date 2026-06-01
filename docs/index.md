@@ -9,20 +9,18 @@ hide:
 
 [![License (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](https://github.com/kpifinity/ski-framework/blob/main/LICENSE)
 [![License (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](https://github.com/kpifinity/ski-framework/blob/main/LICENSE-docs.md)
-[![Release](https://img.shields.io/badge/Release-v0.2.1-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v0.2.1)
-[![Spec (released)](https://img.shields.io/badge/Spec-v2.1-blue.svg)](https://skiframework.org)
-[![Spec (in design)](https://img.shields.io/badge/Next-v3.0%20RFC%200002-orange.svg)](RFCs/0002-v3-neuro-symbolic-pivot.md)
+[![Release](https://img.shields.io/badge/Release-v3.0.0-blue.svg)](https://github.com/kpifinity/ski-framework/releases)
+[![Spec](https://img.shields.io/badge/Spec-v3.0-blue.svg)](https://skiframework.org)
 
-!!! warning "Status — pivoting from v2.1 (released) to v3.0 (in design)"
-    The released artefacts (v0.2.x) implement specification v2.1: a rule
-    engine with a bounded local LLM as a fallback for unformalizable rules.
-    The framework is pivoting to v3.0 per [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md):
-    a KG-grounded sovereign LLM becomes the primary reasoner on every
-    verdict and the existing Symbolic Evaluator is repositioned as an
-    independent verifier of the LLM's output. The architectural direction
-    is settled; the engineering rollout sequences across PRs 8–14 of the
-    v3 stream. This site reflects v2.1 today; v3 sections are added as
-    each PR lands.
+!!! success "Status — v3.0 is current"
+    A KG-grounded sovereign LLM is the primary reasoner on every verdict.
+    The Symbolic Evaluator is repositioned as an independent verifier of
+    the LLM's formalizable assertions. The Knowledge Graph is a typed
+    semantic substrate with jurisdictional scope and effective-date
+    intervals. The audit trail moves from *deterministic replay* to
+    *verifiable provenance*. The architectural rationale is in
+    [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md) (Accepted,
+    implemented across PRs 8–14).
 
 ## Why SKI exists
 
@@ -48,7 +46,7 @@ simultaneously.
 
 <div class="grid cards" markdown>
 
--   :material-brain:{ .lg .middle } **KG-grounded local LLM (v3 primary)**
+-   :material-brain:{ .lg .middle } **KG-grounded local LLM**
 
     ---
 
@@ -93,9 +91,9 @@ simultaneously.
 
     ---
 
-    Black-box Level 1 / 2 / 3 tests citing the spec section they
-    validate. v3 reorganizes levels around verifiable provenance,
-    neuro-symbolic agreement, and SLSA attestation.
+    Black-box Provenance / Durability / Sovereignty tests citing the
+    spec section they validate. Verifiable provenance is the audit
+    contract every conformant runtime must produce.
 
     [:octicons-arrow-right-24: Conformance](conformance.md)
 
@@ -123,17 +121,15 @@ deploy in a regulated environment. Remove the knowledge graph and the
 LLM has no ground truth. Remove the symbolic verifier and an LLM can
 hallucinate a `CLEAR` verdict on a value that is plainly over the limit.
 
-## Quick start (v0.2.x reference implementation)
+## Quick start
 
-Today's released code implements v2.1. Clone the repo, run
-`scripts/setup.sh` to generate TLS certificates and a `.env` file, start
-the Ollama container, pull the default open-weights model
-(`qwen2.5:7b-instruct`), bring up the rest of the stack with `docker
-compose`, send a sample telemetry record from `examples/`, and verify
-the audit ledger. The full walkthrough is in [Getting started](getting-started.md);
-the 10-minute newcomer path is in [Your first rule](tutorials/first-rule.md).
-
-The v3 quick start will be added when PR 10 (runtime inversion) lands.
+Clone the repo, run `scripts/setup.sh` to generate TLS certificates and
+a `.env` file, start the Ollama container, pull the default
+open-weights model (`qwen2.5:7b-instruct`), bring up the rest of the
+stack with `docker compose`, send a sample telemetry record from
+`examples/`, and verify the audit ledger. The full walkthrough is in
+[Getting started](getting-started.md); the 10-minute newcomer path is
+in [Your first rule](tutorials/first-rule.md).
 
 ## Who's behind this
 

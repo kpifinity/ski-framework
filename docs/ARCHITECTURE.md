@@ -1,9 +1,21 @@
 # Architecture
 
-SKI v2.1 is built around a **two-phase architecture**. Phase 1 (offline,
-probabilistic) compiles regulations into a signed Knowledge Graph.
-Phase 2 (runtime, deterministic) evaluates telemetry against that graph
-inside the operator's sovereignty boundary.
+> **Status:** This page describes the architecture at the v2 level of
+> detail. v3 keeps the two-phase split (offline compilation, runtime
+> evaluation) but inverts the runtime: the KG-grounded local LLM is
+> the primary reasoner and the Symbolic Verifier mechanically
+> cross-checks the formalizable subset. The
+> [v3 specification](specification-v3.md) and
+> [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md) are the
+> authoritative references; this page will be rewritten in a follow-up.
+
+SKI v3 is built around a **two-phase architecture**. Phase 1 (offline,
+probabilistic) compiles regulations into a signed v3 Knowledge Graph
+(typed obligations, jurisdictional scope, effective-date intervals,
+precedent edges). Phase 2 (runtime) evaluates telemetry against that
+graph via a KG-grounded local LLM whose formalizable assertions are
+mechanically cross-checked by the Symbolic Verifier — all inside the
+operator's sovereignty boundary.
 
 ## High-level dataflow
 
