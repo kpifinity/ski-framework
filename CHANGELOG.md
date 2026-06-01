@@ -9,6 +9,32 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added (runtime, v3 — PR 13, risk-tier governor)
+- **`tag_registry.RiskTierGovernor`** — the authoritative source of
+  risk tier per obligation (spec v3.0 §5.4). Reads each KG rule's
+  optional ``risk_tier`` field and returns the strictest tier across
+  the applicable obligations (``tier-1`` ≻ ``tier-2`` ≻ ``tier-3``).
+  Rules with no ``risk_tier`` default to ``tier-2``. Aliases
+  (``high``, ``standard``, ``low``, ``tier1``, etc.) canonicalise to
+  the three-tier vocabulary.
+- **`v3/tests/test_risk_tier_governor.py`** — covers canonicalisation,
+  strictest-rank semantics, empty / missing-field defaults, snapshot
+  convenience, and the strict-governor contract (caller cannot
+  influence tier via extra keys on the obligation payload).
+
+### Changed (runtime, v3 — PR 13)
+- **`MeasurementRecord.risk_tier` removed.** The caller can no longer
+  declare a risk tier on the request. The server derives the tier from
+  the KG snapshot via ``RiskTierGovernor.tier_for_snapshot(snapshot)``
+  and passes it to ``V3Evaluator.aevaluate_with_transcript``. For
+  backward compatibility, v2-shape payloads that still send
+  ``risk_tier`` parse without error — Pydantic silently drops the
+  unknown field. A regression test
+  (``test_strict_governor_ignores_caller_risk_tier``) pins the
+  behavior.
+- **`tag_registry` package** now exports both ``TagRegistry`` (kept
+  for KG-validator parity) and the new ``RiskTierGovernor``.
+
 ### Added (runtime, v3 — PR 12, agreement monitor)
 - **`ski_model.v3.agreement_monitor.AgreementMonitor`** — rolling-window
   tracker of LLM↔verifier agreement. Every produced

@@ -16,6 +16,6 @@ whitespace collapsed). Disambiguation between similar subjects must happen
 at compile time in the KG, not at runtime.
 """
 
-from .registry import TagRegistry
+from .registry import RiskTierGovernor, TagRegistry
 
-__all__ = ["TagRegistry"]
+__all__ = ["RiskTierGovernor", "TagRegistry"]
