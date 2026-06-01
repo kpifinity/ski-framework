@@ -1,27 +1,33 @@
 # kg-validator
 
-> **⚠ STATUS: EARLY ALPHA (v0.1.0a0).** Alpha-quality tooling. See the
-> repo root `README.md` for the project-wide status.
+> **Status:** v3.0 — first production-target release.
 
-Validate compliance rules extracted by `kg-extractor` and prepare them
-for human review. Phase 1 (compilation) tool.
+Validate v3 Knowledge Graphs against SKI Framework specification v3.0
+§3 (schema) and §3.6 (cross-cutting validation passes). Phase 1
+(compilation) tool.
 
-## v2.1 highlights
+## What it does
 
-- **No auto-approval.** The pre-v2.1 `auto_approve_explicit` option has
-  been **removed**. Per spec B2.3 (Universal Coverage), every rule must
-  be reviewed by a qualified human. Even as opt-in, auto-approval
-  defaults the operator toward non-conformance.
-- **Conflict detection.** Identifies rule pairs that contradict each
-  other so reviewers can either declare an explicit precedence or
-  reject one.
-- **Duplicate detection.** Catches near-identical rules so they can be
-  merged in review.
-- **Quality checks.** Flags vague language, missing fields, and
-  `DISCRETIONARY` confidence as items needing reviewer attention.
-- **No `IMPLIED`.** The validator refuses to approve a rule with
-  `confidence: IMPLIED` — kg-extractor should already have prevented
-  this (B2.1 Anchor Constraint).
+- **Schema validation.** Parses a v3 KG JSON file into the typed-node
+  Pydantic models. Unknown obligation types, unknown edge types,
+  unknown risk tiers, missing required fields, and extra unknown keys
+  are all rejected at load time.
+- **Cross-cutting validation (§3.6).** Detects duplicate node IDs,
+  dangling edges, edges pointing at the wrong target node type, rules
+  without any obligation, and orphan obligations.
+
+## What it no longer does (v2 retired in PR 10e)
+
+- The v2 flat-rule-list format is gone. v3 typed obligations are the
+  only currency.
+- Interactive `review`, `detect-conflicts`, `detect-duplicates`, and
+  HTML `report` subcommands were retired with the v2 path — they
+  worked on the flat-rule shape and have no v3 equivalent. v3
+  conflict and duplicate detection happen at the typed-obligation
+  level inside the validation passes and surface as issues in the
+  output JSON.
+- The `ConfidenceLevel` enum is gone. The extractor now carries an
+  `ExtractionQuality` value (separate concept; see `kg-extractor`).
 
 ## Installation
 
@@ -32,42 +38,39 @@ pip install -e tools/kg-validator
 ## Quick start
 
 ```bash
-# Automated checks. Surfaces issues but does NOT approve any rule.
-kg-validator validate --input extracted-rules.json --output validation.json
+# Validate a v3 KG and print the issue summary:
+kg-validator validate --input examples/energy/knowledge-graphs/kg-energy-v3-demo.json
 
-# Interactive review (CLI). Walks through every flagged rule with the
-# reviewer; approval requires explicit action.
-kg-validator review --input extracted-rules.json --interactive
+# Validate and persist the full issue report:
+kg-validator validate \
+  --input kg-energy-v3.json \
+  --output validation-report.json
 
-# HTML validation report (read-only summary; does not approve).
-kg-validator report --input extracted-rules.json --output report.html
+# Show usage examples:
+kg-validator examples
+
+# Show version:
+kg-validator version
 ```
 
-## Output
+The `validate` command exits with code 0 on a clean KG, code 2 on a
+schema-level Pydantic validation failure, and code 3 on any CRITICAL
+or HIGH severity §3.6 issue.
 
-`validate` writes a JSON object containing:
+## Architecture
 
-```json
-{
-  "approved_rules":   [],                /* always empty here; approval
-                                            requires interactive review */
-  "issues":           [ ... ],
-  "conflicts":        [ ... ],
-  "duplicates":       [ ... ],
-  "metadata": {
-    "total_rules_reviewed": 47,
-    "total_approved": 0,
-    "total_flagged":  18,
-    "total_issues_found": 23,
-    "validation_timestamp": "2026-05-22T10:30:00Z",
-    "validators": ["automated"]
-  }
-}
+```
+kg_validator/
+├── __init__.py    public API: KnowledgeGraphV3, V3Validator, load_v3_kg, models
+├── loader.py      KnowledgeGraphV3 container + load_v3_kg(path) entry point
+├── models.py      typed Pydantic models per spec v3.0 §3 (nodes, edges, enums)
+├── validator.py   V3Validator runs the §3.6 cross-cutting passes
+└── cli.py         click-based CLI (`validate`, `examples`, `version`)
 ```
 
-Approval happens during interactive review. The approved rules then
-feed into the KG-signing step.
+## Conformance
 
-## Licensing
-
-Apache 2.0 — see [`../../LICENSE`](../../LICENSE).
+The `examples/energy/knowledge-graphs/kg-energy-v3-demo.json` sample
+KG must load cleanly and produce zero validation issues. This is
+exercised by `tests/test_v3_validator.py` and by the CI durability
+suite.

@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from typing import List, Optional
 
 from .backends import ExtractorBackend, build_backend
-from .models import ComplianceRule, ConfidenceLevel, ExtractionMetadata, ExtractionResult
+from .models import ComplianceRule, ExtractionMetadata, ExtractionQuality, ExtractionResult
 from .utils import chunk_text, extract_text_from_document, validate_rule
 
 _PROHIBITED_IMPLIED = "IMPLIED"
@@ -92,9 +92,9 @@ class Extractor:
 
         rules = self._deduplicate(rules)
 
-        confidence_counts: dict[str, int] = {}
+        quality_counts: dict[str, int] = {}
         for r in rules:
-            confidence_counts[r.confidence] = confidence_counts.get(r.confidence, 0) + 1
+            quality_counts[r.extraction_quality] = quality_counts.get(r.extraction_quality, 0) + 1
 
         metadata = ExtractionMetadata(
             document_name=source_document,
@@ -102,7 +102,7 @@ class Extractor:
             sector=sector,
             extraction_timestamp=datetime.now(timezone.utc).isoformat(),
             total_rules_extracted=len(rules),
-            rules_by_confidence=confidence_counts,
+            rules_by_quality=quality_counts,
             extraction_duration_seconds=time.monotonic() - start,
             backend=self.backend.name,
             model_used=self.backend.model,
@@ -145,8 +145,11 @@ class Extractor:
 
         rules: List[ComplianceRule] = []
         for i, rule_data in enumerate(extracted):
-            confidence_raw = (rule_data.get("confidence") or "").upper()
-            if confidence_raw == _PROHIBITED_IMPLIED:
+            # PR 10e: extraction_quality replaces the prior `confidence`
+            # field on the wire. We also accept legacy `confidence` from
+            # backends that still emit the old key, mapping it through.
+            quality_raw = (rule_data.get("extraction_quality") or rule_data.get("confidence") or "").upper()
+            if quality_raw == _PROHIBITED_IMPLIED:
                 # Drop the rule; surface as a warning.
                 rules.append(
                     ComplianceRule(
@@ -157,7 +160,7 @@ class Extractor:
                         source_document=source_document,
                         source_clause=rule_data.get("source_clause", "general"),
                         source_document_version=source_document_version,
-                        confidence=ConfidenceLevel.DISCRETIONARY,
+                        extraction_quality=ExtractionQuality.DISCRETIONARY,
                         reasoning=(
                             "Originally extracted as IMPLIED. The Anchor Constraint "
                             "(B2.1) prohibits IMPLIED rules; downgraded to DISCRETIONARY "
@@ -177,7 +180,7 @@ class Extractor:
                     source_document=source_document,
                     source_clause=rule_data.get("source_clause", "general"),
                     source_document_version=source_document_version,
-                    confidence=ConfidenceLevel(confidence_raw or "DISCRETIONARY"),
+                    extraction_quality=ExtractionQuality(quality_raw or "DISCRETIONARY"),
                     reasoning=rule_data.get("reasoning", ""),
                     effective_date=rule_data.get("effective_date"),
                     sunset_date=rule_data.get("sunset_date"),
@@ -204,13 +207,13 @@ class Extractor:
             "\n"
             "Each rule object has these keys:\n"
             "  subject (string), relation (string), object (string),\n"
-            '  confidence ("EXPLICIT" or "DISCRETIONARY" or "CONFLICTING"),\n'
+            '  extraction_quality ("EXPLICIT" or "DISCRETIONARY" or "CONFLICTING"),\n'
             "  reasoning (string), source_clause (string).\n"
             "\n"
             "ABSOLUTE RULES (will be enforced by post-processing):\n"
-            '  1. Do NOT emit `confidence: "IMPLIED"`. The Anchor Constraint (B2.1) '
-            "     prohibits inference beyond source text. Rules that require inference "
-            "     must be marked DISCRETIONARY so a human can decide.\n"
+            '  1. Do NOT emit `extraction_quality: "IMPLIED"`. The Anchor Constraint '
+            "     (B2.1) prohibits inference beyond source text. Rules that require "
+            "     inference must be marked DISCRETIONARY so a human can decide.\n"
             "  2. For EXPLICIT rules, include a verbatim quote from the source in `reasoning`.\n"
             "  3. If the chunk does not contain any compliance obligations, return [].\n"
             "\n"

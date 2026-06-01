@@ -1,15 +1,16 @@
-"""
-KG Extractor - Extract compliance rules from regulatory documents
-"""
+"""kg-extractor — extract compliance rules from regulatory text and emit v3 KGs."""
 
 from .extractor import Extractor
-from .models import ComplianceRule, ExtractionResult
+from .models import ComplianceRule, ExtractionQuality, ExtractionResult
+from .v3_emitter import emit_v3_kg
 
-__version__ = "1.0.0"
+__version__ = "3.0.0"
 __author__ = "KpiFinity"
 
 __all__ = [
     "ComplianceRule",
+    "ExtractionQuality",
     "ExtractionResult",
     "Extractor",
+    "emit_v3_kg",
 ]

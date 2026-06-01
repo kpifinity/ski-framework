@@ -13,16 +13,14 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pytest
-from kg_validator.v3 import (
+from kg_validator import (
+    EdgeType,
     KnowledgeGraphV3,
+    ObligationType,
+    RiskTier,
     V3IssueType,
     V3Validator,
     load_v3_kg,
-)
-from kg_validator.v3.models import (
-    EdgeType,
-    ObligationType,
-    RiskTier,
 )
 from pydantic import ValidationError
 

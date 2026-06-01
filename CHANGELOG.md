@@ -9,6 +9,47 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Changed (compilation tools, v3 — PR 10e, strip v2 paths)
+- **`kg-validator` is v3-only.** The flat-rule-list (`v2`) shape is no
+  longer supported. The v3 subpackage has been flattened to the top
+  level: ``kg_validator.models``, ``kg_validator.loader``,
+  ``kg_validator.validator`` are the entry points. The CLI exposes a
+  single ``validate`` subcommand. The v2 ``review``,
+  ``detect-conflicts``, ``detect-duplicates``, and HTML ``report``
+  subcommands are retired — v3 conflict / duplicate detection happens
+  at the typed-obligation level inside the §3.6 validation passes and
+  surfaces in the issue report.
+- **`kg-extractor` emits v3 KGs by default.** Each extracted rule is
+  wrapped into the typed-graph shape (Rule + Obligation + Subject +
+  Citation + edges) via the new ``kg_extractor.v3_emitter.emit_v3_kg``
+  function. The ``extract`` CLI gains ``--jurisdiction`` and
+  ``--jurisdiction-name`` flags; a ``--emit-raw`` flag preserves the
+  pre-PR-10e flat-rule output for debugging.
+- **`ConfidenceLevel` → `ExtractionQuality` on extracted rules.** The
+  per-rule trust signal is renamed to make clear it is the
+  *extractor's* authoring-time judgement, not a runtime confidence
+  score (Axiom 2 still prohibits confidence in the audit trail). The
+  field on ``ComplianceRule`` is now ``extraction_quality``;
+  ``ExtractionMetadata.rules_by_quality`` replaces
+  ``rules_by_confidence``. Backends that still emit ``confidence`` on
+  the wire are accepted for compatibility — the value is mapped
+  through.
+- **Filter CLI**: ``kg-extractor filter --confidence`` →
+  ``kg-extractor filter --quality``. Choices restricted to the three
+  ``ExtractionQuality`` values via ``click.Choice``.
+
+### Removed (compilation tools, v3 — PR 10e)
+- ``tools/kg-validator/src/kg_validator/v3/`` subpackage (flattened to
+  top level).
+- ``tools/kg-validator/src/kg_validator/conflict_detector.py``,
+  ``utils.py``, and the v2 ``models.py`` / ``validator.py``
+  (overwritten by the v3 equivalents).
+- ``tools/kg-validator/tests/test_validator.py`` (v2 tests; the v3
+  tests at ``test_v3_validator.py`` are the only ones now).
+- ``tools/kg-validator/examples/sample-extracted-rules.json`` (v2
+  flat-rule sample; v3 sample lives at
+  ``examples/energy/knowledge-graphs/kg-energy-v3-demo.json``).
+
 ### Changed (conformance, v3 — PR 14, verifiable-provenance reorg)
 - **Conformance suite reorganised around verifiable provenance.** The
   three levels are now ``provenance/`` (L1), ``durability/`` (L2),

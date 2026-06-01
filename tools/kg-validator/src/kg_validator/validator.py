@@ -1,220 +1,238 @@
-"""
-Core validation logic
+"""V3 validator — runs the spec §3.6 validation passes against a loaded KG.
+
+Implements the subset that does not require sophisticated unit handling:
+
+* Duplicate node IDs across all node types.
+* Edges pointing at undefined node IDs (dangling edges).
+* Edge target type matches what the edge type expects
+  (``applies_to`` must point at a Subject, ``consists_of`` at an
+  Obligation, etc.).
+* Rules with no ``consists_of`` edge (every rule must have at least
+  one obligation per spec §2.1.2).
+* Obligations with no incoming ``consists_of`` edge from a Rule
+  (orphan obligations).
+
+Deferred to follow-up PRs:
+
+* Contradictory obligations (needs sophisticated unit handling).
+* Date-interval overlaps for mutually exclusive obligations.
+* Cyclic precedent edges.
+* Definition scope checking.
+
+Obligation-type validity and missing ``effective_date_start`` are
+already enforced at the Pydantic layer by :mod:`kg_validator.models`,
+so they surface as :class:`pydantic.ValidationError` at
+:func:`load_v3_kg` time rather than as runtime issues here.
 """
 
-import time
-from datetime import datetime
-from typing import List, Optional
+from __future__ import annotations
 
-from .conflict_detector import ConflictDetector
+from typing import Dict, List, Set, Tuple
+
+from .loader import KnowledgeGraphV3
 from .models import (
-    ApprovedRule,
-    ComplianceRule,
-    IssueType,
-    ValidationIssue,
-    ValidationMetadata,
-    ValidationResult,
-    ValidationStatus,
+    EdgeType,
+    V3IssueType,
+    V3ValidationIssue,
+    V3ValidationResult,
 )
-from .utils import validate_rule_fields
+
+# Expected target-type per edge type. ``cited_by`` accepts any source
+# node, so it does not appear here.
+_EDGE_TARGET_TYPE: Dict[EdgeType, str] = {
+    EdgeType.APPLIES_TO: "Subject",
+    EdgeType.CONSISTS_OF: "Obligation",
+    EdgeType.DEFINED_BY: "Definition",
+    EdgeType.EXEMPTED_BY: "Exemption",
+    EdgeType.AMENDED_BY: "Obligation",
+    EdgeType.INTERPRETED_BY: "Precedent",
+    EdgeType.SCOPED_TO: "Jurisdiction",
+    EdgeType.CITED_BY: "Citation",
+}
 
 
-class Validator:
-    """Validate extracted compliance rules"""
+class V3Validator:
+    """Run the §3.6 validation passes against a loaded v3 KG."""
 
-    def __init__(self):
-        self.approved_rules: List[ApprovedRule] = []
-        self.rejected_rules: List[str] = []
-        self.flagged_rules: List[str] = []
-        self.issues: List[ValidationIssue] = []
-        self.current_session_start = None
+    def __init__(self, kg: KnowledgeGraphV3) -> None:
+        self._kg = kg
+        self._issues: List[V3ValidationIssue] = []
 
-    def validate(
-        self,
-        rules: List[ComplianceRule],
-    ) -> ValidationResult:
-        """
-        Perform automated validation of rules.
+    def run(self) -> V3ValidationResult:
+        """Execute every validation pass and return the aggregated result."""
+        self._issues = []
+        self._check_duplicate_node_ids()
+        node_types = self._kg.all_node_ids()
+        self._check_dangling_edges(node_types)
+        self._check_edge_target_types(node_types)
+        self._check_rule_obligation_coverage()
 
-        v2.1: the `auto_approve_explicit` flag was REMOVED. Per spec B2.3
-        (Universal Coverage), every rule must be human-reviewed. Even an
-        opt-in auto-approval defaults the operator toward non-conformance,
-        so the option is gone.
-        """
-        start_time = time.time()
-        self.current_session_start = start_time
-
-        # Run all checks
-        self._check_rule_quality(rules)
-        conflicts = ConflictDetector.detect_conflicts(rules)
-        duplicates = ConflictDetector.detect_duplicates(rules)
-
-        # Process rules — every rule goes into the pending-review pool.
-        # Human approval happens via interactive_review() or a downstream
-        # workflow tool; nothing in this codepath auto-approves.
-        for rule in rules:
-            self._add_pending_rule(rule)
-
-        # Create validation result
-        metadata = ValidationMetadata(
-            total_rules_reviewed=len(rules),
-            total_approved=len(self.approved_rules),
-            total_rejected=len(self.rejected_rules),
-            total_flagged=len(self.flagged_rules),
-            total_issues_found=len(self.issues),
-            validation_duration_seconds=time.time() - start_time,
-            validators=["automated"],
-            validation_timestamp=datetime.utcnow().isoformat() + "Z",
+        total_nodes = sum(
+            (
+                len(self._kg.nodes.subjects),
+                len(self._kg.nodes.rules),
+                len(self._kg.nodes.obligations),
+                len(self._kg.nodes.definitions),
+                len(self._kg.nodes.exemptions),
+                len(self._kg.nodes.precedents),
+                len(self._kg.nodes.jurisdictions),
+                len(self._kg.nodes.citations),
+            )
+        )
+        return V3ValidationResult(
+            total_nodes=total_nodes,
+            total_edges=len(self._kg.edges),
+            total_issues=len(self._issues),
+            issues=list(self._issues),
         )
 
-        return ValidationResult(
-            approved_rules=self.approved_rules,
-            issues=self.issues,
-            conflicts=conflicts,
-            duplicates=duplicates,
-            metadata=metadata,
-        )
+    # ------------------------------------------------------------------ #
+    # Individual validation passes                                       #
+    # ------------------------------------------------------------------ #
 
-    def _check_rule_quality(self, rules: List[ComplianceRule]) -> None:
-        """Check quality of each rule"""
+    def _check_duplicate_node_ids(self) -> None:
+        seen: Set[str] = set()
+        for node_id in self._kg.all_node_ids():
+            if node_id in seen:
+                self._issues.append(
+                    V3ValidationIssue(
+                        issue_type=V3IssueType.DUPLICATE_NODE_ID,
+                        severity="CRITICAL",
+                        node_id=node_id,
+                        message=f"Node id '{node_id}' appears more than once across node arrays.",
+                        suggested_action="Rename one of the duplicates, then re-sign the KG.",
+                    )
+                )
+            seen.add(node_id)
 
-        for rule in rules:
-            # Check required fields
-            missing_fields = validate_rule_fields(rule)
-            for field in missing_fields:
-                self.issues.append(
-                    ValidationIssue(
-                        rule_id=rule.id,
-                        issue_type=IssueType.MISSING_FIELD,
+        # all_node_ids() is a dict so duplicates within the same array
+        # are already collapsed. Detect them explicitly by counting.
+        for collection in (
+            self._kg.nodes.subjects,
+            self._kg.nodes.rules,
+            self._kg.nodes.obligations,
+            self._kg.nodes.definitions,
+            self._kg.nodes.exemptions,
+            self._kg.nodes.precedents,
+            self._kg.nodes.jurisdictions,
+            self._kg.nodes.citations,
+        ):
+            counts: Dict[str, int] = {}
+            for node in collection:
+                counts[node.id] = counts.get(node.id, 0) + 1
+            for node_id, count in counts.items():
+                if count > 1:
+                    self._issues.append(
+                        V3ValidationIssue(
+                            issue_type=V3IssueType.DUPLICATE_NODE_ID,
+                            severity="CRITICAL",
+                            node_id=node_id,
+                            message=(
+                                f"Node id '{node_id}' appears {count} times within the same node array."
+                            ),
+                            suggested_action="Rename one of the duplicates, then re-sign the KG.",
+                        )
+                    )
+
+    def _check_dangling_edges(self, node_types: Dict[str, str]) -> None:
+        for edge in self._kg.edges:
+            if edge.from_id not in node_types:
+                self._issues.append(
+                    V3ValidationIssue(
+                        issue_type=V3IssueType.DANGLING_EDGE,
                         severity="HIGH",
-                        message=f"Missing required field: {field}",
+                        edge=edge,
+                        message=(
+                            f"Edge {edge.type} from '{edge.from_id}' references an undefined source node."
+                        ),
+                        suggested_action="Add the missing source node or remove the edge.",
+                    )
+                )
+            if edge.to_id not in node_types:
+                self._issues.append(
+                    V3ValidationIssue(
+                        issue_type=V3IssueType.DANGLING_EDGE,
+                        severity="HIGH",
+                        edge=edge,
+                        message=(f"Edge {edge.type} to '{edge.to_id}' references an undefined target node."),
+                        suggested_action="Add the missing target node or remove the edge.",
                     )
                 )
 
-            # Check for vague language
-            vague_terms = self._check_vague_language(rule)
-            if vague_terms:
-                self.issues.append(
-                    ValidationIssue(
-                        rule_id=rule.id,
-                        issue_type=IssueType.VAGUE_RULE,
-                        severity="MEDIUM",
-                        message=f"Rule contains vague terms: {', '.join(vague_terms)}",
-                        suggested_action="Review and clarify language with domain expert",
+    def _check_edge_target_types(self, node_types: Dict[str, str]) -> None:
+        for edge in self._kg.edges:
+            expected = _EDGE_TARGET_TYPE.get(EdgeType(edge.type))
+            if expected is None:
+                continue
+            actual = node_types.get(edge.to_id)
+            if actual is None:
+                # Already flagged by _check_dangling_edges.
+                continue
+            if actual != expected:
+                self._issues.append(
+                    V3ValidationIssue(
+                        issue_type=V3IssueType.INVALID_EDGE_TARGET_TYPE,
+                        severity="HIGH",
+                        edge=edge,
+                        message=(
+                            f"Edge '{edge.type}' from '{edge.from_id}' targets a "
+                            f"'{actual}' node ('{edge.to_id}') but spec §3.2 requires a "
+                            f"'{expected}' target."
+                        ),
+                        suggested_action=(
+                            f"Repoint the edge at a {expected} node, or use a different edge type."
+                        ),
                     )
                 )
 
-            # Check for ambiguous confidence
-            if rule.confidence == "DISCRETIONARY":
-                self.issues.append(
-                    ValidationIssue(
-                        rule_id=rule.id,
-                        issue_type=IssueType.AMBIGUOUS,
-                        severity="MEDIUM",
-                        message="Rule marked as DISCRETIONARY - requires expert review",
-                    )
+    def _check_rule_obligation_coverage(self) -> None:
+        rule_ids: Set[str] = {r.id for r in self._kg.nodes.rules}
+        obligation_ids: Set[str] = {o.id for o in self._kg.nodes.obligations}
+        consists_of: List[Tuple[str, str]] = [
+            (e.from_id, e.to_id) for e in self._kg.edges if e.type == EdgeType.CONSISTS_OF.value
+        ]
+        rules_with_obligation: Set[str] = {src for src, _ in consists_of if src in rule_ids}
+        obligations_with_rule: Set[str] = {dst for _, dst in consists_of if dst in obligation_ids}
+
+        for rule_id in rule_ids - rules_with_obligation:
+            self._issues.append(
+                V3ValidationIssue(
+                    issue_type=V3IssueType.RULE_WITHOUT_OBLIGATION,
+                    severity="HIGH",
+                    node_id=rule_id,
+                    message=(
+                        f"Rule '{rule_id}' has no consists_of edge to any Obligation. "
+                        "Spec §2.1.2 requires every rule to reference at least one typed "
+                        "obligation."
+                    ),
+                    suggested_action="Add a consists_of edge to one or more Obligation nodes.",
                 )
+            )
 
-    def _check_vague_language(self, rule: ComplianceRule) -> List[str]:
-        """Identify vague terms in a rule"""
-        vague_terms = ["may", "should", "could", "might", "possibly", "apparently"]
-        found_terms = []
+        for obligation_id in obligation_ids - obligations_with_rule:
+            self._issues.append(
+                V3ValidationIssue(
+                    issue_type=V3IssueType.OBLIGATION_WITHOUT_RULE,
+                    severity="MEDIUM",
+                    node_id=obligation_id,
+                    message=(
+                        f"Obligation '{obligation_id}' is not referenced by any Rule via a "
+                        "consists_of edge. The obligation is unreachable from the runtime."
+                    ),
+                    suggested_action=("Either add a consists_of edge from a Rule, or remove the obligation."),
+                )
+            )
 
-        combined_text = f"{rule.subject} {rule.relation} {rule.object}".lower()
-        for term in vague_terms:
-            if term in combined_text:
-                found_terms.append(term)
+    # ------------------------------------------------------------------ #
+    # Convenience accessors                                              #
+    # ------------------------------------------------------------------ #
 
-        return found_terms
+    @property
+    def issues(self) -> List[V3ValidationIssue]:
+        """The issues from the most recent :meth:`run`."""
+        return list(self._issues)
 
-    def _approve_rule(self, rule: ComplianceRule, validator_notes: Optional[str] = None) -> None:
-        """Approve a rule"""
-        approved = ApprovedRule(
-            id=rule.id,
-            subject=rule.subject,
-            relation=rule.relation,
-            object=rule.object,
-            source_document=rule.source_document,
-            source_clause=rule.source_clause,
-            confidence=rule.confidence,
-            reasoning=rule.reasoning,
-            validation_status=ValidationStatus.APPROVED,
-            validation_timestamp=datetime.utcnow().isoformat() + "Z",
-            validator_notes=validator_notes,
-            effective_date=rule.effective_date,
-            expiration_date=rule.expiration_date,
-        )
-        self.approved_rules.append(approved)
-
-    def _reject_rule(self, rule_id: str) -> None:
-        """Mark a rule as rejected"""
-        self.rejected_rules.append(rule_id)
-
-    def _flag_rule(self, rule_id: str) -> None:
-        """Mark a rule as flagged for review"""
-        self.flagged_rules.append(rule_id)
-
-    def _add_pending_rule(self, rule: ComplianceRule) -> None:
-        """Add a rule as pending review"""
-        # In interactive mode, will be reviewed separately
-
-    def get_approved_rules(self) -> List[ApprovedRule]:
-        """Get all approved rules"""
-        return self.approved_rules
-
-    def get_issues_by_severity(self, severity: str) -> List[ValidationIssue]:
-        """Get issues filtered by severity"""
-        return [i for i in self.issues if i.severity == severity]
-
-    def get_issues_for_rule(self, rule_id: str) -> List[ValidationIssue]:
-        """Get all issues for a specific rule"""
-        return [i for i in self.issues if i.rule_id == rule_id]
-
-    def interactive_review(self, rules: List[ComplianceRule]) -> ValidationResult:
-        """
-        Perform interactive review (in real scenario would be interactive CLI)
-        For now, auto-approve all rules without critical issues
-
-        Args:
-            rules: Rules to review
-
-        Returns:
-            ValidationResult
-        """
-        start_time = time.time()
-
-        # Run automated checks first. v2.1: no auto-approval — `validate`
-        # itself just records issues and leaves the approval decision to
-        # the human reviewer. This method represents the (CLI-mediated)
-        # human review pass.
-        result = self.validate(rules)
-
-        # For DISCRETIONARY rules, flag them
-        for rule in rules:
-            if rule.confidence == "DISCRETIONARY":
-                self._flag_rule(rule.id)
-
-        # For rules with critical issues, reject them
-        critical_issues = self.get_issues_by_severity("CRITICAL")
-        for issue in critical_issues:
-            self._reject_rule(issue.rule_id)
-
-        # Create final result
-        metadata = ValidationMetadata(
-            total_rules_reviewed=len(rules),
-            total_approved=len(self.approved_rules),
-            total_rejected=len(self.rejected_rules),
-            total_flagged=len(self.flagged_rules),
-            total_issues_found=len(self.issues),
-            validation_duration_seconds=time.time() - start_time,
-            validators=["interactive_review"],
-            validation_timestamp=datetime.utcnow().isoformat() + "Z",
-        )
-
-        return ValidationResult(
-            approved_rules=self.approved_rules,
-            issues=self.issues,
-            conflicts=result.conflicts,
-            duplicates=result.duplicates,
-            metadata=metadata,
-        )
+    @staticmethod
+    def edge_target_type(edge_type: EdgeType) -> str:
+        """Public accessor for the expected target type of an edge."""
+        return _EDGE_TARGET_TYPE[edge_type]
