@@ -9,6 +9,20 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+_(no unreleased changes — v3.0.1 was just cut)_
+
+## [3.0.1] — 2026-06-02
+
+**Patch: ledger schema v3 baseline.** Hours after v3.0.0 shipped, a
+fresh `docker compose up` deployment hit
+`/api/evaluate -> 500: column "envelope_json" of relation
+"ledger_entries" does not exist`. Root cause: docker-compose mounted
+only the v2.1 baseline `schema.sql` into Postgres' initdb directory;
+the v3 migration `0002_transcript_columns.sql` was never executed on
+fresh installs. v0.2 → v3 upgrades that applied the migration manually
+were fine. PR 15 (#76) fixes the fresh-deploy path. Credit to the
+tester who reproduced and traced the failure cleanly.
+
 ### Fixed (runtime, v3 — PR 15, ledger schema v3 baseline)
 - **`/api/evaluate` 500 on fresh deployments.** Symptom:
   ``column "envelope_json" of relation "ledger_entries" does not

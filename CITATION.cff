@@ -34,8 +34,8 @@ keywords:
   - audit defensibility
   - on-premise LLM
   - SKI Framework
-version: "3.0.0"
-date-released: "2026-06-01"
+version: "3.0.1"
+date-released: "2026-06-02"
 license: "Apache-2.0 AND CC-BY-4.0"
 license-url: "https://github.com/kpifinity/ski-framework/blob/main/LICENSE"
 references:
