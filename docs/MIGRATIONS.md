@@ -22,7 +22,7 @@ and are versioned alongside the spec.
 |---|---|---|
 | `001_baseline` | v2.0 / v0.1.0-alpha | Captures the v0.1 baseline (already-deployed `ledger_entries` + append-only triggers) without modification |
 | `002_telemetry_buffer` | v2.1 / v0.2.0 | Adds `tenants`, `telemetry_buffer` (RANGE-partitioned), buffer append-only triggers, `schema_version` column on `ledger_entries`, default `tenant` row, default daily partition |
-| _(no revision)_ | v3.0 / v3.0.0 | v3 introduced no breaking schema changes. The runtime extends the ledger with nullable columns for the signed LLM transcript, model provenance hashes, KG citations, and verifier status; v0.2 ledgers upgrade in place without a migration script and continue to verify under `audit-ledger verify`. |
+| `0002_transcript_columns` | v3.0 / v3.0.0 | Adds the v3 audit-trail columns to `ledger_entries`: `envelope_json`, `envelope_hash`, `transcript_json`, `transcript_signature`, `signing_key_id`, `verifier_status`. Relaxes the legacy `track` CHECK so v3 evaluator entries (`'v3-evaluator'`) are accepted. Idempotent (every ALTER guarded with IF [NOT] EXISTS). Required for any v0.2.x ledger being upgraded to v3.0. **Fresh v3.0.1+ deployments** get these columns directly from `schema.sql` (rewritten to the v3 baseline in PR 15) and docker-compose also mounts this migration as `03-transcript-columns.sql` for defence-in-depth — both paths end at the same column set. |
 
 ## Running migrations
 
@@ -46,6 +46,31 @@ alembic -c migrations/alembic.ini upgrade head
 # Verify.
 audit-ledger verify --ledger-db "$LEDGER_DSN"
 ```
+
+### Upgrading an existing v0.2 deployment to v3.0
+
+The v3 runtime expects six new columns on `ledger_entries`
+(`envelope_json`, `envelope_hash`, `transcript_json`,
+`transcript_signature`, `signing_key_id`, `verifier_status`) plus a
+relaxed `track` CHECK. The fresh-deploy baseline `schema.sql` has these
+inline as of v3.0.1, but **existing v0.2 ledgers must run the migration
+explicitly** before the v3 runtime can `INSERT`:
+
+```bash
+# Back up first.
+audit-ledger backup --source "$LEDGER_DSN" --output ledger-pre-v3.dump
+
+# Apply the v3 transcript-columns migration. It is idempotent — safe to
+# re-run against a clean v3 schema.
+psql "$LEDGER_DSN" -f reference-implementation/src/ledger/migrations/0002_transcript_columns.sql
+
+# Verify chain integrity (no v3 columns are required for existing rows
+# to verify; the new columns are nullable on historical rows).
+audit-ledger verify --ledger-db "$LEDGER_DSN"
+```
+
+Symptom if you forget this step: `/api/evaluate` returns 500 with
+`column "envelope_json" of relation "ledger_entries" does not exist`.
 
 The v0.2 migration:
 

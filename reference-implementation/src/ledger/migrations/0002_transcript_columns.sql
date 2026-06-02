@@ -22,6 +22,14 @@
 --
 -- Forward-only migration. The append-only triggers in append_only.sql
 -- continue to block UPDATE/DELETE on this table.
+--
+-- IDEMPOTENT. As of PR 15, ``schema.sql`` (the fresh-deploy baseline) also
+-- creates these columns and constraints. This migration is then mounted as
+-- ``03-transcript-columns.sql`` in docker-compose so initdb runs it after
+-- the baseline; every ALTER below is guarded with IF [NOT] EXISTS so it is
+-- a no-op against a fresh v3 schema. The migration is still required for
+-- operators upgrading an existing v0.2.x ledger that has only the v2.1
+-- baseline columns.
 -- ============================================================================
 
 ALTER TABLE ledger_entries
@@ -43,6 +51,10 @@ ALTER TABLE ledger_entries
 
 -- Verifier-status enum at the SQL layer mirrors VerifierStatus from
 -- ski_model.v3.envelope. Permits NULL so historical entries remain valid.
+-- DROP-then-ADD makes the migration safe to re-run against a fresh v3
+-- baseline (where schema.sql already declares this constraint inline).
+ALTER TABLE ledger_entries
+    DROP CONSTRAINT IF EXISTS ledger_entries_verifier_status_check;
 ALTER TABLE ledger_entries
     ADD CONSTRAINT ledger_entries_verifier_status_check
     CHECK (

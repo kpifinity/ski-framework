@@ -133,6 +133,13 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./src/ledger/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./src/ledger/append_only.sql:/docker-entrypoint-initdb.d/02-append-only.sql:ro
+      # PR 15: also run the v3 transcript-columns migration on first init.
+      # On fresh deployments the v3 baseline in schema.sql already provides
+      # the columns and constraints; this migration is idempotent (every
+      # ALTER is guarded with IF [NOT] EXISTS) so it is a no-op against a
+      # clean v3 schema. It remains in tree for operators upgrading an
+      # existing v0.2 ledger that has only the v2.1 baseline.
+      - ./src/ledger/migrations/0002_transcript_columns.sql:/docker-entrypoint-initdb.d/03-transcript-columns.sql:ro
     networks:
       - ski-internal
     restart: unless-stopped
