@@ -74,9 +74,7 @@ def test_schema_header_is_v3(repo_root: Path) -> None:
     """The schema header reads v3.0, not v2.1. Header drift is a smell."""
     schema = _schema_source(repo_root)
     head = "\n".join(schema.splitlines()[:5])
-    assert "v3.0" in head, (
-        f"schema.sql header does not mention 'v3.0'. Current header:\n{head}"
-    )
+    assert "v3.0" in head, f"schema.sql header does not mention 'v3.0'. Current header:\n{head}"
     assert "v2.1" not in head, (
         "schema.sql header still mentions 'v2.1' — the fresh-deploy "
         "baseline is now v3.0; the v2.1 label is misleading."
