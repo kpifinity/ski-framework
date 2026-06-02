@@ -47,6 +47,7 @@ except ImportError:  # pragma: no cover
 
 from .kg_loader import KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
+from .ledger_migrations import ensure_v3_ledger_schema
 from .v3 import (
     AgreementMonitor,
     TranscriptSigner,
@@ -248,6 +249,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     state.ledger = LedgerClient(os.getenv("LEDGER_DSN", ""))
     await state.ledger.initialize()
+    # PR 16 (v3.0.2): probe ledger_entries for the v3 audit-trail columns
+    # and apply migrations/0002_transcript_columns.sql in place if missing.
+    # Idempotent. Closes the gap where Postgres' /docker-entrypoint-initdb.d/
+    # only runs on first init — operators upgrading on top of an existing
+    # volume would otherwise hit "column envelope_json does not exist" at
+    # evaluation time. Set SKI_AUTOMIGRATE=false to opt out.
+    if state.ledger._engine is not None:
+        await ensure_v3_ledger_schema(state.ledger._engine)
 
     state.tenant_id = os.getenv("SKI_TENANT_ID", "default")
     try:

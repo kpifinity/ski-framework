@@ -53,8 +53,20 @@ The v3 runtime expects six new columns on `ledger_entries`
 (`envelope_json`, `envelope_hash`, `transcript_json`,
 `transcript_signature`, `signing_key_id`, `verifier_status`) plus a
 relaxed `track` CHECK. The fresh-deploy baseline `schema.sql` has these
-inline as of v3.0.1, but **existing v0.2 ledgers must run the migration
-explicitly** before the v3 runtime can `INSERT`:
+inline as of v3.0.1.
+
+**v3.0.2 and later: nothing to do.** On startup the runtime probes
+`ledger_entries`; if the v3 columns are missing it applies the
+`0002_transcript_columns` migration in place. Operators upgrading
+from v3.0.0 / v3.0.1 / v0.2.x against an existing Postgres volume
+simply pull the new image and restart the stack. The behaviour is
+idempotent and on by default. Set `SKI_AUTOMIGRATE=false` in hardened
+deployments where schema changes require an explicit DBA gate — the
+runtime will then refuse to start if the v3 columns are absent and
+log the exact `psql` command an operator should run.
+
+**v3.0.0 / v3.0.1 only (no auto-apply yet):** existing v0.2 ledgers
+must run the migration explicitly before the v3 runtime can `INSERT`:
 
 ```bash
 # Back up first.
