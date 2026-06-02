@@ -1,0 +1,100 @@
+# SKI Framework v3.0.1 — Ledger schema v3 baseline (patch)
+
+**Released:** 2026-06-02
+
+A patch release that fixes a fresh-deployment ledger schema gap
+discovered hours after v3.0.0 shipped. The runtime, conformance, and
+public API are unchanged. Recommended upgrade for anyone who deployed
+v3.0.0 with `docker compose up` against a clean volume.
+
+## The bug
+
+`/api/evaluate` returned a 500 with:
+
+```
+column "envelope_json" of relation "ledger_entries" does not exist
+```
+
+The v3 runtime expects six audit-trail columns on `ledger_entries`
+(`envelope_json`, `envelope_hash`, `transcript_json`,
+`transcript_signature`, `signing_key_id`, `verifier_status`). The
+migration that adds them (`0002_transcript_columns.sql`) was in the
+tree but **never executed on fresh deployments**:
+`docker-compose.yml` mounted only the v2.1 `schema.sql` into
+`/docker-entrypoint-initdb.d/`, and Postgres' initdb sequence only
+processes files mounted there at first init.
+
+v0.2.x → v3.0 *upgrades* that applied the migration manually were
+unaffected; only fresh `docker compose up` deployments against a clean
+volume hit the bug.
+
+## The fix
+
+- **`reference-implementation/src/ledger/schema.sql`** is now the
+  v3 baseline. The CREATE TABLE declares the six v3 audit-trail
+  columns inline, with the four-status CHECK constraint on
+  `verifier_status` and the relaxed `track` CHECK. v3 indexes are
+  baked in.
+- **`reference-implementation/src/ledger/migrations/0002_transcript_columns.sql`**
+  is now fully idempotent — the verifier-status CHECK is dropped
+  before being re-added, so the migration is safe to re-run against
+  a fresh v3 schema.
+- **`reference-implementation/docker-compose.yml`** also mounts the
+  migration as `03-transcript-columns.sql`. With the v3 baseline in
+  `schema.sql` this is a no-op on fresh installs, but it defends
+  against future schema drift.
+- **`conformance/durability/test_ledger_schema_v3_columns.py`** is a
+  new regression test (5 assertions) that pins all of the above.
+  Future PRs cannot regress past this state without the durability
+  conformance run going red.
+
+## Upgrading from v3.0.0
+
+### Option A — fresh start (acceptable if you can discard the volume)
+
+```bash
+docker compose down -v
+docker compose up
+```
+
+The clean init now runs the v3 baseline `schema.sql` and the
+idempotent `0002` migration. No further action needed.
+
+### Option B — patch in place
+
+If you need to preserve existing ledger rows, apply the migration by
+hand against the running database:
+
+```bash
+psql "$LEDGER_DSN" \
+  -f reference-implementation/src/ledger/migrations/0002_transcript_columns.sql
+```
+
+The migration is idempotent (every `ALTER` is guarded with
+`IF [NOT] EXISTS` and the constraint adds are drop-then-add). Safe to
+re-run.
+
+Verify with `audit-ledger verify` afterwards — historical rows have
+the new columns as NULL, which the verifier accepts.
+
+## What's unchanged
+
+- v3 runtime behaviour, public API, verdict envelope shape.
+- Spec v3.0; CC BY 4.0 specification documents.
+- All conformance tests from v3.0.0 still pass and are joined by the
+  new `test_ledger_schema_v3_columns.py`.
+- Tools (`kg-extractor`, `kg-validator`, `ski-model-deploy`,
+  `audit-ledger`) are version-bumped to `3.0.1` for alignment but
+  carry no behavioural changes from `3.0.0`.
+
+## Credit
+
+Caught and reported by the tester running v3.0.0 end-to-end with
+`KG_REQUIRE_SIGNATURE=false` against the unsigned demo KG. Clean repro
++ correct root-cause trace + the working manual workaround in a single
+report. Thank you.
+
+## Full ship log
+
+See [`CHANGELOG.md`](CHANGELOG.md#301--2026-06-02) for the complete
+list of changes.
