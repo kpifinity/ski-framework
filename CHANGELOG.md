@@ -9,6 +9,19 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+_(no unreleased changes — v3.0.2 was just cut)_
+
+## [3.0.2] — 2026-06-02
+
+**Patch: auto-apply the v3 ledger migration on startup.** Closes the
+last gap in the v3.0.0 ledger-schema saga. v3.0.1 fixed the schema for
+**fresh** Postgres volumes; v3.0.2 fixes the schema for **existing**
+volumes (upgrades from v3.0.0 / v3.0.1 / v0.2.x on the same data dir).
+The runtime now probes ``ledger_entries`` on startup and applies the
+``0002_transcript_columns`` migration in place if the v3 columns are
+missing — invisible to operators who pull the new image and restart.
+Same tester credit as v3.0.1 for catching it.
+
 ### Added (runtime, v3 — PR 16, startup migration runner)
 - **`ski_model.ledger_migrations`** — new module. Probes
   ``ledger_entries`` on startup for the six v3 audit-trail columns;
