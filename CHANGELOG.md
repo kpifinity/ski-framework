@@ -9,7 +9,48 @@ referenced from each release entry.
 
 ## [Unreleased]
 
-_(no unreleased changes — v3.0.1 was just cut)_
+### Added (runtime, v3 — PR 16, startup migration runner)
+- **`ski_model.ledger_migrations`** — new module. Probes
+  ``ledger_entries`` on startup for the six v3 audit-trail columns;
+  if any are missing, applies the ``0002_transcript_columns``
+  migration in place. Idempotent. Closes the gap exposed by PR 15:
+  Postgres' ``/docker-entrypoint-initdb.d/`` scripts only run on
+  first init, so operators upgrading v3.0.0 / v3.0.1 / v0.2.x against
+  an existing Postgres volume hit
+  ``column "envelope_json" of relation "ledger_entries" does not exist``
+  at evaluation time. With this PR the migration auto-applies
+  invisibly on the next restart.
+- **`SKI_AUTOMIGRATE` environment variable** (default ``true``).
+  Hardened deployments can set ``false`` to require explicit
+  DBA-driven migrations; the runtime then logs the exact ``psql``
+  command and refuses to serve if the v3 columns are missing.
+- **`conformance/durability/test_ledger_migrations_runner.py`** — six
+  assertions pinning the runner: module exists, embedded SQL covers
+  every v3 column, embedded SQL matches the canonical
+  ``0002_transcript_columns.sql``, the constraint guards are
+  idempotent, ``server.py`` lifespan calls the runner, and
+  ``SKI_AUTOMIGRATE`` is honoured.
+- **`docs/MIGRATIONS.md`** — documents the auto-apply behaviour and
+  the opt-out lever; preserves the manual ``psql`` procedure for
+  v3.0.0 / v3.0.1 operators who can't yet upgrade to v3.0.2.
+
+### Migration note for v3.0.0 / v3.0.1 operators
+
+If you can wait, just upgrade to v3.0.2 — auto-apply handles the
+schema gap on next restart, no manual step required.
+
+If you need a fix today on v3.0.0 / v3.0.1, apply the migration by
+hand against the running database:
+
+```bash
+docker compose exec ledger-db psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+  -f /docker-entrypoint-initdb.d/03-transcript-columns.sql
+```
+
+Or `docker compose down -v && docker compose up` if you can afford to
+discard the volume.
+
+## [3.0.1] — 2026-06-02
 
 ## [3.0.1] — 2026-06-02
 
