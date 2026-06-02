@@ -9,7 +9,64 @@ referenced from each release entry.
 
 ## [Unreleased]
 
-_(no unreleased changes — v3.0.0 was just cut)_
+### Fixed (runtime, v3 — PR 15, ledger schema v3 baseline)
+- **`/api/evaluate` 500 on fresh deployments.** Symptom:
+  ``column "envelope_json" of relation "ledger_entries" does not
+  exist``. Root cause: docker-compose mounted only the v2.1
+  ``schema.sql`` into Postgres' ``/docker-entrypoint-initdb.d/``; the
+  v3 migration ``migrations/0002_transcript_columns.sql`` was never
+  executed on first init. v0.2.x → v3 *upgrades* applied the migration
+  fine; fresh ``docker compose up`` deployments did not.
+- **`reference-implementation/src/ledger/schema.sql`** rewritten to the
+  v3 baseline. The CREATE TABLE now declares ``envelope_json``,
+  ``envelope_hash``, ``transcript_json``, ``transcript_signature``,
+  ``signing_key_id``, and ``verifier_status`` inline, with the four-
+  status CHECK constraint on ``verifier_status`` and the relaxed
+  ``track`` CHECK. Indexes for ``verifier_status`` and ``signing_key_id``
+  are baked in too. Fresh deployments now boot with the column set the
+  v3 runtime requires.
+- **`reference-implementation/src/ledger/migrations/0002_transcript_columns.sql`**
+  hardened for idempotency. The verifier-status CHECK is now
+  drop-then-add so re-running the migration against a fresh v3 schema
+  (where the inline constraint already exists) is a no-op rather than a
+  conflict.
+- **`reference-implementation/docker-compose.yml`** also mounts
+  ``0002_transcript_columns.sql`` as ``03-transcript-columns.sql`` in
+  ``/docker-entrypoint-initdb.d/``. Defence-in-depth: if ``schema.sql``
+  ever regresses, initdb still runs the migration. With the v3
+  baseline schema this mount is a no-op on fresh deployments.
+- **`conformance/durability/test_ledger_schema_v3_columns.py`** — new
+  regression test, five assertions:
+  1. ``schema.sql`` declares all six v3 audit-trail columns.
+  2. ``verifier_status`` CHECK lists the four spec §4.5 statuses.
+  3. ``schema.sql`` header reads v3.0 (not v2.1).
+  4. docker-compose still mounts the 0002 migration.
+  5. The 0002 migration uses ``ADD COLUMN IF NOT EXISTS`` and
+     ``DROP CONSTRAINT IF EXISTS`` so it is idempotent.
+
+### Changed (docs, v3 — PR 15)
+- **`docs/MIGRATIONS.md`** — replaced the misleading "v3.0 introduced
+  no breaking schema changes; v0.2 ledgers upgrade in place" line with
+  an accurate description: existing v0.2 ledgers MUST run the 0002
+  migration explicitly; fresh v3.0.1+ deployments get the columns from
+  the rewritten baseline. Added an "Upgrading v0.2 → v3.0" subsection
+  with the exact ``psql`` command and the symptom of the missed step.
+
+### Migration note for operators
+
+If you deployed v3.0.0 from `docker compose up` against a clean volume
+and hit `column "envelope_json" of relation "ledger_entries" does not
+exist`, the one-time fix is to apply the migration by hand:
+
+```bash
+psql "$LEDGER_DSN" -f reference-implementation/src/ledger/migrations/0002_transcript_columns.sql
+```
+
+`docker compose down -v && docker compose up` is equivalent if you can
+afford to discard the volume; the new schema baseline + the mounted
+migration both create the correct column set on a clean init.
+
+## [3.0.0] — 2026-06-01
 
 ## [3.0.0] — 2026-06-01
 
