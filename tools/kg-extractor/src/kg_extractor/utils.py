@@ -121,6 +121,13 @@ def chunk_text(text: str, max_chunk_size: int = 4000, overlap: int = 200) -> Lis
     Returns:
         List of text chunks
     """
+    if max_chunk_size <= 0:
+        raise ValueError(f"max_chunk_size must be positive, got {max_chunk_size}")
+    # Overlap must be strictly smaller than the chunk size, otherwise the
+    # window cannot advance and chunking would never terminate.
+    if overlap < 0 or overlap >= max_chunk_size:
+        raise ValueError(f"overlap must satisfy 0 <= overlap < max_chunk_size; got {overlap}")
+
     if len(text) <= max_chunk_size:
         return [text]
 
@@ -142,10 +149,16 @@ def chunk_text(text: str, max_chunk_size: int = 4000, overlap: int = 200) -> Lis
 
         chunks.append(text[start:end])
 
-        # Move start position with overlap
+        # The final chunk reaches the end of the text. Stop here; otherwise
+        # ``start = end - overlap`` would leave ``start`` short of ``len(text)``
+        # forever, spinning the loop indefinitely on the trailing ``overlap``
+        # characters.
+        if end >= len(text):
+            break
+
+        # Move start position with overlap. The overlap < max_chunk_size guard
+        # above guarantees forward progress (start increases every iteration).
         start = end - overlap
-        if start < 0:
-            start = 0
 
     return chunks
 
