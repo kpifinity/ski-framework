@@ -122,6 +122,12 @@ check_untyped_defs = true
 # ---------------------------------------------------------------------
 # pytest
 # ---------------------------------------------------------------------
+# This is the single source of truth for pytest configuration. (The repo
+# previously also carried a root ``pytest.ini`` whose settings silently
+# shadowed this block - it dropped ``asyncio_mode`` and the conformance
+# markers, leaving the full ``pytest`` run red. That file has been removed;
+# ``conformance/pytest.ini`` remains so the conformance suite can also be
+# run standalone via ``pytest conformance/``.)
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = [
@@ -132,6 +138,7 @@ testpaths = [
     "tools/audit-ledger/tests",
     "reference-implementation/src/symbolic_evaluator/tests",
     "reference-implementation/src/telemetry_buffer/tests",
+    "reference-implementation/src/ski_model/v3/tests",
 ]
 addopts = [
     "-ra",
@@ -144,6 +151,11 @@ markers = [
     "level1: Level 1 Foundational conformance tests",
     "level2: Level 2 Managed conformance tests",
     "level3: Level 3 Assured conformance tests",
+    # Conformance-level markers (mirrored from conformance/pytest.ini so the
+    # full root-level ``pytest`` run does not fail --strict-markers).
+    "provenance: Level 1 - every verdict carries verifier-checked provenance",
+    "durability: Level 2 - provenance is signed, reproducible, and audit-chained",
+    "sovereignty: Level 3 - operable air-gapped, tamper-evident, end-to-end signed",
     "requires_live_deployment: Test requires a running SKI Model endpoint",
     "requires_ledger: Test requires a Postgres ledger DSN",
 ]
