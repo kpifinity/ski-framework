@@ -19,8 +19,9 @@ What we cover:
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, Iterator, List
 
 from fastapi.testclient import TestClient
 
@@ -41,7 +42,7 @@ class _FakeLedger:
     async def close(self) -> None:
         return None
 
-    async def append(self, **kwargs: Any) -> None:
+    async def append_v3(self, **kwargs: Any) -> None:
         self.appended.append(kwargs)
 
     async def list(self, *, limit: int, offset: int) -> List[Dict[str, Any]]:
@@ -90,6 +91,20 @@ def _install_test_state() -> _FakeLedger:
     return ledger
 
 
+@contextmanager
+def _client() -> Iterator[TestClient]:
+    """Yield a TestClient WITHOUT running the production lifespan.
+
+    Using ``TestClient`` as a context manager would execute the real
+    startup path, which provisions an Ed25519 signing key under ``/app``
+    and opens a Postgres connection for the ledger schema check — neither
+    is available (or desirable) in a hermetic unit test. These tests inject
+    in-memory doubles via :func:`_install_test_state`, so the lifespan is
+    intentionally skipped.
+    """
+    yield TestClient(server.app)
+
+
 # ---- Tests --------------------------------------------------------------------
 
 
@@ -109,7 +124,7 @@ def _measurement_payload(value: int) -> Dict[str, Any]:
 
 def test_health_reports_v3_runtime() -> None:
     _install_test_state()
-    with TestClient(server.app) as client:
+    with _client() as client:
         # Bypass the lifespan-driven init by re-installing state inside the
         # context (TestClient triggers lifespan, which would otherwise reset).
         _install_test_state()
@@ -122,7 +137,7 @@ def test_health_reports_v3_runtime() -> None:
 
 def test_evaluate_returns_clear_envelope_for_compliant_measurement() -> None:
     _install_test_state()
-    with TestClient(server.app) as client:
+    with _client() as client:
         _install_test_state()
         resp = client.post("/api/evaluate", json=_measurement_payload(50))
     assert resp.status_code == 200, resp.text
@@ -132,12 +147,16 @@ def test_evaluate_returns_clear_envelope_for_compliant_measurement() -> None:
     assert len(envelope.kg_citations) == 1
     assert envelope.kg_citations[0].node_id == "energy.so2.lte_100ppm"
     assert envelope.model_provenance.kg_version_hash.startswith("sha256:")
-    assert envelope.transcript_ref.startswith("ledger:tenant.test/seq:")
+    # The server does not pre-assign a ledger sequence to the envelope; the
+    # evaluator therefore emits its default self-reference ``transcript:<id>``
+    # (see test_transcript.py). The ``ledger:<tenant>/seq:<n>`` form is what
+    # callers supply when they already hold a ledger pointer.
+    assert envelope.transcript_ref.startswith("transcript:")
 
 
 def test_evaluate_returns_flag_envelope_for_breach() -> None:
     _install_test_state()
-    with TestClient(server.app) as client:
+    with _client() as client:
         _install_test_state()
         resp = client.post("/api/evaluate", json=_measurement_payload(150))
     assert resp.status_code == 200, resp.text
@@ -149,7 +168,7 @@ def test_evaluate_returns_flag_envelope_for_breach() -> None:
 
 def test_evaluate_returns_null_unmapped_for_unknown_metric() -> None:
     _install_test_state()
-    with TestClient(server.app) as client:
+    with _client() as client:
         _install_test_state()
         resp = client.post(
             "/api/evaluate",
@@ -179,7 +198,7 @@ def test_strict_governor_ignores_caller_risk_tier() -> None:
     caller's tier influenced policy. Neither is acceptable.
     """
     _install_test_state()
-    with TestClient(server.app) as client:
+    with _client() as client:
         _install_test_state()
         resp = client.post(
             "/api/evaluate",
@@ -198,7 +217,7 @@ def test_strict_governor_ignores_caller_risk_tier() -> None:
 
 def test_evaluate_records_to_ledger() -> None:
     ledger = _install_test_state()
-    with TestClient(server.app) as client:
+    with _client() as client:
         ledger = _install_test_state()
         client.post("/api/evaluate", json=_measurement_payload(50))
     assert len(ledger.appended) == 1
