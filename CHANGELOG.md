@@ -47,9 +47,12 @@ referenced from each release entry.
   CVEs), `python-dotenv` 1.0.1 → 1.2.2, `jinja2` 3.1.3 → 3.1.6, and `pypdf`
   4.2.0 → 6.12.2, with `pydantic` 2.6.3 → 2.13.4 and `uvicorn` 0.27.1 → 0.48.0
   for compatibility. The full test suite and `mypy` pass on the upgraded set.
-  (Residual `pip-audit` findings in `requirements-dev.txt` — `pytest` and a
-  transitive `lxml` — are developer/CI tooling only and are not installed into
-  the production container images.)
+- **Dev/CI tooling upgraded** to clear the remaining `requirements-dev.txt`
+  advisories: `pytest` 8.1.1 → 9.0.3 (with `pytest-asyncio` 1.4.0,
+  `pytest-httpx` 0.36.2, `pytest-cov` 7.1.0, `pytest-mock` 3.15.1, `pip-audit`
+  2.10.0 and `httpx` 0.28.1 for compatibility) and `cyclonedx-bom` 4.4.3 → 7.3.0
+  (which drops the transitive `lxml`). `pip-audit` now reports zero findings for
+  every requirements file in the repository.
 - **Transcript signing key is now created with `0600` permissions from the
   outset** rather than written and then `chmod`-ed, closing a brief window in
   which the Ed25519 private key could exist at the default umask.
