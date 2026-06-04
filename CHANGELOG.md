@@ -9,7 +9,28 @@ referenced from each release entry.
 
 ## [Unreleased]
 
-_(no unreleased changes — v3.0.2 was just cut)_
+### Fixed
+- **kg-extractor `chunk_text` no longer loops indefinitely.** For inputs longer
+  than `max_chunk_size` with `overlap > 0`, the sliding window never advanced
+  past end-of-text and spun forever, hanging extraction of any real-sized
+  document. The loop now terminates on the final chunk, and invalid arguments
+  (`max_chunk_size <= 0` or `overlap >= max_chunk_size`) raise `ValueError`
+  instead of hanging. Regression tests added.
+- **Symbolic Verifier wording.** An unknown predicate is now reported as
+  "not mechanically verifiable (no v3 handler)" rather than "not a known v3
+  predicate", matching the verifier-contract test and auditor-facing language.
+
+### Changed
+- **pytest configuration consolidated into `pyproject.toml`.** A redundant root
+  `pytest.ini` silently shadowed it, dropping `asyncio_mode` and the conformance
+  markers and leaving the root `pytest` run red. The duplicate has been removed,
+  the conformance markers are registered centrally, and the four tool test
+  suites no longer collide on a shared `tests` package name; `pytest` now runs
+  green from the repository root. `conformance/pytest.ini` is retained so the
+  conformance suite can still be run standalone.
+- **v3 `/api/evaluate` tests are hermetic.** They no longer require a writable
+  `/app` directory or a live ledger, and the in-memory ledger double tracks the
+  current `append_v3` API.
 
 ## [3.0.2] — 2026-06-02
 
