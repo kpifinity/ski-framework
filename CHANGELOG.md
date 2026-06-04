@@ -32,6 +32,28 @@ referenced from each release entry.
   `/app` directory or a live ledger, and the in-memory ledger double tracks the
   current `append_v3` API.
 
+### Removed
+- **Dropped support for Python 3.9** (end-of-life since 2025-10). The CI test
+  matrix, the `ruff` target version, and the tools' `requires-python` now target
+  Python 3.10+. This was required to adopt the security-patched dependency
+  versions below, which no longer publish 3.9 wheels.
+
+### Security
+- **Upgraded dependencies to patched versions across every deployable
+  requirements file**, clearing all `pip-audit` findings in the production
+  runtime (SKI Model + Sidecar) and the four tools: `cryptography`
+  42.0.5 → 46.0.7 (4 CVEs, including ones in the library used for transcript
+  signing), `fastapi` 0.110.0 → 0.136.3 (pulls `starlette` ≥1.2, clearing 3
+  CVEs), `python-dotenv` 1.0.1 → 1.2.2, `jinja2` 3.1.3 → 3.1.6, and `pypdf`
+  4.2.0 → 6.12.2, with `pydantic` 2.6.3 → 2.13.4 and `uvicorn` 0.27.1 → 0.48.0
+  for compatibility. The full test suite and `mypy` pass on the upgraded set.
+  (Residual `pip-audit` findings in `requirements-dev.txt` — `pytest` and a
+  transitive `lxml` — are developer/CI tooling only and are not installed into
+  the production container images.)
+- **Transcript signing key is now created with `0600` permissions from the
+  outset** rather than written and then `chmod`-ed, closing a brief window in
+  which the Ed25519 private key could exist at the default umask.
+
 ## [3.0.2] — 2026-06-02
 
 **Patch: auto-apply the v3 ledger migration on startup.** Closes the

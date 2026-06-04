@@ -7,7 +7,7 @@ name = "ski-model-deploy"
 version = "3.0.2"
 description = "Deploy and verify signed Knowledge Graphs against a SKI Model runtime."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "Apache-2.0"
 authors = [{ name = "KpiFinity", email = "hello@kpifinity.com" }]
 keywords = ["ski-framework", "compliance", "knowledge-graph", "deployment"]
@@ -24,12 +24,12 @@ classifiers = [
 ]
 dependencies = [
     "click==8.1.7",
-    "pydantic==2.6.3",
-    "python-dotenv==1.0.1",
+    "pydantic==2.13.4",
+    "python-dotenv==1.2.2",
     "pyyaml==6.0.1",
-    "jinja2==3.1.3",
+    "jinja2==3.1.6",
     "httpx==0.27.0",
-    "cryptography==42.0.5",
+    "cryptography==46.0.7",
     "docker==7.0.0",
     "psycopg[binary]==3.1.18",
 ]

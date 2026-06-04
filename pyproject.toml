@@ -4,7 +4,7 @@
 
 [tool.ruff]
 line-length = 110
-target-version = "py39"
+target-version = "py310"
 extend-exclude = [
     ".venv",
     "venv",
@@ -35,10 +35,10 @@ ignore = [
     "E501",    # line length - formatter handles
     "B008",    # function call in default arg (FastAPI Depends/Header)
     "B904",    # raise ... from ... - sometimes intentionally omitted
-    "UP006",   # PEP 585 generic - we still target 3.9
-    "UP007",   # PEP 604 union types - we still target 3.9
-    "UP035",   # deprecated import - Dict/List from typing OK for 3.9
-    "UP045",   # X | None - we still target 3.9
+    "UP006",   # PEP 585 generics - not yet adopted repo-wide
+    "UP007",   # PEP 604 unions - not yet adopted repo-wide
+    "UP035",   # typing.Dict/List still used repo-wide
+    "UP045",   # X | None - not yet adopted repo-wide
     "S101",    # assert in tests is fine
     "S104",    # binding 0.0.0.0 (uvicorn config)
     "S105",    # hard-coded password (in example .env strings)
