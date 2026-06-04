@@ -331,7 +331,7 @@ class SymbolicVerifier:
             )
         return _CheckOutcome(
             None,
-            f"Predicate {assertion.predicate!r} is not a known v3 predicate.",
+            f"Predicate {assertion.predicate!r} is not mechanically verifiable (no v3 handler for it).",
         )
 
     async def acheck_assertion(
@@ -350,7 +350,7 @@ class SymbolicVerifier:
         if stateful is None:
             return _CheckOutcome(
                 None,
-                f"Predicate {assertion.predicate!r} is not a known v3 predicate.",
+                f"Predicate {assertion.predicate!r} is not mechanically verifiable (no v3 handler for it).",
             )
         return await stateful(assertion, subject=subject, as_of=as_of, buffer=buffer)
 
