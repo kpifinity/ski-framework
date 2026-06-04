@@ -101,13 +101,21 @@ class TranscriptSigner:
         private_key = Ed25519PrivateKey.generate()
         public_key = private_key.public_key()
 
-        path.write_bytes(
-            private_key.private_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PrivateFormat.Raw,
-                encryption_algorithm=serialization.NoEncryption(),
-            )
+        key_bytes = private_key.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
+            encryption_algorithm=serialization.NoEncryption(),
         )
+        # Create the key file with 0600 from the outset so the private key is
+        # never briefly world-readable in the window between writing it and
+        # chmod-ing it. os.open honours the mode on creation (subject to the
+        # process umask). The explicit chmod afterwards also tightens an
+        # over-permissive pre-existing file on platforms that ignore the mode.
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, key_bytes)
+        finally:
+            os.close(fd)
         with suppress_oserror():
             os.chmod(path, 0o600)
 
