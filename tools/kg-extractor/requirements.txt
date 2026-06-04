@@ -4,13 +4,13 @@
 # pypdf due to CVE-2023-36464 and CVE-2022-24859.
 pydantic==2.13.4
 python-dotenv==1.2.2
-click==8.1.7
-pyyaml==6.0.1
-httpx==0.27.0
+click==8.4.1
+pyyaml==6.0.3
+httpx==0.28.1
 pypdf==6.12.2
-python-docx==1.1.0
+python-docx==1.2.0
 # LLM backends — at least one is required at runtime; choose via
 # KG_EXTRACTOR_LLM_BACKEND. anthropic and openai are for compilation
 # only and must NEVER be used as the SKI Model runtime backend.
-anthropic==0.21.3
+anthropic==0.105.2
 openai==1.16.2
