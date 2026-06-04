@@ -197,5 +197,33 @@ class TestV3Emitter:
         assert kg["nodes"]["obligations"][0]["obligation_type"] == "discretionary"
 
 
+class TestChunkingTermination:
+    """Regression tests for the chunk_text sliding-window terminator.
+
+    chunk_text used to loop forever once the window reached end-of-text
+    with a non-zero overlap (``start = end - overlap`` never advanced past
+    ``len(text)``). These tests pin the terminator and the argument guards.
+    """
+
+    def test_long_text_with_overlap_terminates_and_covers_bounds(self):
+        body = "".join(f"Sentence number {i}. " for i in range(200))
+        assert len(body) > 100
+
+        chunks = chunk_text(body, max_chunk_size=100, overlap=10)
+
+        assert len(chunks) > 1
+        assert all(chunks)  # no empty chunks
+        assert body.startswith(chunks[0])  # first chunk is a prefix
+        assert body.endswith(chunks[-1])  # last chunk reaches end-of-text
+
+    def test_overlap_not_smaller_than_chunk_size_is_rejected(self):
+        with pytest.raises(ValueError):
+            chunk_text("x" * 500, max_chunk_size=100, overlap=100)
+
+    def test_non_positive_chunk_size_is_rejected(self):
+        with pytest.raises(ValueError):
+            chunk_text("x" * 500, max_chunk_size=0)
+
+
 if __name__ == "__main__":
     pytest.main([__file__])
