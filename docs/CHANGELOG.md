@@ -9,6 +9,8 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+## [3.0.3] — 2026-06-05
+
 ### Fixed
 - **kg-extractor `chunk_text` no longer loops indefinitely.** For inputs longer
   than `max_chunk_size` with `overlap > 0`, the sliding window never advanced

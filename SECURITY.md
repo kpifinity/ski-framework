@@ -11,9 +11,8 @@ the **latest tagged release** receives security fixes.
 
 | Version | Status | Security fixes |
 |---|---|---|
-| `0.2.x` | active development | yes |
-| `0.1.x-alpha` | unsupported (superseded by 0.2.x) | no |
-| pre-`0.1` | unsupported | no |
+| `3.0.x` | active development | yes |
+| `< 3.0` | unsupported (superseded by 3.0.x) | no |
 
 ## Reporting a vulnerability
 
