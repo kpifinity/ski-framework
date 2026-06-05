@@ -89,7 +89,7 @@ Same tester credit as v3.0.1 for catching it.
   ``0002_transcript_columns.sql``, the constraint guards are
   idempotent, ``server.py`` lifespan calls the runner, and
   ``SKI_AUTOMIGRATE`` is honoured.
-- **`docs/MIGRATIONS.md`** — documents the auto-apply behaviour and
+- **`docs/migrations.md`** — documents the auto-apply behaviour and
   the opt-out lever; preserves the manual ``psql`` procedure for
   v3.0.0 / v3.0.1 operators who can't yet upgrade to v3.0.2.
 
@@ -159,7 +159,7 @@ tester who reproduced and traced the failure cleanly.
      ``DROP CONSTRAINT IF EXISTS`` so it is idempotent.
 
 ### Changed (docs, v3 — PR 15)
-- **`docs/MIGRATIONS.md`** — replaced the misleading "v3.0 introduced
+- **`docs/migrations.md`** — replaced the misleading "v3.0 introduced
   no breaking schema changes; v0.2 ledgers upgrade in place" line with
   an accurate description: existing v0.2 ledgers MUST run the 0002
   migration explicitly; fresh v3.0.1+ deployments get the columns from
@@ -213,7 +213,7 @@ framework version.
   (implemented)" with the implementation date and PR range.
 - **`docs/RFCs/0002-v3-neuro-symbolic-pivot.md`** — status table now
   reads "Accepted — implemented" with accepted/implemented dates.
-- **`docs/MIGRATIONS.md`** — added a v3.0 row noting no schema
+- **`docs/migrations.md`** — added a v3.0 row noting no schema
   migration was required; v0.2 ledgers upgrade in place.
 - **`docs/glossary.md`** — full rewrite for the v3 vocabulary.
   Added: Agreement monitor, Extraction quality, Formalizable
@@ -228,7 +228,7 @@ framework version.
 - **`docs/specification-v3.md`** — status table updated from "Draft
   (pending RFC 0002 acceptance)" to "Active (RFC 0002 accepted;
   implemented in v3.0.0)".
-- **`docs/knowledge-graph.md`** and **`docs/ARCHITECTURE.md`** — status
+- **`docs/knowledge-graph.md`** and **`docs/architecture.md`** — status
   banners point readers to the v3 spec / RFC 0002 as the
   authoritative references; full rewrites tracked as a follow-up.
 
@@ -291,7 +291,7 @@ framework version.
   with spec citations: no-outbound-calls, air-gapped boot, tamper
   resistance, single-worker enforcement, jurisdiction scope capture,
   signed LLM transcript. Harness is the v3.1 milestone.
-- **`docs/CONFORMANCE.md`** rewritten with the v3.0 mapping tables;
+- **`docs/conformance.md`** rewritten with the v3.0 mapping tables;
   the Level 1 / Level 2 / Level 3 framing is renamed to Provenance /
   Durability / Sovereignty throughout.
 - **`pytest.ini` markers**: ``level1`` / ``level2`` / ``level3``
@@ -934,16 +934,16 @@ depends on. Theme A of the v0.2 architectural plan.
   determinism depends on this.
 - **`audit-ledger replay` command** — re-evaluates a ledger range
   against the recorded buffer state, exits non-zero on divergence.
-  See [docs/REPLAY.md](./docs/REPLAY.md).
+  See [docs/replay.md](./docs/replay.md).
 - **Schema versioning** on `ledger_entries`. v0.1 entries tagged
   `'0.1.0'` by migration; new entries `'0.2.0'`. Replay skips v0.1
   entries with a note.
 - **Conformance Level 2 tests** under `conformance/level2/`.
 - **Alembic migrations** under `reference-implementation/migrations/`.
-  See [docs/MIGRATIONS.md](./docs/MIGRATIONS.md).
+  See [docs/migrations.md](./docs/migrations.md).
 - **Energy demo KG** gains a stateful rule:
   `energy.so2.window_avg_60s` (60-second rolling SO₂ avg ≤ 100 ppm).
-- **New docs**: RFC 0001, REPLAY.md, MIGRATIONS.md.
+- **New docs**: RFC 0001, replay.md, migrations.md.
 
 ### Changed
 - SKI Model service version → `0.2.0`.

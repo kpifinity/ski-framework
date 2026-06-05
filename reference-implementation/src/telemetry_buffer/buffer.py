@@ -139,7 +139,7 @@ class TelemetryBuffer:
         we look back ``window_seconds`` from there. Records strictly
         younger than ``as_of`` are included to match a typical
         "last N seconds" intuition; this is documented in the predicate
-        grammar (see docs/KNOWLEDGE_GRAPH.md).
+        grammar (see docs/knowledge-graph.md).
 
         ``metric_path`` is a dotted path into the JSON measurement
         (e.g. "so2_ppm.value"). When provided, sum_value and avg_value

@@ -665,7 +665,7 @@ window or in dedicated follow-up RFCs:
 - **Internal:**
   - [SKI Framework Specification v2.1](../index.md) — superseded by v3.0 spec (PR 8)
   - [RFC 0001 — Stateful Evaluation](0001-stateful-evaluation.md) — v3 preserves the buffer
-  - [Architecture](../ARCHITECTURE.md) — to be rewritten in PR 7
+  - [Architecture](../architecture.md) — to be rewritten in PR 7
   - [Governance](../governance.md) — RFC process this document follows
   - [Threat Model](../threat-model.md) — extended in *Security implications*
   - [RELEASING.md](../../RELEASING.md) — v3.0.0 release follows this runbook

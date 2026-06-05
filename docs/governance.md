@@ -89,7 +89,7 @@ See [CHANGELOG.md](CHANGELOG.md) for the actual release history.
 
 The SKI conformance test suite at `conformance/` is the
 **executable specification** — if there's a disagreement between
-`docs/CONFORMANCE.md` and the tests, the tests win, and the docs are
+`docs/conformance.md` and the tests, the tests win, and the docs are
 corrected.
 
 Conformance claims (Level 1 / Level 2 / Level 3) may be self-issued or

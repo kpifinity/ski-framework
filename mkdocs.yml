@@ -5,6 +5,21 @@ repo_url: https://github.com/kpifinity/ski-framework
 repo_name: kpifinity/ski-framework
 edit_uri: edit/main/docs/
 
+# Build-time validation tuned for `mkdocs build --strict` (docs.yml): a mis-cased
+# or missing *nav* target warns -> promoted to a hard error by --strict, so the
+# broken-nav regression that shipped before cannot recur. Link checks are info
+# (not promoted): docs intentionally link to repo files outside the docs/ tree.
+validation:
+  nav:
+    not_found: warn
+    omitted_files: info
+    absolute_links: info
+  links:
+    not_found: info
+    anchors: info
+    absolute_links: info
+    unrecognized_links: info
+
 copyright: >
   Copyright &copy; 2026 KpiFinity Inc.
   &mdash; Specification CC BY 4.0, software Apache 2.0.
@@ -94,5 +109,9 @@ nav:
       - glossary.md
       - RFCs/index.md
       - CHANGELOG.md
+      - Release notes:
+          - "v3.0.2": releases/v3.0.2.md
+          - "v3.0.1": releases/v3.0.1.md
+          - "v3.0.0": releases/v3.0.0.md
   - Contributing:
       - contributing.md
