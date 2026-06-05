@@ -53,7 +53,7 @@ To run the stack: clone the repo, run `./scripts/setup.sh` to generate TLS certi
 
 ## Architecture
 
-Every verdict takes the same path: telemetry arrives, the Knowledge Graph is scoped to the obligations applicable to the tenant's jurisdiction and the measurement's effective date, the local LLM evaluates against that scoped snapshot with structured-generation constraints, the Symbolic Verifier independently cross-checks the formalizable subset (numeric bounds, set membership, temporal windows, stateful window predicates), the Risk-Tier Governor derives the strictest applicable tier from the KG, and the ledger records the full provenance — signed LLM transcript, model weight hash, KG version hash, KG citations, verifier result, agreement-monitor status. The audit story is *verifiable provenance of a neuro-symbolic decision*, not bit-identical replay of a rule engine — the stronger defensibility story for 2026. The full architecture is in [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md); the design rationale is in [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md).
+Every verdict takes the same path: telemetry arrives, the Knowledge Graph is scoped to the obligations applicable to the tenant's jurisdiction and the measurement's effective date, the local LLM evaluates against that scoped snapshot with structured-generation constraints, the Symbolic Verifier independently cross-checks the formalizable subset (numeric bounds, set membership, temporal windows, stateful window predicates), the Risk-Tier Governor derives the strictest applicable tier from the KG, and the ledger records the full provenance — signed LLM transcript, model weight hash, KG version hash, KG citations, verifier result, agreement-monitor status. The audit story is *verifiable provenance of a neuro-symbolic decision*, not bit-identical replay of a rule engine — the stronger defensibility story for 2026. The full architecture is in [docs/architecture.md](./docs/architecture.md); the design rationale is in [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md).
 
 ## Verdicts
 
@@ -89,7 +89,7 @@ The Knowledge Graph libraries for specific industries (energy, finance, manufact
 | **Durability** | The KG is signed; the Risk-Tier Governor is strict (caller cannot self-declare tier); the audit ledger is append-only at the DB layer; hash-chain integrity recomputes entry hashes (not just chain linkage); the replay primitive can reproduce historical verdicts. |
 | **Sovereignty** | The runtime makes zero outbound HTTP calls during evaluation when the LLM is local; boots air-gapped; tamper attempts on the ledger fail closed; recorded transcripts carry the jurisdiction scope; LLM transcript signatures verify. (Scaffolded; harness is the v3.1 milestone.) |
 
-See [docs/CONFORMANCE.md](./docs/CONFORMANCE.md) for the methodology and [conformance/README.md](./conformance/README.md) for runnable tests.
+See [docs/conformance.md](./docs/conformance.md) for the methodology and [conformance/README.md](./conformance/README.md) for runnable tests.
 
 ## Security
 

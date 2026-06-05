@@ -15,4 +15,4 @@ import pytest
 
 @pytest.mark.sovereignty
 def test_runtime_makes_no_outbound_http_in_clear_path() -> None:
-    pytest.skip("L3 network-sandbox harness not yet implemented — tracked in CONFORMANCE.md.")
+    pytest.skip("L3 network-sandbox harness not yet implemented — tracked in conformance.md.")

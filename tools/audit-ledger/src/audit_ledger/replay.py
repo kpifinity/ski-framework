@@ -14,7 +14,7 @@ Given a contiguous range of ledger entries, this module:
      divergence.
 
 This is the deterministic-replay primitive the SKI Framework Level 3
-conformance suite depends on. See docs/REPLAY.md for the user-facing
+conformance suite depends on. See docs/replay.md for the user-facing
 documentation and docs/RFCs/0001-stateful-evaluation.md for the
 architectural rationale.
 """

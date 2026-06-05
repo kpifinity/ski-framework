@@ -7,7 +7,7 @@ SKI Framework v3.0. Each test cites the specification section it
 validates. The suite is organised around **verifiable provenance** —
 the three levels measure how *complete*, how *durable*, and how
 *sovereign* the verdict-time audit story is. See
-[`docs/CONFORMANCE.md`](../docs/CONFORMANCE.md) for the methodology.
+[`docs/conformance.md`](../docs/conformance.md) for the methodology.
 
 ## Layout
 
@@ -89,4 +89,4 @@ a badge:
 ```
 
 For paid attestation (sovereignty level), engage KpiFinity. See
-[`docs/CONFORMANCE.md`](../docs/CONFORMANCE.md).
+[`docs/conformance.md`](../docs/conformance.md).

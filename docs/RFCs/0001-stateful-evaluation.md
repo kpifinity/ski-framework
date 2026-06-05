@@ -130,7 +130,7 @@ to be added in PR 2).
 
 Five new operators are added to the Symbolic Evaluator. Each fits the
 existing `{operator, metric, ...}` predicate shape and is documented in
-[docs/KNOWLEDGE_GRAPH.md](../KNOWLEDGE_GRAPH.md).
+[docs/knowledge-graph.md](../knowledge-graph.md).
 
 | Operator | Required fields | Semantics |
 |---|---|---|
@@ -246,7 +246,7 @@ This design works identically for both supported v0.2 target shapes:
 ## References
 
 - SKI Framework Specification v2.1, section B4.4 (Stateful Evaluation).
-- [docs/ARCHITECTURE.md](../ARCHITECTURE.md) — phase 2 runtime.
-- [docs/CONFORMANCE.md](../CONFORMANCE.md) — Level 2 tests this enables.
+- [docs/architecture.md](../architecture.md) — phase 2 runtime.
+- [docs/conformance.md](../conformance.md) — Level 2 tests this enables.
 - [tools/audit-ledger/src/audit_ledger/canonical.py](../../tools/audit-ledger/src/audit_ledger/canonical.py)
   — canonical entry hashing, unchanged.

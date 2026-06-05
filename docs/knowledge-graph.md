@@ -156,7 +156,7 @@ depth.
 Because window queries use the telemetry timestamp (not wall-clock), a
 later replay against the same buffer state yields the same verdict.
 This is what makes the `audit-ledger replay` command meaningful — see
-[`docs/REPLAY.md`](./REPLAY.md).
+[`docs/replay.md`](./replay.md).
 
 ## `tag_registry`
 

@@ -53,7 +53,7 @@ The framework defines a **two-phase architecture**:
 
 ### "I want to read the spec."
 Start at [skiframework.org](https://skiframework.org) or
-[`docs/ARCHITECTURE.md`](./ARCHITECTURE.md). The spec is licensed
+[`docs/architecture.md`](./architecture.md). The spec is licensed
 CC BY 4.0.
 
 ### "I want to run the reference implementation."
@@ -74,14 +74,14 @@ energy, finance, manufacturing, and defense, contact
 ### "I want to claim SKI conformance for my implementation."
 Run the SKI conformance suite under [`conformance/`](../conformance/).
 Each test cites the spec section it validates. See
-[`docs/CONFORMANCE.md`](./CONFORMANCE.md) for the methodology and the
+[`docs/conformance.md`](./conformance.md) for the methodology and the
 Level 1 / 2 / 3 progression.
 
 ### "I'm reviewing this for purchase / regulatory approval."
 The fastest path to a credible assessment:
 
 1. Skim the [README's status section](../README.md).
-2. Read [`docs/ARCHITECTURE.md`](./ARCHITECTURE.md) for the spec
+2. Read [`docs/architecture.md`](./architecture.md) for the spec
    compliance picture.
 3. Read [`reference-implementation/SECURITY_DEFAULTS.md`](../reference-implementation/SECURITY_DEFAULTS.md).
 4. Run the conformance suite against the reference implementation:
@@ -94,10 +94,10 @@ The fastest path to a credible assessment:
 ski-framework/
 ├── README.md
 ├── docs/
-│   ├── GETTING_STARTED.md          ← you are here
-│   ├── ARCHITECTURE.md             Specification: architecture
-│   ├── KNOWLEDGE_GRAPH.md          Specification: KG format
-│   └── CONFORMANCE.md              Specification: conformance methodology
+│   ├── getting-started.md          ← you are here
+│   ├── architecture.md             Specification: architecture
+│   ├── knowledge-graph.md          Specification: KG format
+│   └── conformance.md              Specification: conformance methodology
 ├── reference-implementation/       Apache 2.0 — runs entirely on-premise
 ├── tools/                          Apache 2.0
 │   ├── kg-extractor/               Phase 1: extract rules
@@ -116,7 +116,7 @@ open/proprietary boundary.
 
 ## Next steps
 
-- Read the architecture: [`ARCHITECTURE.md`](./ARCHITECTURE.md)
+- Read the architecture: [`architecture.md`](./architecture.md)
 - Run the reference implementation: [`../reference-implementation/QUICKSTART.md`](../reference-implementation/QUICKSTART.md)
 - Run the conformance suite: [`../conformance/README.md`](../conformance/README.md)
 - Talk to KpiFinity: [kpifinity.com](https://kpifinity.com)

@@ -28,7 +28,7 @@ cannot drift.
 **Operator controls.** The check is on by default. Set
 ``SKI_AUTOMIGRATE=false`` to opt out — in that mode, if the v3 columns
 are missing the server logs a loud error pointing at
-``docs/MIGRATIONS.md`` and refuses to serve.
+``docs/migrations.md`` and refuses to serve.
 """
 
 from __future__ import annotations
@@ -146,7 +146,7 @@ async def ensure_v3_ledger_schema(engine: AsyncEngine) -> None:
             '`psql "$LEDGER_DSN" -f '
             "reference-implementation/src/ledger/migrations/"
             "0002_transcript_columns.sql`. "
-            "See docs/MIGRATIONS.md for the full upgrade procedure."
+            "See docs/migrations.md for the full upgrade procedure."
         )
         logger.error(msg)
         raise LedgerSchemaError(msg)
