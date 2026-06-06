@@ -12,10 +12,39 @@ the first time, ~2 minutes thereafter.
 |---|---|---|
 | Docker Engine | 24+ | |
 | Docker Compose | v2 | `docker compose version` must succeed |
-| Python | 3.9 – 3.12 | for the helper scripts |
+| Python | 3.10 – 3.12 | for the helper scripts |
 | openssl | any | used to generate strong secrets and self-signed certs |
 | 8 GB free disk | | Ollama model files |
 | 8 GB RAM | | for the 7B model; less if you swap to phi3.5 |
+
+## Quick check (no Docker)
+
+To confirm the core works before standing up the full stack, the deterministic
+`FakeLLM` backend exercises the whole evaluate → verify → sign path with no
+Docker, no model download, and no secrets:
+
+```bash
+python -m venv .venv && . .venv/bin/activate     # Windows: .venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+
+# Acceptance gate — verifiable-provenance + durability conformance (no infra):
+pytest conformance/ -m "provenance or durability" -q          # -> 56 passed
+
+# Or drive one evaluation directly:
+PYTHONPATH=reference-implementation/src python - <<'EOF'
+import asyncio
+from ski_model.v3 import V3Evaluator, FakeLLM
+snap = {"version": "demo", "obligations": [
+    {"id": "energy.so2.lte_100ppm", "metric": "so2_ppm",
+     "predicate": "must_not_exceed", "value": 100}]}
+ev = V3Evaluator(llm=FakeLLM(), kg_version_hash="sha256:" + "0" * 64, decoder_seed=0)
+env = asyncio.run(ev.aevaluate(measurement={"so2_ppm": 150}, kg_snapshot=snap))
+print(env.verdict, "->", [c.node_id for c in env.kg_citations])  # FLAG -> ['energy.so2.lte_100ppm']
+EOF
+```
+
+The full Docker-based stack below adds a real local LLM (Ollama), the Postgres
+audit ledger, and TLS — but the evaluation logic is identical.
 
 ## Step 1 — Generate secrets and TLS certs
 

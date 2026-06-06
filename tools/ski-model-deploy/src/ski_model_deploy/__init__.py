@@ -3,7 +3,7 @@
 from .deployer import Deployer, UnsignedKGError
 from .models import DeploymentConfig, DeploymentStatus
 
-__version__ = "0.1.0a0"
+__version__ = "3.0.3"
 __author__ = "KpiFinity"
 
 __all__ = ["Deployer", "DeploymentConfig", "DeploymentStatus", "UnsignedKGError"]

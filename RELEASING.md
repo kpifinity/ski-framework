@@ -76,10 +76,13 @@ needed.
 Create a branch from `main` named `release/0.2.2`. The PR makes three
 changes and nothing else:
 
-1. **Bump versions.** All four `tools/*/pyproject.toml` files and
-   `reference-implementation/src/ski_model/__init__.py`'s `__version__`
-   move to `0.2.2`. Also update `CITATION.cff`'s `version` and
-   `date-released` fields.
+1. **Bump versions.** Move every version site to the new version: the
+   `version` field **and** the Python classifiers in all four
+   `tools/*/pyproject.toml`; each tool's `src/<pkg>/__init__.py`
+   `__version__`; `reference-implementation/src/ski_model/__init__.py`'s
+   `__version__`; and `reference-implementation/src/ski_model/server.py`'s
+   `_VERSION`. Also update `CITATION.cff`'s `version` and `date-released`
+   fields.
 2. **Promote the Unreleased section in CHANGELOG.md.** Rename
    `## [Unreleased]` to `## [0.2.2] - YYYY-MM-DD` and insert a fresh,
    empty `## [Unreleased]` block above it. Keep the
