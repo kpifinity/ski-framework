@@ -9,6 +9,25 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Fixed
+- **CLI `version` commands now report the real version.** The four tools'
+  `src/<pkg>/__init__.py` carried stale `__version__` values (`0.1.0a0` /
+  `3.0.0`) that the release process never bumped — so `kg-validator version`
+  and `kg-extractor version` reported `3.0.0`. Synced all four to the package
+  version and extended the release runbook to cover them (plus the tool
+  classifiers and `server.py`'s `_VERSION`).
+
+### Changed
+- **Docs/examples hygiene.** `QUICKSTART.md` no longer lists the dropped Python
+  3.9 as a prerequisite, the four tool `pyproject.toml` classifiers drop the
+  stale `Python :: 3.9` entry, and the quickstart gains a no-Docker "Quick
+  check" that runs the evaluate → verify path through the `FakeLLM` backend.
+
+### Removed
+- Deleted the stale `reference-implementation/examples/knowledge-graphs/sample-energy-kg.json`
+  (old v2 `rules` format; it failed v3 validation). The current examples live
+  under `examples/<sector>/knowledge-graphs/`.
+
 ## [3.0.3] — 2026-06-05
 
 ### Fixed
