@@ -1,8 +1,10 @@
 # SKI conformance methodology
 
 > **License:** CC BY 4.0. See [LICENSE-docs.md](../LICENSE-docs.md).
-> **Status:** Provenance + Durability runnable today; Sovereignty
-> scaffolded, harness pending.
+> **Status:** Provenance + Durability runnable today. Sovereignty: four of
+> six checks runnable (single-worker, no-egress boundary, jurisdiction scope,
+> signed transcript); tamper-resistance and air-gapped boot pending their
+> Postgres / container fixtures.
 
 This document defines what it means for an implementation to claim SKI
 Framework v3.0 conformance. It complements the runnable test suite
@@ -74,16 +76,19 @@ reproduce historical verdicts.
 ### Level 3 — Sovereignty
 
 The runtime is operable air-gapped, tamper-evident, and end-to-end
-signed. These tests are scaffolded; the harness is pending.
+signed. Four of the six checks below are runnable today as black-box
+structural checks (with matching functional proofs in the runtime test
+suite); tamper-resistance and air-gapped boot remain pending their
+destructive-Postgres and `--network=none` container fixtures.
 
-| Requirement | Spec | Test (planned) |
-|---|---|---|
-| No outbound HTTP during CLEAR-path evaluation (local LLM) | Pillar S | `sovereignty/test_no_outbound_calls.py` |
-| Runtime boots and serves with `--network=none` | Pillar S | `sovereignty/test_air_gapped.py` |
-| Modified ledger row fails `verify_integrity` even after chain forward | §6 | `sovereignty/test_tamper_resistance.py` |
-| Runtime refuses to start with `SKI_MODEL_WORKERS != 1` | Concurrency | `sovereignty/test_single_worker.py` |
-| Recorded transcript carries the snapshot's `scope` block | §3.6 + §6 | `sovereignty/test_jurisdiction_scope_captured.py` |
-| Recorded `LLMTranscript` ed25519 signature verifies | §4.7 | `sovereignty/test_signed_llm_transcript.py` |
+| Requirement | Spec | Test | Status |
+|---|---|---|---|
+| No outbound HTTP during CLEAR-path evaluation (local LLM) | Pillar S | `sovereignty/test_no_outbound_calls.py` (+ runtime `v3/tests/test_no_egress.py`) | ✅ runnable |
+| Runtime boots and serves with `--network=none` | Pillar S | `sovereignty/test_air_gapped.py` | ⏳ pending container fixture |
+| Modified ledger row fails `verify_integrity` even after chain forward | §6 | `sovereignty/test_tamper_resistance.py` | ⏳ pending Postgres fixture |
+| Runtime refuses to start with `SKI_MODEL_WORKERS != 1` | Concurrency | `sovereignty/test_single_worker.py` | ✅ runnable |
+| Recorded transcript carries the snapshot's `scope` block | §3.6 + §6 | `sovereignty/test_jurisdiction_scope_captured.py` | ✅ runnable |
+| Recorded `LLMTranscript` ed25519 signature verifies | §4.7 | `sovereignty/test_signed_llm_transcript.py` (+ runtime `test_signing.py`, `test_transcript.py`) | ✅ runnable |
 
 ## Running the tests
 
@@ -91,6 +96,7 @@ signed. These tests are scaffolded; the harness is pending.
 pip install -r requirements-dev.txt
 pytest conformance/ -m provenance
 pytest conformance/ -m durability
+pytest conformance/ -m sovereignty   # 4 of 6 runnable today
 ```
 
 Against a live deployment:
@@ -134,7 +140,7 @@ test suite at the revision matching the spec.
 ## Contributing tests
 
 New tests are among the highest-leverage contributions you can make,
-especially in the Sovereignty bucket where the harness is still
-forming. See [`conformance/README.md`](../conformance/README.md) for
+especially in the Sovereignty bucket where coverage is still growing
+(tamper-resistance and air-gapped boot). See [`conformance/README.md`](../conformance/README.md) for
 the conventions (one spec citation per test; black-box only; no
 dependency on the reference implementation's internals).
