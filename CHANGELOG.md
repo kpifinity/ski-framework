@@ -9,6 +9,14 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added
+- **Sovereignty (L3) conformance: four of six checks now runnable.** Implemented
+  `single_worker`, `no_outbound_calls`, `jurisdiction_scope_captured`, and
+  `signed_llm_transcript` as black-box structural checks, plus a functional
+  no-network-egress test in the runtime suite (`v3/tests/test_no_egress.py`).
+  Tamper-resistance and air-gapped boot remain pending their Postgres / container
+  fixtures.
+
 ### Fixed
 - **CLI `version` commands now report the real version.** The four tools'
   `src/<pkg>/__init__.py` carried stale `__version__` values (`0.1.0a0` /
