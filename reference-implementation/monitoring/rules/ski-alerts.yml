@@ -1,19 +1,24 @@
 # Prometheus alert rules — SKI-specific runtime invariants.
-# Each alert maps directly to a v2.1 specification requirement.
+# Each alert maps directly to a v3.0 specification requirement.
+#
+# NOTE: the reference implementation does not yet export a /metrics
+# endpoint; these rules define the metric-name contract for when
+# instrumentation lands (tracked for v3.1). Until then, poll
+# /api/canary (agreement-monitor snapshot) for liveness checks.
 
 groups:
-  - name: ski-determinism
+  - name: ski-agreement
     interval: 30s
     rules:
-      - alert: SKIDeterminismCanaryFailed
-        # Maps to: B3.4 Determinism Enforcement Controls
-        expr: ski_canary_status{status="FAILED"} > 0
-        for: 1m
+      - alert: SKIAgreementRateDegraded
+        # Maps to: spec v3.0 — neuro-symbolic agreement monitor
+        expr: ski_agreement_rate < 0.95
+        for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "SKI Model determinism canary FAILED"
-          description: "The fixed-input canary returned a non-identical result. Stop processing telemetry and audit the model artefacts and runtime environment."
+          summary: "LLM-verifier agreement rate below threshold"
+          description: "The rolling agreement rate between the LLM evaluator and the Symbolic Verifier dropped below 0.95. Inspect recent verdicts for LLM_CONTRADICTION / NEURO_SYMBOLIC_DIVERGENCE statuses before processing more telemetry."
 
   - name: ski-sovereignty
     interval: 30s

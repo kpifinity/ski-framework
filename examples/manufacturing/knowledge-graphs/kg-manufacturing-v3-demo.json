@@ -1,0 +1,138 @@
+{
+ "metadata": {
+  "name": "Manufacturing demo KG v3",
+  "schema_version": "3.0",
+  "sector": "manufacturing",
+  "description": "DEMO ONLY - minimal illustrative v3 KG for the SKI Framework reference implementation. NOT a production compliance KG (OSHA general industry (illustrative) references are illustrative). Two rules with typed obligations, jurisdictional scope, effective-date intervals, and citations.",
+  "compiled_at": "2026-06-10T00:00:00Z"
+ },
+ "nodes": {
+  "subjects": [
+   {
+    "id": "workplace.noise.dba_8h_twa",
+    "type": "Subject",
+    "version": "v3demo-0001",
+    "name": "Workplace noise exposure",
+    "description": "8-hour time-weighted-average noise exposure on the production floor."
+   },
+   {
+    "id": "equipment.machine_guard.status",
+    "type": "Subject",
+    "version": "v3demo-0002",
+    "name": "Machine guarding",
+    "description": "Count of guard-disengaged events on running machinery per shift."
+   }
+  ],
+  "rules": [
+   {
+    "id": "mfg.noise.lte_85dba_8h_twa",
+    "type": "Rule",
+    "version": "v3demo-0003",
+    "name": "Noise exposure limit",
+    "risk_tier": "medium",
+    "description": "Demo rule: 8h TWA noise exposure must not exceed 85 dBA."
+   },
+   {
+    "id": "mfg.machine_guard.required",
+    "type": "Rule",
+    "version": "v3demo-0004",
+    "name": "Machine guarding required",
+    "risk_tier": "high",
+    "description": "Demo rule: no guard-disengaged events on running machinery."
+   }
+  ],
+  "obligations": [
+   {
+    "id": "mfg.noise.twa_lte_85",
+    "type": "Obligation",
+    "version": "v3demo-0005",
+    "obligation_type": "must_not_exceed",
+    "metric": "dba_8h_twa",
+    "value": 85,
+    "unit": "dBA",
+    "effective_date_start": "2026-01-01T00:00:00Z",
+    "summary": "8-hour TWA noise exposure must not exceed 85 dBA."
+   },
+   {
+    "id": "mfg.guard.disengaged_zero",
+    "type": "Obligation",
+    "version": "v3demo-0006",
+    "obligation_type": "must_not_exceed",
+    "metric": "guard_disengaged_events",
+    "value": 0,
+    "unit": "events",
+    "effective_date_start": "2026-01-01T00:00:00Z",
+    "summary": "Guard-disengaged events on running machinery must not exceed 0."
+   }
+  ],
+  "definitions": [],
+  "exemptions": [],
+  "precedents": [],
+  "jurisdictions": [
+   {
+    "id": "us.federal",
+    "type": "Jurisdiction",
+    "version": "v3demo-0007",
+    "name": "United States federal jurisdiction"
+   }
+  ],
+  "citations": [
+   {
+    "id": "cite.osha.1910.95",
+    "type": "Citation",
+    "version": "v3demo-0008",
+    "source_document": "Demo - illustrative reference to OSHA 29 CFR 1910.95 (NOT a real legal citation)",
+    "source_clause": "1910.95"
+   },
+   {
+    "id": "cite.osha.1910.212",
+    "type": "Citation",
+    "version": "v3demo-0009",
+    "source_document": "Demo - illustrative reference to OSHA 29 CFR 1910.212 (NOT a real legal citation)",
+    "source_clause": "1910.212"
+   }
+  ]
+ },
+ "edges": [
+  {
+   "type": "applies_to",
+   "from": "mfg.noise.lte_85dba_8h_twa",
+   "to": "workplace.noise.dba_8h_twa"
+  },
+  {
+   "type": "consists_of",
+   "from": "mfg.noise.lte_85dba_8h_twa",
+   "to": "mfg.noise.twa_lte_85"
+  },
+  {
+   "type": "scoped_to",
+   "from": "mfg.noise.twa_lte_85",
+   "to": "us.federal"
+  },
+  {
+   "type": "cited_by",
+   "from": "mfg.noise.twa_lte_85",
+   "to": "cite.osha.1910.95"
+  },
+  {
+   "type": "applies_to",
+   "from": "mfg.machine_guard.required",
+   "to": "equipment.machine_guard.status"
+  },
+  {
+   "type": "consists_of",
+   "from": "mfg.machine_guard.required",
+   "to": "mfg.guard.disengaged_zero"
+  },
+  {
+   "type": "scoped_to",
+   "from": "mfg.guard.disengaged_zero",
+   "to": "us.federal"
+  },
+  {
+   "type": "cited_by",
+   "from": "mfg.guard.disengaged_zero",
+   "to": "cite.osha.1910.212"
+  }
+ ]
+}

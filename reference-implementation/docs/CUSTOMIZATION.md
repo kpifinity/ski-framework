@@ -5,8 +5,8 @@ Common customisations for the SKI Framework reference implementation.
 ## 1. Bring your own Knowledge Graph
 
 ```bash
-# Validate locally before uploading
-python scripts/validate-kg.py /path/to/your-signed-kg.json
+# Validate locally before uploading (pip install ski-kg-validator)
+kg-validator validate -i /path/to/your-signed-kg.json
 
 # Upload via the deploy tool (signature required)
 ski-model-deploy load-kg \
@@ -15,16 +15,18 @@ ski-model-deploy load-kg \
   --api-key "$SKI_API_KEY"
 ```
 
-Your KG must include:
+Your KG must be a v3 typed graph (spec §3):
 
-- structured `predicate` on every Track 1 rule;
-- `track: "symbolic" | "llm"` on every rule;
-- a `tag_registry` mapping every subject your telemetry uses to a rule id;
-- an Ed25519 signature over the canonical serialization;
-- ISO-8601 `effective_date` and `sunset_date` (use `null` if no sunset).
+- typed obligations from the closed enumeration, each with `metric`,
+  `value`, `unit`, and `effective_date_start`;
+- `applies_to` edges routing every telemetry subject to a rule;
+- `scoped_to` and `cited_by` edges on every obligation (jurisdiction +
+  citation);
+- a declared `risk_tier` on every rule (the caller can never set one);
+- an Ed25519 signature over the canonical serialization.
 
-See [`scripts/validate-kg.py`](../../scripts/validate-kg.py) for the
-checks it runs.
+See [docs/knowledge-graph.md](https://kpifinity.github.io/ski-framework/knowledge-graph/)
+for the full shape and `kg-validator` for the checks.
 
 ## 2. Swap the inference backend
 
@@ -132,10 +134,11 @@ SKI-specific gotchas.
 
 For learning purposes:
 
-1. Edit `examples/<sector>/knowledge-graphs/kg-<sector>-demo.json`.
-2. Add an entry to `tag_registry` so the new subject resolves.
-3. Run `python scripts/validate-kg.py --allow-unsigned …` to catch any
-   schema mistakes before loading.
+1. Edit `examples/<sector>/knowledge-graphs/kg-<sector>-v3-demo.json`.
+2. Add the new Subject node, the Obligation node, and the `applies_to` /
+   `consists_of` / `scoped_to` / `cited_by` edges so it resolves.
+3. Run `kg-validator validate -i <file>` to catch any schema or
+   referential-integrity mistakes before loading.
 
 For real deployments, edit a signed production KG through the
 `kg-extractor` → `kg-validator` → `ski-model-deploy` pipeline. Do not

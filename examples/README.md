@@ -1,96 +1,74 @@
-# SKI Framework — DEMO examples
+# Examples — DEMO ONLY
 
-> **⚠ DEMO ONLY — NOT FOR PRODUCTION.** The Knowledge Graphs and telemetry
-> records in this directory are deliberately tiny, illustrative artefacts
-> built only to exercise the reference implementation end-to-end. They do
-> **not** reflect actual regulatory obligations and must **not** be
-> deployed against real operational systems. The production-grade,
-> regulator-mapped Knowledge Graph libraries for each sector are
-> proprietary and available via [KpiFinity](https://kpifinity.com).
+> **⚠ Every file under `examples/` is demo-grade.** The Knowledge
+> Graphs are minimal, unsigned, and illustrative; the regulatory
+> citations are placeholders, not legal references. Production KG
+> libraries (energy, finance, manufacturing, defense) are proprietary —
+> see [KpiFinity](https://kpifinity.com).
 
-## What's in here
+Each sector directory contains one **v3 Knowledge Graph**
+(`kg-<sector>-v3-demo.json`) and one telemetry sample
+(`telemetry/*.jsonl`). The two are paired: replaying the telemetry
+against the KG produces a known mix of verdicts.
 
-Each subdirectory holds the same skeleton:
+## The v3 KG shape (spec v3.0 §3)
 
+Every demo KG is a typed graph with the same skeleton:
+
+```jsonc
+{
+  "metadata":  { "name", "schema_version": "3.0", "sector", ... },
+  "nodes": {
+    "subjects":      [ ... ],   // what telemetry is about
+    "rules":         [ ... ],   // named rules with a declared risk_tier
+    "obligations":   [ ... ],   // typed: obligation_type, metric, value, unit,
+                                //        effective_date_start, summary
+    "definitions":   [ ... ],
+    "exemptions":    [ ... ],
+    "precedents":    [ ... ],
+    "jurisdictions": [ ... ],
+    "citations":     [ ... ]    // every obligation traces to a source clause
+  },
+  "edges": [
+    { "type": "applies_to",  "from": "<rule>",       "to": "<subject>" },
+    { "type": "consists_of", "from": "<rule>",       "to": "<obligation>" },
+    { "type": "scoped_to",   "from": "<obligation>", "to": "<jurisdiction>" },
+    { "type": "cited_by",    "from": "<obligation>", "to": "<citation>" }
+  ]
+}
 ```
-<sector>/
-├── README.md                              Demo context + DEMO ONLY banner
-├── knowledge-graphs/
-│   └── kg-<sector>-demo.json              ≤ 5 illustrative rules,
-│                                          structured predicates,
-│                                          `track` field, signed (or
-│                                          marked DEMO_UNSIGNED)
-└── telemetry/
-    └── sample.jsonl                       Telemetry without rule_id
-                                           (Tag Registry resolves it)
-```
 
-We intentionally keep the demos under **five rules each** so they cannot
-be confused with a production KG. If your scenario requires more than five
-rules, you have left demo territory and should be talking to KpiFinity.
+`obligation_type` is a closed enumeration (spec §3.3). The demo KGs use
+only types the Symbolic Verifier can mechanically cross-check
+(`must_not_exceed`, `must_be_at_least`, `must_be_within`), so every
+demo verdict exercises the full neuro-symbolic path: LLM reasoning →
+formalizable assertions → independent verifier result.
 
-## Structural rules
+## Structural rules every demo follows
 
-The demos all satisfy the v2.1 spec requirements the conformance suite
-checks for:
+1. **Unsigned.** Loading one requires `KG_REQUIRE_SIGNATURE=false` —
+   deliberately non-conformant so nobody mistakes a demo for a
+   deployable artifact.
+2. **Validates clean.** `kg-validator validate -i <file>` passes for
+   every demo KG. CI-checked intent: if you edit one, re-validate.
+3. **Telemetry is paired.** Each sample includes conforming records
+   (CLEAR), breaches (FLAG), and an unmapped subject (NULL_UNMAPPED)
+   to demonstrate the Coverage Register.
+4. **Citations are fake.** Anything that looks like a real regulation
+   citation is illustrative.
 
-1. **No `rule_id` in telemetry records.** The producer must not pre-route.
-   The Tag Registry compiled with the KG resolves `subject` → `rule_id`.
-2. **Structured predicates.** Rule `object` is a structured
-   `{operator, metric, value, unit}` block, not a free-text string.
-3. **`track` field on every rule** — `"symbolic"` for Track 1 (the demos
-   default to this) or `"llm"` for Track 2.
-4. **No `confidence: "IMPLIED"` rules.** The Anchor Constraint (B2.1)
-   forbids inference beyond source text.
-5. **`tag_registry` mapping subject string → rule id** in the KG itself.
-6. **Effective and sunset dates** in ISO-8601 where applicable.
-7. **`source_document_version`** to bind each rule to a specific version
-   of its source.
-
-The demo KGs are shipped with `signature.algorithm = "DEMO_UNSIGNED"` —
-they will be rejected by the SKI Model unless `KG_REQUIRE_SIGNATURE=false`
-is set, which disqualifies the deployment from any conformance level.
-This is intentional: it makes the demos visibly non-conformant so they
-are never mistaken for production.
-
-## Running a demo
+## Run any sector
 
 ```bash
-# 1. Bring up the stack (one-time)
-./scripts/setup.sh
-./scripts/deploy.sh
-
-# 2. (DEMO ONLY) allow the unsigned demo KG and load it
-docker compose -f reference-implementation/docker-compose.yml \
-  exec ski-model bash -c 'KG_REQUIRE_SIGNATURE=false python -c "..."'   # see DEPLOYMENT.md
-
-# 3. Replay sample telemetry
-python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl --insecure
+# Stack up (see reference-implementation/QUICKSTART.md), then:
+python scripts/send-telemetry.py examples/<sector>/telemetry/<file>.jsonl --insecure
+python scripts/check-verdicts.py --insecure --limit 20
 ```
 
-## Going from a demo to a real deployment
+## Path to a real KG
 
-The path to production:
-
-1. Use `kg-extractor` to extract rules from your authoritative regulatory
-   sources, with `temperature=0` and a recorded seed for reproducibility.
-2. Use `kg-validator` to require human review of every extracted rule.
-3. Sign the validated KG with your Ed25519 production key.
-4. Deploy via `ski-model-deploy` (signature verification is mandatory).
-5. Run the conformance suite against your live deployment.
-
-Or contract with [KpiFinity](https://kpifinity.com) for a production-grade
-sector KG library with regulator-mapped rules and ongoing maintenance.
-
-## Adding a new demo
-
-If you contribute a new sector demo, please:
-
-1. Cap it at five rules.
-2. Put a `DEMO ONLY` banner at the top of the sector `README.md`.
-3. Use structured predicates and a `track` field on every rule.
-4. Strip any `rule_id` from telemetry records.
-5. Run `python scripts/validate-kg.py --allow-unsigned path/to/kg.json` and
-   include the output in your PR.
-
-See [CONTRIBUTING.md](../CONTRIBUTING.md) for the broader contribution flow.
+Extract candidate obligations with `kg-extractor`, validate every rule
+with a qualified human expert via `kg-validator`, sign with your
+production Ed25519 key, deploy with `ski-model-deploy`, then run the
+conformance suite. Or contract KpiFinity for the production KG library,
+regulator-update subscriptions, and certification support.

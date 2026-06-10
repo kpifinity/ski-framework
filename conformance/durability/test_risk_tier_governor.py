@@ -78,14 +78,24 @@ def test_strict_governor_no_caller_settable_risk_tier(repo_root: Path) -> None:
 
 
 @pytest.mark.durability
-def test_demo_kgs_have_tag_registry(repo_root: Path) -> None:
-    """Demo KGs must ship a tag_registry section (B4.3 carried into v3)."""
+def test_demo_kgs_route_subjects_via_typed_edges(repo_root: Path) -> None:
+    """Every sector demo KG is a v3 typed graph whose applies_to edges
+    resolve subject routing (B4.3's governed subject->rule mapping,
+    carried into v3 as graph edges instead of a tag_registry dict)."""
     for sector in ("energy", "finance", "manufacturing", "defense"):
-        kg_files = list((repo_root / "examples" / sector / "knowledge-graphs").glob(f"kg-{sector}-demo.json"))
-        assert kg_files, f"Missing demo KG for {sector}."
-        for f in kg_files:
-            kg = json.loads(f.read_text())
-            assert kg.get("tag_registry"), f"{f} has no tag_registry — required by B4.3."
+        f = repo_root / "examples" / sector / "knowledge-graphs" / f"kg-{sector}-v3-demo.json"
+        assert f.exists(), f"Missing v3 demo KG for {sector}."
+        kg = json.loads(f.read_text())
+        assert kg["metadata"]["schema_version"] == "3.0", f"{f} is not schema 3.0."
+        subjects = {n["id"] for n in kg["nodes"]["subjects"]}
+        rules = {n["id"] for n in kg["nodes"]["rules"]}
+        applies = [e for e in kg["edges"] if e["type"] == "applies_to"]
+        assert applies, f"{f} has no applies_to edges — subjects would be unroutable."
+        for e in applies:
+            assert e["from"] in rules, f"{f}: applies_to from unknown rule {e['from']!r}."
+            assert e["to"] in subjects, f"{f}: applies_to to unknown subject {e['to']!r}."
+        unrouted = subjects - {e["to"] for e in applies}
+        assert not unrouted, f"{f}: subjects with no governing rule: {sorted(unrouted)}."
 
 
 @pytest.mark.durability

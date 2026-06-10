@@ -1,9 +1,10 @@
 # SKI Framework — tools
 
-> **⚠ STATUS: EARLY ALPHA.** All four tools are at v0.1.0-alpha. See the
-> repo root `README.md` for the project-wide status banner.
+> **STATUS:** the four CLI tools track the framework version (currently
+> the v3.1.0-alpha line); `ski-sdk` is versioned independently (RFC 0003).
+> All are installable from PyPI — see the root `README.md`.
 
-Open-source tooling for implementing the SKI Framework. All four tools
+Open-source tooling for implementing the SKI Framework. All tools
 are Apache 2.0 licensed and run on-premise without any required cloud
 API key. (The kg-extractor's optional `anthropic` and `openai` backends
 are for Phase 1 compilation only and must not be used at runtime.)

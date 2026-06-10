@@ -1,8 +1,10 @@
 # Deterministic replay
 
-> **Status:** v0.2.0 (alpha). The replay primitive is runnable today.
-> Production-track replay (signed replay reports, KG store integration)
-> ships in v0.3.
+> **Status:** runnable today (`audit-ledger replay`). In v3 the replay
+> primitive is one half of the defensibility story; the other half is
+> per-verdict **verifiable provenance** — the signed LLM transcript and
+> envelope recorded in the ledger, re-verifiable offline with
+> `ski-sdk`'s `verify_transcript()`.
 
 Replay re-evaluates a contiguous range of audit ledger entries against
 the recorded Knowledge Graph and the telemetry buffer state as it
@@ -18,10 +20,10 @@ the originally-recorded verdict, and any divergence is reported.
    determinism by demonstration, not by assertion.
 2. **Tamper detection.** If a row in the ledger has been silently
    modified, the replayed verdict will disagree with the recorded
-   verdict — and the canonical entry-hash check (Level 1 conformance)
+   verdict — and the canonical entry-hash check (Durability conformance)
    will independently catch the modification.
-3. **Level 3 conformance.** The Level 3 Assured conformance suite uses
-   replay as a black-box test of the runtime's determinism.
+3. **Durability conformance.** The Durability suite uses replay as a
+   black-box test (`durability/test_replay_three_evaluations.py`).
 
 ## Usage
 
@@ -42,11 +44,13 @@ Exit code:
 
 ## What gets skipped
 
-- **v0.1 ledger entries.** Pre-buffer; we cannot reconstruct stateful
-  evaluation. The report lists them under `notes`.
-- **Track 2 (LLM) entries.** LLM evaluation is best-effort
-  deterministic; the replay tool refuses to claim conformance for them
-  in v0.2.
+- **Pre-v0.2 ledger entries.** Pre-buffer; we cannot reconstruct
+  stateful evaluation. The report lists them under `notes`.
+- **LLM-evaluated entries** are replayed as *provenance verification*
+  (transcript signature + recorded hashes), not bit-identical
+  re-generation — defensibility in v3 is reconstructible provenance,
+  not replaying a rule engine. The symbolic-verifier results replay
+  exactly.
 - **Entries whose buffer row has been retention-dropped.** Hot retention
   is per-tenant; if the buffer no longer holds the row, replay can't
   reconstruct evaluation. Use longer retention windows when audit
@@ -74,7 +78,7 @@ Exit code:
   "is_clean": true,
   "mismatches": [],
   "notes": [
-    "seq=1012: Track 2 (LLM) entry — replay is best-effort only; skipped.",
+    "seq=1012: Track 2 (LLM) entry — replay is best-effort only; skipped.",  // legacy v0.2 entry
     ...
   ]
 }

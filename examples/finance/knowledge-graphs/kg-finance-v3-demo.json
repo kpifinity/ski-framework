@@ -1,0 +1,138 @@
+{
+ "metadata": {
+  "name": "Finance demo KG v3",
+  "schema_version": "3.0",
+  "sector": "finance",
+  "description": "DEMO ONLY - minimal illustrative v3 KG for the SKI Framework reference implementation. NOT a production compliance KG (BSA/AML (illustrative) references are illustrative). Two rules with typed obligations, jurisdictional scope, effective-date intervals, and citations.",
+  "compiled_at": "2026-06-10T00:00:00Z"
+ },
+ "nodes": {
+  "subjects": [
+   {
+    "id": "transaction.account_opening.cip",
+    "type": "Subject",
+    "version": "v3demo-0001",
+    "name": "Customer Identification Program completion",
+    "description": "Days elapsed from account opening to CIP completion."
+   },
+   {
+    "id": "transaction.wire.large",
+    "type": "Subject",
+    "version": "v3demo-0002",
+    "name": "Large wire transfers",
+    "description": "Documentation coverage of business purpose on large outbound wires."
+   }
+  ],
+  "rules": [
+   {
+    "id": "finance.cip.completion_within_30d",
+    "type": "Rule",
+    "version": "v3demo-0003",
+    "name": "CIP completion window",
+    "risk_tier": "medium",
+    "description": "Demo rule: CIP must complete within 30 days of account opening."
+   },
+   {
+    "id": "finance.wire.purpose_documented",
+    "type": "Rule",
+    "version": "v3demo-0004",
+    "name": "Wire purpose documentation",
+    "risk_tier": "medium",
+    "description": "Demo rule: business-purpose documentation coverage on large wires must be 100%."
+   }
+  ],
+  "obligations": [
+   {
+    "id": "finance.cip.days_lte_30",
+    "type": "Obligation",
+    "version": "v3demo-0005",
+    "obligation_type": "must_not_exceed",
+    "metric": "days_to_cip_completion",
+    "value": 30,
+    "unit": "days",
+    "effective_date_start": "2026-01-01T00:00:00Z",
+    "summary": "Days to CIP completion must not exceed 30."
+   },
+   {
+    "id": "finance.wire.purpose_coverage_full",
+    "type": "Obligation",
+    "version": "v3demo-0006",
+    "obligation_type": "must_be_at_least",
+    "metric": "purpose_documented_pct",
+    "value": 100,
+    "unit": "percent",
+    "effective_date_start": "2026-01-01T00:00:00Z",
+    "summary": "Business-purpose documentation coverage on large wires must be at least 100%."
+   }
+  ],
+  "definitions": [],
+  "exemptions": [],
+  "precedents": [],
+  "jurisdictions": [
+   {
+    "id": "us.federal",
+    "type": "Jurisdiction",
+    "version": "v3demo-0007",
+    "name": "United States federal jurisdiction"
+   }
+  ],
+  "citations": [
+   {
+    "id": "cite.bsa.cip",
+    "type": "Citation",
+    "version": "v3demo-0008",
+    "source_document": "Demo - illustrative reference to the BSA Customer Identification Program rule (NOT a real legal citation)",
+    "source_clause": "31 CFR 1020.220"
+   },
+   {
+    "id": "cite.bsa.recordkeeping",
+    "type": "Citation",
+    "version": "v3demo-0009",
+    "source_document": "Demo - illustrative reference to BSA recordkeeping requirements (NOT a real legal citation)",
+    "source_clause": "31 CFR 1010.410"
+   }
+  ]
+ },
+ "edges": [
+  {
+   "type": "applies_to",
+   "from": "finance.cip.completion_within_30d",
+   "to": "transaction.account_opening.cip"
+  },
+  {
+   "type": "consists_of",
+   "from": "finance.cip.completion_within_30d",
+   "to": "finance.cip.days_lte_30"
+  },
+  {
+   "type": "scoped_to",
+   "from": "finance.cip.days_lte_30",
+   "to": "us.federal"
+  },
+  {
+   "type": "cited_by",
+   "from": "finance.cip.days_lte_30",
+   "to": "cite.bsa.cip"
+  },
+  {
+   "type": "applies_to",
+   "from": "finance.wire.purpose_documented",
+   "to": "transaction.wire.large"
+  },
+  {
+   "type": "consists_of",
+   "from": "finance.wire.purpose_documented",
+   "to": "finance.wire.purpose_coverage_full"
+  },
+  {
+   "type": "scoped_to",
+   "from": "finance.wire.purpose_coverage_full",
+   "to": "us.federal"
+  },
+  {
+   "type": "cited_by",
+   "from": "finance.wire.purpose_coverage_full",
+   "to": "cite.bsa.recordkeeping"
+  }
+ ]
+}

@@ -610,8 +610,8 @@ In `strict` mode, the implementation MUST NOT issue any outbound HTTP,
 gRPC, or other network call during the evaluation of a verdict. The
 implementation MUST emit a Prometheus counter
 `ski_egress_attempts_total` that increments on every attempted
-outbound call regardless of mode; the determinism canary MUST trip on
-non-zero values in `strict` mode.
+outbound call regardless of mode; in `strict` mode the implementation
+MUST fail closed (refuse further evaluation) on non-zero values.
 
 Out-of-band egress (KG distribution, telemetry receipt, log shipping,
 metrics export) MUST be performed by separate processes or

@@ -16,11 +16,11 @@ scripts do not require any cloud API key.
 | `send-telemetry.py` | Replays a JSONL telemetry file through the sidecar or directly to the SKI Model. Rejects records containing a `rule_id` (producers must not pre-route). |
 | `check-verdicts.py` | Prints recent verdicts from `/api/verdicts`. |
 | `verify-ledger.py` | Re-verifies the audit ledger end-to-end (chain linkage + entry-hash recomputation). |
-| `validate-kg.py` | Static validation of a signed Knowledge Graph: signature, Tag Registry, `track` field, structured predicates, no `IMPLIED` rules, ISO-8601 dates. |
 | `export-kg.py` | Dumps the currently-loaded KG via `/api/kg`. |
+
+For static KG validation use the `kg-validator` CLI (`pip install ski-kg-validator`) — the old `validate-kg.py` / `test-kg.py` helpers checked the retired v2 schema and have been removed.
 | `test-connection.py` | Verifies the SKI Model, sidecar, Ollama, and Postgres are reachable. |
 | `load-kg.py` | (existing) Loads a KG via `/api/kg/load`. |
-| `test-kg.py` | (existing) Local-file KG schema check. |
 | `test-verdict.py` | (existing) Manual evaluation test against a sample telemetry record. |
 
 ## Common workflows

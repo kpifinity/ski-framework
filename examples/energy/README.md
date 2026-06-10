@@ -12,7 +12,7 @@
 energy/
 ├── README.md
 ├── knowledge-graphs/
-│   └── kg-energy-demo.json     # 5 rules, structured predicates, DEMO_UNSIGNED
+│   └── kg-energy-v3-demo.json  # v3 typed graph, 2 rules, unsigned
 └── telemetry/
     └── sample.jsonl            # No `rule_id` — Tag Registry routes by subject
 ```
@@ -27,9 +27,8 @@ energy/
 | `energy.pm.lte_50` | `facility.pm.mg_per_m3` | `pm_mg_per_m3 ≤ 50 mg/m³` | symbolic |
 | `energy.spill.disclosure_required` | `facility.spill.event` | discretionary, human review | llm |
 
-The source_clause values in `kg-energy-demo.json` are placeholders
-(`demo-CAA-...`) — they are illustrative, not citations to current
-regulatory text. Treat any resemblance to a real obligation as
+The citation nodes in `kg-energy-v3-demo.json` are placeholders —
+illustrative, not citations to current regulatory text. Treat any resemblance to a real obligation as
 coincidental.
 
 ## Sample telemetry
@@ -37,9 +36,8 @@ coincidental.
 `telemetry/sample.jsonl` includes a mix of:
 
 - conforming measurements (CLEAR),
-- breaches (FLAG),
-- an unmapped subject (NULL_UNMAPPED) — to demonstrate Coverage Register behaviour,
-- a spill event routed to Track 2 / DISCRETIONARY.
+- breaches (FLAG) — including the SO2 142 ppm record used throughout the docs,
+- an unmapped subject (NULL_UNMAPPED) — to demonstrate Coverage Register behaviour.
 
 ## Run it
 
@@ -48,7 +46,7 @@ coincidental.
 # Allow loading the unsigned demo KG (non-conformant; demo only):
 docker compose -f reference-implementation/docker-compose.yml \
   exec -e KG_REQUIRE_SIGNATURE=false ski-model \
-  python -c "from ski_model.kg_loader import load_signed_kg; import os; load_signed_kg('/app/kg/kg-energy-demo.json', require_signature=False)"
+  python -c "from ski_model.kg_loader import load_signed_kg; import os; load_signed_kg('/app/kg/kg-energy-v3-demo.json', require_signature=False)"
 
 # Replay the telemetry
 python scripts/send-telemetry.py examples/energy/telemetry/sample.jsonl --insecure
@@ -63,7 +61,7 @@ python scripts/check-verdicts.py --insecure --limit 20
    rule to a specific `source_document_version`.
 2. Run `kg-extractor` with `temperature=0` and a recorded seed.
 3. Have every rule reviewed by a qualified expert via `kg-validator`.
-4. Express every rule as a structured predicate (no free-text `object`).
+4. Express every obligation as a typed v3 obligation (closed enumeration, spec §3.3).
 5. Sign the KG with your production Ed25519 key.
 6. Deploy via `ski-model-deploy` (signature verification is mandatory).
 7. Run the SKI conformance suite against the deployment.

@@ -66,7 +66,7 @@ reproduce historical verdicts.
 | Tag Registry package is a pure dict lookup (no fuzzy/LLM) | §5.4 | `durability/test_risk_tier_governor.py` |
 | `RiskTierGovernor` is the authoritative tier source | §5.4 | `durability/test_risk_tier_governor.py` |
 | `MeasurementRecord` has NO caller-settable `risk_tier` | §5.4 | `durability/test_risk_tier_governor.py` |
-| Demo KGs ship a `tag_registry` and telemetry has no `rule_id` | B4.3 | `durability/test_risk_tier_governor.py` |
+| Demo KGs route every subject via `applies_to` edges; telemetry has no `rule_id` | B4.3 (v3 form) | `durability/test_risk_tier_governor.py` |
 | Append-only DB triggers (UPDATE / DELETE / TRUNCATE) | §6 | `durability/test_append_only.py` |
 | Hash-chain integrity recomputes entry hash from canonical payload | §6 | `durability/test_ledger_integrity.py` |
 | Replay primitive ships with strict mode + CLI flags | §6 | `durability/test_replay_determinism.py` |
