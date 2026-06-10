@@ -179,6 +179,8 @@ omit = [
 ]
 
 [tool.coverage.report]
+# Gating floor (measured 72% at 2026-06-10). Ratchet upward only.
+fail_under = 70
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",

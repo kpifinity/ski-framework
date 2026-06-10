@@ -77,3 +77,7 @@ Thumbs.db
 # Knowledge Graphs (proprietary)
 /kg-libraries/
 /proprietary/
+
+# Type-checker / linter caches
+.mypy_cache/
+.ruff_cache/
