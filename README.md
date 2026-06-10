@@ -7,7 +7,7 @@
 [![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
 [![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
 [![Spec](https://img.shields.io/badge/Spec-v3.0-blue.svg)](https://skiframework.org)
-[![Release](https://img.shields.io/badge/Release-v3.0.0-blue.svg)](https://github.com/kpifinity/ski-framework/releases)
+[![Release](https://img.shields.io/github/v/release/kpifinity/ski-framework?label=Release&color=blue)](https://github.com/kpifinity/ski-framework/releases)
 [![Docs](https://img.shields.io/badge/Docs-MkDocs%20Material-blue.svg)](https://kpifinity.github.io/ski-framework/)
 
 ## What SKI is
@@ -73,7 +73,7 @@ The verdict envelope carries the LLM transcript reference, KG citations, formali
 
 The specification under `docs/` defines the architecture, the Knowledge Graph schema (typed obligations, jurisdictional scope, effective dates, precedent edges), the Risk-Tier Governor, the Symbolic Verifier contract, the verdict envelope, and the audit ledger canonical serialization. It is CC BY 4.0.
 
-The reference implementation under `reference-implementation/` includes the v3 Evaluator (KG-grounded LLM + structured generation), the Symbolic Verifier with five stateless predicates and three stateful (window_count / window_sum / window_avg), the SKI Model service with pluggable LLM backends (FakeLLM for tests, Ollama for sovereign deployment), the signed-KG loader (Ed25519) with jurisdiction + effective-date scoping, the append-only audit ledger with database-level triggers, the agreement monitor (rolling LLM↔verifier health signal), the Risk-Tier Governor, signed LLM transcripts, and a Postgres-backed telemetry buffer. Kubernetes manifests and horizontal scaling are planned for v0.3.x.
+The reference implementation under `reference-implementation/` includes the v3 Evaluator (KG-grounded LLM + structured generation), the Symbolic Verifier with five stateless predicates and three stateful (window_count / window_sum / window_avg), the SKI Model service with pluggable LLM backends (FakeLLM for tests, Ollama for sovereign deployment), the signed-KG loader (Ed25519) with jurisdiction + effective-date scoping, the append-only audit ledger with database-level triggers, the agreement monitor (rolling LLM↔verifier health signal), the Risk-Tier Governor, signed LLM transcripts, and a Postgres-backed telemetry buffer. Kubernetes deployment (Helm chart) is targeted for v3.1; horizontal scaling and the operator for v3.2 — see [ROADMAP.md](./ROADMAP.md).
 
 The four CLI tools under `tools/` cover the framework's lifecycle: `kg-extractor` reads regulatory documents and emits v3 Knowledge Graphs; `kg-validator` runs the schema + §3.6 validation passes; `ski-model-deploy` refuses to load unsigned KGs; `audit-ledger` performs real hash recomputation, replay against historical telemetry, and uses real `pg_dump` for backups.
 

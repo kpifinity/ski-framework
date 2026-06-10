@@ -1,8 +1,11 @@
 # Kubernetes deployment
 
-> **Status:** planned for v0.2. The v0.1.0-alpha reference implementation
-> ships docker-compose only. This document captures the intended
-> direction so adopters can plan around it.
+> **Status:** not yet shipped. The v3.0.x reference implementation
+> ships docker-compose only. A Helm chart is targeted for **v3.1**;
+> the Kubernetes operator, CRDs, and per-shard horizontal scaling are
+> targeted for **v3.2** (designed via an RFC before implementation).
+> See [ROADMAP.md](../../ROADMAP.md). This document captures the
+> intended direction so adopters can plan around it.
 
 ## Why not yet
 
@@ -55,7 +58,7 @@ deploy/k8s/
 The docker-compose stack runs on `docker compose` running on a single
 node. If that node is a Kubernetes node, you can run the stack there
 and accept the operational caveats. For multi-node clusters, wait for
-v0.2 or contribute manifests via a PR.
+the v3.1 Helm chart or contribute manifests via a PR.
 
 ## Operational requirements regardless of platform
 
@@ -74,5 +77,5 @@ Any Kubernetes deployment must satisfy:
 - An external Alertmanager configured for the four SKI alert rules in
   `monitoring/rules/ski-alerts.yml`.
 
-If you build a manifests PR for v0.2, please align with these
-requirements and add a conformance-suite job to the chart's CI.
+If you build a manifests PR ahead of the v3.1 chart, please align with
+these requirements and add a conformance-suite job to the chart's CI.
