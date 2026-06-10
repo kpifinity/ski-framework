@@ -80,7 +80,7 @@ docker compose stack already supports this via `--env-file`.
 | File | `TELEMETRY_SOURCE=file`. Place JSONL under `examples/telemetry/sample.jsonl`. |
 | HTTP | `TELEMETRY_SOURCE=http`. POST to `:8001/api/telemetry`. |
 | Kafka | `TELEMETRY_SOURCE=kafka`. SASL/SCRAM auth. Compose profile `kafka`. |
-| MCP | planned for v0.2 |
+| MCP | planned for v3.2 — see [ROADMAP.md](../../ROADMAP.md) |
 
 ## 5. Hardware baseline
 

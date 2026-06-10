@@ -23,8 +23,8 @@ See [Governance](../governance.md) for the full process.
   Symbolic Evaluator repositioned as an independent verifier of the LLM's
   output, Knowledge Graph elevated from routing table to typed semantic
   substrate. Replaces *deterministic replay* with *verifiable provenance*
-  as the defensibility story. Implemented across PRs 8–14 of the v3
-  stream. Landed in **v3.0.0** (2026-06-01).
+  as the defensibility story. Implemented in **v3.0.0** (2026-06-01;
+  GitHub PRs #56–#75).
 
 - [RFC 0003 — `ski-sdk` and `ski-schemas`](0003-client-sdk-and-shared-schemas.md)
   — A typed Python client (`SKIClient` / `AsyncSKIClient`) with one-call

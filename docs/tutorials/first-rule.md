@@ -155,8 +155,8 @@ ERROR:  ledger_entries is append-only
 
 ## Step 8 — Replay deterministically
 
-The acid test for determinism: re-evaluate the recorded entries
-against the same KG and confirm every Track 1 verdict matches.
+The acid test: re-evaluate the recorded entries against the same KG
+and confirm every symbolically verifiable verdict matches.
 
 ```bash
 pip install -e tools/audit-ledger

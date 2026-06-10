@@ -18,7 +18,7 @@ or any other vendor API key. Inference is local.
 |---|---|---|
 | Single-node docker-compose | supported | Demo, PoC, single-team production |
 | Air-gapped docker-compose | supported, requires pre-staged image+model | Classified / sovereign deployments |
-| Kubernetes | planned for v0.2 | Multi-node production |
+| Kubernetes | Helm chart planned for v3.1 — see [ROADMAP.md](../../ROADMAP.md) | Multi-node production |
 | Managed (BYOC) | planned | Customer-controlled cloud account, not KpiFinity-hosted |
 
 The previously-documented "KpiFinity hosts your data" managed mode was
