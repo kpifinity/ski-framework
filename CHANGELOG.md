@@ -10,6 +10,17 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Added
+- **`ski-sdk` v0 — a typed Python client for the SKI Model.** `SKIClient` /
+  `AsyncSKIClient` over `/api/*` returning parsed `V3VerdictEnvelope` objects,
+  a typed error hierarchy, and a one-call `verify_transcript()` that checks a
+  verdict's Ed25519 provenance (signature + recorded hashes). Lives under
+  `tools/ski-sdk`; depends only on `httpx`, `pydantic`, `cryptography` (no
+  dependency on the reference implementation). A contract-drift test asserts the
+  SDK's models stay field-for-field in sync with the server's envelope,
+  transcript, and measurement models. Implements PR 2 of RFC 0003; the
+  `ski-schemas` extraction (PR 1) is deferred.
+
+### Added
 - **Sovereignty (L3) conformance: four of six checks now runnable.** Implemented
   `single_worker`, `no_outbound_calls`, `jurisdiction_scope_captured`, and
   `signed_llm_transcript` as black-box structural checks, plus a functional

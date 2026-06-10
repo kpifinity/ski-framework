@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ski-sdk"
+version = "0.1.0"
+description = "Typed Python client for the SKI Framework SKI Model, with one-call provenance verification."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "KpiFinity Inc." }]
+dependencies = [
+    "httpx==0.28.1",
+    "pydantic==2.13.4",
+    "cryptography==46.0.7",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/kpifinity/ski-framework"
+Documentation = "https://kpifinity.github.io/ski-framework/"
+Issues = "https://github.com/kpifinity/ski-framework/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ski_sdk = ["py.typed"]
