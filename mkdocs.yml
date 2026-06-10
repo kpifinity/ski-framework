@@ -110,6 +110,7 @@ nav:
       - RFCs/index.md
       - CHANGELOG.md
       - Release notes:
+          - "v3.1.0-alpha.1": releases/v3.1.0-alpha.1.md
           - "v3.0.3": releases/v3.0.3.md
           - "v3.0.2": releases/v3.0.2.md
           - "v3.0.1": releases/v3.0.1.md

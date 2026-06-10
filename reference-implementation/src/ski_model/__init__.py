@@ -12,4 +12,4 @@ and writes the resulting :class:`ski_model.v3.envelope.V3VerdictEnvelope`
 to an immutable, hash-chained audit ledger.
 """
 
-__version__ = "3.0.3"
+__version__ = "3.1.0a1"

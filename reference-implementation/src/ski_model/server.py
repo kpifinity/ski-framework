@@ -67,7 +67,7 @@ logging.basicConfig(
 logger = logging.getLogger("ski_model.server")
 
 
-_VERSION = "3.0.3"
+_VERSION = "3.1.0a1"
 
 
 # ============================================================================

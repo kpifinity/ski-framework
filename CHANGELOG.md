@@ -9,6 +9,10 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+_(nothing yet)_
+
+## [3.1.0-alpha.1] — 2026-06-10
+
 ### Added
 - **PyPI distribution via trusted publishing.** The release workflow now
   publishes every wheel/sdist to PyPI using OIDC trusted publishing (no

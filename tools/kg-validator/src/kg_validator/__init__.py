@@ -20,7 +20,7 @@ from .models import (
 )
 from .validator import V3Validator
 
-__version__ = "3.0.3"
+__version__ = "3.1.0a1"
 __author__ = "KpiFinity"
 
 __all__ = [
