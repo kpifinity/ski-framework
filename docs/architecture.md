@@ -1,21 +1,15 @@
 # Architecture
 
-> **Status:** This page describes the architecture at the v2 level of
-> detail. v3 keeps the two-phase split (offline compilation, runtime
-> evaluation) but inverts the runtime: the KG-grounded local LLM is
-> the primary reasoner and the Symbolic Verifier mechanically
-> cross-checks the formalizable subset. The
-> [v3 specification](specification-v3.md) and
-> [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md) are the
-> authoritative references; this page will be rewritten in a follow-up.
-
 SKI v3 is built around a **two-phase architecture**. Phase 1 (offline,
 probabilistic) compiles regulations into a signed v3 Knowledge Graph
 (typed obligations, jurisdictional scope, effective-date intervals,
 precedent edges). Phase 2 (runtime) evaluates telemetry against that
 graph via a KG-grounded local LLM whose formalizable assertions are
 mechanically cross-checked by the Symbolic Verifier — all inside the
-operator's sovereignty boundary.
+operator's sovereignty boundary. The
+[v3 specification](specification-v3.md) and
+[RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md) are the normative
+references; this page is the orientation map.
 
 ## High-level dataflow
 
@@ -25,7 +19,7 @@ flowchart LR
         Reg[Regulatory<br/>documents]
         Ext[kg-extractor<br/><i>(LLM-assisted)</i>]
         Val[kg-validator<br/><i>(human review)</i>]
-        KG[(Signed<br/>Knowledge Graph)]
+        KG[(Signed v3<br/>Knowledge Graph)]
         Reg --> Ext --> Val --> KG
     end
 
@@ -33,19 +27,20 @@ flowchart LR
         Tel[Telemetry<br/><i>(SCADA, sensors, ETL)</i>]
         SC[Sidecar]
         SM[SKI Model service]
-        TR{{Tag Registry}}
-        SE[Symbolic Evaluator<br/><b>Track 1</b>]
-        LL[Local LLM<br/><b>Track 2</b><br/><i>(Ollama)</i>]
+        SCOPE[KG scoping<br/><i>jurisdiction + effective date</i>]
+        LL[LLM Evaluator<br/><i>local, T=0, structured<br/>generation (Ollama)</i>]
+        SV[Symbolic Verifier<br/><i>independent check of<br/>formalizable assertions</i>]
+        RTG{{Risk-Tier Governor}}
+        AM{{Agreement monitor}}
         TB[(Telemetry buffer)]
-        AL[(Audit ledger)]
-        V((Verdict))
+        AL[(Audit ledger<br/><i>signed transcript +<br/>envelope</i>)]
+        V((Verdict envelope))
 
         Tel --> SC --> SM
-        SM --> TR
-        TR -->|symbolic| SE
-        TR -->|llm| LL
-        SE --> V
-        LL --> V
+        SM --> SCOPE --> LL --> V
+        LL --> SV --> V
+        SM --> RTG --> V
+        SV --> AM
         SM --> TB
         V --> AL
     end
@@ -65,57 +60,61 @@ signed KG file. No operational data ever moves the other way.
 
 #### kg-extractor
 
-Reads regulatory documents (Clean Air Act, MiFID, GDPR, etc.) and
-emits structured rule candidates. Uses an LLM backend (configurable —
-not bound to any vendor). Output is **never** trusted directly; every
-rule is reviewed in the next step.
+Reads regulatory documents and emits structured rule candidates. Uses
+an LLM backend (configurable — not bound to any vendor). Output is
+**never** trusted directly; every rule is reviewed in the next step.
 
 #### kg-validator
 
-Human-in-the-loop validation. Detects:
-
-- **duplicates** (same subject + relation + object),
-- **contradictions** (same subject + relation, different numeric
-  thresholds — see [v0.2.1 fix](CHANGELOG.md#021---2026-05-25)),
-- **date overlaps**.
-
-Outputs an approved-rule list. EXPLICIT and DISCRETIONARY rules both
-require human approval; auto-approval was removed in v2.1.
+Human-in-the-loop validation of the v3 typed graph: schema validation
+against the closed obligation enumeration (spec §3.3) plus the §3.6
+referential-integrity passes (every edge endpoint resolves, every
+obligation carries a citation and jurisdiction scope). No
+auto-approval.
 
 #### Knowledge Graph
 
-The compiled artifact. Contains:
+The compiled artifact — a typed graph, not a rule list:
 
 ```mermaid
 classDiagram
     class KnowledgeGraph {
         +metadata
-        +rules[]
-        +tag_registry
+        +nodes
+        +edges[]
         +signature
     }
-    class Rule {
-        +id
-        +subject
-        +relation
-        +predicate
-        +track: symbolic|llm
-        +source_clause
-        +effective_date
-        +precedence
+    class Nodes {
+        +subjects[]
+        +rules[]
+        +obligations[]
+        +definitions[]
+        +exemptions[]
+        +precedents[]
+        +jurisdictions[]
+        +citations[]
     }
-    class TagRegistry {
-        +subject -> rule_id
+    class Obligation {
+        +obligation_type: closed enum
+        +metric
+        +value
+        +unit
+        +effective_date_start
+        +summary
     }
-    class Signature {
-        +algorithm: Ed25519
-        +public_key_pem
-        +value_hex
+    class Edge {
+        +type: applies_to | consists_of | scoped_to | cited_by | ...
+        +from
+        +to
     }
-    KnowledgeGraph "1" --> "*" Rule
-    KnowledgeGraph "1" --> "1" TagRegistry
-    KnowledgeGraph "1" --> "1" Signature
+    KnowledgeGraph "1" --> "1" Nodes
+    KnowledgeGraph "1" --> "*" Edge
+    Nodes "1" --> "*" Obligation
 ```
+
+The runtime refuses to load an unsigned KG (Ed25519; see
+[ski-model-deploy](https://github.com/kpifinity/ski-framework/tree/main/tools/ski-model-deploy)).
+See [Knowledge Graph schema](knowledge-graph.md) for the full shape.
 
 ### Phase 2 — Runtime
 
@@ -123,50 +122,36 @@ classDiagram
 
 Passive, read-only telemetry intake. Reads from `file`, `http`, or
 `kafka` (selected via `TELEMETRY_SOURCE`). Forwards normalised records
-to the SKI Model service over mTLS. **Does not perform tag inference**
-— routing is the runtime's job.
-
-Rejects any incoming record that carries a `rule_id` field (B4.3).
+to the SKI Model service over mTLS. Rejects any incoming record that
+carries a `rule_id` field — producers must not pre-route.
 
 #### SKI Model service
 
-The runtime's core. Receives a telemetry record and:
+The runtime's core. For every telemetry record:
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Sidecar
     participant SKIModel as SKI Model
-    participant TagRegistry as Tag Registry
     participant Buffer as Telemetry buffer
-    participant Evaluator as Symbolic Evaluator
-    participant LLM as Local LLM
+    participant LLM as LLM Evaluator (local)
+    participant Verifier as Symbolic Verifier
     participant Ledger as Audit ledger
 
     Sidecar->>SKIModel: POST /api/evaluate
     SKIModel->>Buffer: append(record)
-    SKIModel->>TagRegistry: resolve(subject)
-    alt subject unmapped
-        TagRegistry-->>SKIModel: None
-        SKIModel-->>Ledger: append(NULL_UNMAPPED)
-    else track == "symbolic"
-        TagRegistry-->>SKIModel: rule (Track 1)
-        SKIModel->>Evaluator: aevaluate(rule, telemetry, buffer)
-        alt requires_recent_within_seconds fails
-            Evaluator-->>SKIModel: NULL_STALE
-        else stateless predicate
-            Evaluator-->>SKIModel: CLEAR / FLAG
-        else stateful predicate
-            Evaluator->>Buffer: window_query(subject, as_of)
-            Buffer-->>Evaluator: window result
-            Evaluator-->>SKIModel: CLEAR / FLAG
-        end
-        SKIModel-->>Ledger: append(verdict)
-    else track == "llm"
-        TagRegistry-->>SKIModel: rule (Track 2)
-        SKIModel->>LLM: evaluate(temperature=0, seed=42)
-        LLM-->>SKIModel: structured output
-        SKIModel-->>Ledger: append(DISCRETIONARY / CLEAR / FLAG)
+    SKIModel->>SKIModel: scope KG to jurisdiction + effective date
+    alt subject not in scoped KG
+        SKIModel-->>Ledger: append(NULL_UNMAPPED envelope)
+    else subject mapped
+        SKIModel->>LLM: evaluate(scoped KG slice, telemetry)<br/>T=0, fixed seed, structured generation
+        LLM-->>SKIModel: verdict + reasoning + KG citations<br/>+ formalizable assertions
+        SKIModel->>Verifier: check each formalizable assertion
+        Verifier->>Buffer: window queries (stateful predicates)
+        Verifier-->>SKIModel: per-assertion status<br/>(AGREED / LLM_CONTRADICTION /<br/>NEURO_SYMBOLIC_DIVERGENCE / UNVERIFIABLE)
+        SKIModel->>SKIModel: Risk-Tier Governor derives strictest tier from KG
+        SKIModel-->>Ledger: append(envelope + signed LLM transcript)
     end
 ```
 
@@ -176,50 +161,61 @@ Key invariants:
   to the buffer + ledger would break the sequence-number monotonicity
   guarantee. See [`docs/CONCURRENCY.md`](https://github.com/kpifinity/ski-framework/blob/main/reference-implementation/docs/CONCURRENCY.md).
 - **Buffer-before-evaluate.** The current record is written to the
-  buffer **before** the Symbolic Evaluator runs, so self-referential
-  window queries see the record they're being asked about.
+  buffer **before** evaluation, so self-referential window queries see
+  the record they're being asked about.
 - **Authoritative clock.** The telemetry's `timestamp` is the "now"
-  for stateful predicates. Wall-clock at arrival is never consulted.
-  This is what makes replay deterministic.
+  for stateful predicates and effective-date scoping. Wall-clock at
+  arrival is never consulted.
+- **Disagreement is a signal, not an error.** A verifier status other
+  than `AGREED` is recorded in the envelope and feeds the agreement
+  monitor; it never silently overrides or is overridden.
+
+#### Symbolic Verifier
+
+Mechanically re-evaluates every formalizable assertion the LLM emits,
+against the same telemetry. Stateless predicates
+(`must_not_exceed`, `must_be_at_least`, `must_be_within`,
+`must_equal`, `must_not_equal`) plus stateful window predicates
+(`window_count`, `window_sum`, `window_avg`) backed by the telemetry
+buffer. Assertions outside the formalizable subset are reported
+`UNVERIFIABLE` — honestly, not silently.
+
+#### Agreement monitor
+
+A rolling window over verifier statuses;
+`agreement_rate = AGREED / total`. `/api/canary` (name kept from v2
+for operator continuity) returns the snapshot; a sustained drop below
+the threshold (default 0.95) is the page-someone signal. Replaces the
+v2 determinism canary.
+
+#### Risk-Tier Governor
+
+Tier is declared per rule **in the KG** (spec §5.4); the caller cannot
+self-declare. The strictest tier across the applicable obligations
+wins.
 
 #### Telemetry buffer
 
 Postgres-backed, RANGE-partitioned by `telemetry_ts`. Append-only at
 the database layer (same trigger pattern as the ledger). Retention is
 configured per tenant in the `tenants` table — no default; the
-operator must set it explicitly.
-
-See [RFC 0001](RFCs/0001-stateful-evaluation.md) for the design
-rationale.
-
-#### Symbolic Evaluator
-
-Pure async function from `(rule, telemetry, buffer, as_of)` to
-`SymbolicDecision`. No LLM involved. Operators are limited to the
-predicate grammar:
-
-- **Stateless**: `lte`, `lt`, `gte`, `gt`, `eq`, `range`, `between`,
-  `in_set`, `not_in_set`, `exists`.
-- **Stateful** (v0.2+): `window_count`, `window_sum`, `window_avg`,
-  `since_last`, `debounce`.
-- **Freshness gate**: `requires_recent_within_seconds` (any operator).
-
-Any rule needing natural-language interpretation must be declared
-`track: "llm"` instead and routes through the LLM wrapper. The
-Symbolic Evaluator refuses to guess.
+operator must set it explicitly. See
+[RFC 0001](RFCs/0001-stateful-evaluation.md).
 
 #### Audit ledger
 
-Append-only Postgres table. Each row contains:
+Append-only Postgres table. Each v3 row carries the full provenance:
 
-- `sequence_number` (monotonic, unique),
-- `telemetry_hash` (SHA-256 of canonical telemetry record — joins to
-  buffer rows),
-- `entry_hash` (SHA-256 over the canonical entry payload, chained
-  to `previous_entry_hash`),
-- `verdict`, `rule_id`, `reasoning`, `track`,
-- `knowledge_graph_version`, `schema_version`,
-- `recorded_at`.
+- `sequence_number` (monotonic, unique) and `entry_hash` chained to
+  `previous_entry_hash`,
+- `telemetry_hash` (joins to buffer rows),
+- `envelope_json` + `envelope_hash` — the complete verdict envelope
+  (verdict, reasoning, KG citations, assertions, verifier result,
+  model provenance hashes),
+- `transcript_json` + `transcript_signature` + `signing_key_id` — the
+  Ed25519-signed LLM transcript,
+- `verifier_status`, `knowledge_graph_version`, `schema_version`,
+  `recorded_at`.
 
 UPDATE / DELETE / TRUNCATE are blocked by triggers. The canonical
 serialization is documented in `tools/audit-ledger/src/audit_ledger/canonical.py`
@@ -229,16 +225,16 @@ so any third party can re-verify.
 
 ```mermaid
 graph TD
-    L1[Level 1<br/>Foundational]
-    L2[Level 2<br/>Managed]
-    L3[Level 3<br/>Assured]
+    L1[Provenance]
+    L2[Durability]
+    L3[Sovereignty]
 
-    L1 -->|adds: stateful eval,<br/>NULL_STALE, replay| L2
-    L2 -->|adds: tamper-resistance,<br/>determinism canary,<br/>third-party verifiability| L3
+    L1 -->|adds: signed KG, strict governor,<br/>append-only ledger, replay| L2
+    L2 -->|adds: air-gapped boot, tamper-evidence,<br/>no-egress, signed transcripts| L3
 
-    L1 -.->|test suite| L1T[conformance/level1/]
-    L2 -.->|test suite| L2T[conformance/level2/]
-    L3 -.->|test suite| L3T[conformance/level3/ <br/>planned v0.4]
+    L1 -.->|test suite| L1T[conformance/provenance/]
+    L2 -.->|test suite| L2T[conformance/durability/]
+    L3 -.->|test suite| L3T[conformance/sovereignty/<br/>4 of 6 runnable; rest v3.1]
 ```
 
 The conformance test suite is the **executable specification**. See
@@ -251,6 +247,7 @@ threats, defences, and out-of-scope concerns.
 
 ## Related documents
 
+- [RFC 0002 — SKI v3.0: Neuro-Symbolic Pivot](RFCs/0002-v3-neuro-symbolic-pivot.md)
 - [RFC 0001 — Stateful evaluation](RFCs/0001-stateful-evaluation.md)
 - [Knowledge Graph schema](knowledge-graph.md)
 - [Replay primitive](replay.md)

@@ -67,8 +67,8 @@ docker compose -f reference-implementation/docker-compose.yml ps
 ```
 
 You should see seven containers `Up (healthy)`. The `ski-model` service
-takes the longest (~60s) — it loads the KG, runs the determinism canary
-once, and then serves on `https://localhost:8000`.
+takes the longest (~60s) — it verifies and loads the KG, then serves on
+`https://localhost:8000`.
 
 ## Step 5 — Send a telemetry record
 
@@ -79,27 +79,27 @@ python scripts/send-telemetry.py \
     --api-key "$(grep ^SKI_API_KEY reference-implementation/.env | cut -d= -f2)"
 ```
 
-The script reads eight JSON-lines from `sample.jsonl` and POSTs each
+The script reads five JSON-lines from `sample.jsonl` and POSTs each
 to the sidecar. Each record is:
 
-1. routed to a rule via the **Tag Registry** (subject -> rule_id),
-2. evaluated by the **Symbolic Evaluator** (Track 1) or routed to the
-   local LLM (Track 2),
+1. matched against the KG slice in scope for its jurisdiction and
+   timestamp,
+2. evaluated by the **local LLM** (temperature 0, structured
+   generation), whose formalizable assertions are independently
+   re-checked by the **Symbolic Verifier**,
 3. assigned one of the five verdicts,
-4. appended to the Postgres **audit ledger**.
+4. appended to the Postgres **audit ledger** with its signed
+   transcript and verdict envelope.
 
 For this demo, you should see:
 
 | Record subject | Value | Verdict | Why |
 |---|---|---|---|
-| SO2 discharge | 85 ppm | CLEAR | 60s rolling avg <= 100 |
-| SO2 discharge | 110 ppm (5 min later) | FLAG | 60s rolling avg now 110 |
+| SO2 discharge | 85 ppm | CLEAR | under the 100 ppm cap; verifier AGREED |
+| SO2 discharge | 142 ppm | FLAG | over the 100 ppm cap; verifier AGREED |
 | Wastewater pH | 7.2 | CLEAR | inside [6.0, 8.5] |
 | Wastewater pH | 5.4 | FLAG | below 6.0 |
-| Particulate matter | 42 mg/m³ | CLEAR | within limit |
-| NOx discharge | 60 ppm | CLEAR | within limit |
-| `facility.unknown.metric` | — | NULL_UNMAPPED | not in Tag Registry |
-| Spill event | — | DISCRETIONARY | Track 2 -> LLM -> human review |
+| `facility.unknown.metric` | — | NULL_UNMAPPED | subject not in the KG |
 
 ## Step 6 — Inspect the audit ledger
 
@@ -169,12 +169,13 @@ audit-ledger replay \
 Expected output:
 
 ```
-Replay: 7/8 entries replayed, 7 matched, 0 diverged, 1 skipped.
-  note: seq=8: Track 2 (LLM) entry — replay is best-effort only; skipped.
+Replay: 5/5 entries replayed, 5 matched, 0 diverged, 0 skipped.
 ```
 
-The skipped Track 2 entry is by design — the spec acknowledges that LLM
-output isn't formally deterministic, so replay refuses to claim it is.
+For v3 entries, replay re-runs the symbolically verifiable part of each
+verdict; the LLM reasoning itself is re-verified through the signed
+transcript (provenance), not regenerated — see
+[`docs/replay.md`](../replay.md).
 
 ## What just happened
 
