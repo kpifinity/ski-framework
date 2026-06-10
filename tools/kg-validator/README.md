@@ -1,5 +1,7 @@
 # kg-validator
 
+> Install from PyPI: `pip install ski-kg-validator` (publishing starts with the first release after June 2026).
+
 > **Status:** v3.0 — first production-target release.
 
 Validate v3 Knowledge Graphs against SKI Framework specification v3.0

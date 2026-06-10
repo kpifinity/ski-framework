@@ -11,9 +11,9 @@ requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 authors = [{ name = "KpiFinity Inc." }]
 dependencies = [
-    "httpx==0.27.0",
-    "pydantic==2.13.4",
-    "cryptography==46.0.7",
+    "httpx>=0.27,<0.29",
+    "pydantic>=2.13.4,<3",
+    "cryptography>=46,<48",
 ]
 classifiers = [
     "Programming Language :: Python :: 3",

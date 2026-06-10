@@ -110,7 +110,8 @@ jobs:
             tools/kg-extractor/requirements.txt \
             tools/kg-validator/requirements.txt \
             tools/ski-model-deploy/requirements.txt \
-            tools/audit-ledger/requirements.txt; do
+            tools/audit-ledger/requirements.txt \
+            tools/ski-sdk/requirements.txt; do
               echo "--- $req"
               pip-audit -r "$req" || fail=1
           done
@@ -136,7 +137,8 @@ jobs:
             tools/kg-extractor/requirements.txt \
             tools/kg-validator/requirements.txt \
             tools/ski-model-deploy/requirements.txt \
-            tools/audit-ledger/requirements.txt; do
+            tools/audit-ledger/requirements.txt \
+            tools/ski-sdk/requirements.txt; do
               name=$(echo "$req" | tr '/' '_')
               # cyclonedx-py requirements takes the requirements file as
               # a POSITIONAL argument (not -i).

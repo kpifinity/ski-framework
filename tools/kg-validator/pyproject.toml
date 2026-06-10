@@ -3,7 +3,7 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "kg-validator"
+name = "ski-kg-validator"
 version = "3.0.3"
 description = "Validate and review extracted compliance rules with mandatory human expert oversight."
 readme = "README.md"
@@ -23,11 +23,11 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "pydantic==2.13.4",
-    "click==8.1.7",
-    "python-dotenv==1.2.2",
-    "rapidfuzz==3.7.0",
-    "jinja2==3.1.6",
+    "pydantic>=2.13.4,<3",
+    "click>=8.1.7,<9",
+    "python-dotenv>=1.2.2,<2",
+    "rapidfuzz>=3.7,<4",
+    "jinja2>=3.1.6,<4",
 ]
 
 [project.urls]

@@ -47,6 +47,21 @@ The repo layout is:
 
 ## Quick start
 
+### Install from PyPI
+
+```bash
+pip install ski-sdk          # typed client + one-call provenance verification
+pip install ski-kg-extractor ski-kg-validator ski-model-deploy ski-audit-ledger
+```
+
+The CLI command names are unchanged (`kg-extractor`, `kg-validator`,
+`ski-model-deploy`, `audit-ledger`). PyPI publication starts with the
+first release after June 2026; earlier wheels are attached to
+[GitHub Releases](https://github.com/kpifinity/ski-framework/releases),
+each with a cosign signature and SLSA provenance.
+
+### Run the full stack
+
 The reference implementation runs entirely on-premise. It does not require — and by default does not have — any cloud API key. Inference is performed by a local LLM runtime (Ollama). An optional "demo" backend can call the Anthropic API; it is non-conformant and clearly labelled as such.
 
 To run the stack: clone the repo, run `./scripts/setup.sh` to generate TLS certificates and write a `.env` file, start the Ollama container, pull the default open-weights model (`qwen2.5:7b-instruct`), bring up the rest of the stack with `docker compose`, send a sample telemetry record from `examples/`, and verify the audit ledger. The full walkthrough is in [reference-implementation/QUICKSTART.md](./reference-implementation/QUICKSTART.md). Production-track guidance is in [reference-implementation/docs/DEPLOYMENT.md](./reference-implementation/docs/DEPLOYMENT.md).

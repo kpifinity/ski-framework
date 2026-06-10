@@ -1,5 +1,7 @@
 # ski-sdk
 
+> Install from PyPI: `pip install ski-sdk` (publishing starts with the first release after June 2026).
+
 Typed Python client for the [SKI Framework](https://github.com/kpifinity/ski-framework)
 SKI Model, with one-call verification of a verdict's signed provenance.
 

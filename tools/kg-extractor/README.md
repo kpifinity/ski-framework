@@ -1,5 +1,7 @@
 # kg-extractor
 
+> Install from PyPI: `pip install ski-kg-extractor` (publishing starts with the first release after June 2026).
+
 > **Status:** v3.0 — first production-target release.
 
 Extract structured compliance rules from regulatory documents

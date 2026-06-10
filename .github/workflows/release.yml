@@ -35,7 +35,7 @@ jobs:
       - name: Build sdists/wheels for tools
         run: |
           mkdir -p dist
-          for tool in kg-extractor kg-validator ski-model-deploy audit-ledger; do
+          for tool in kg-extractor kg-validator ski-model-deploy audit-ledger ski-sdk; do
             (cd tools/$tool && python -m build --outdir ../../dist/)
           done
 
@@ -48,7 +48,8 @@ jobs:
             tools/kg-extractor/requirements.txt \
             tools/kg-validator/requirements.txt \
             tools/ski-model-deploy/requirements.txt \
-            tools/audit-ledger/requirements.txt; do
+            tools/audit-ledger/requirements.txt \
+            tools/ski-sdk/requirements.txt; do
               name=$(echo "$req" | tr '/' '_')
               cyclonedx-py requirements -o "dist/sbom/sbom-${name}.json" "$req" || true
           done
@@ -198,3 +199,35 @@ jobs:
             dist/**/*.pem
             dist/sbom/*.json
           generate_release_notes: true
+
+  # --------------------------------------------------------------------
+  # 5. Publish wheels + sdists to PyPI via trusted publishing (OIDC).
+  #    One-time setup: each project on PyPI must have a trusted
+  #    publisher configured for this repo + workflow + environment
+  #    (see RELEASING.md). No API tokens are stored anywhere.
+  # --------------------------------------------------------------------
+  publish-pypi:
+    name: Publish to PyPI (trusted publishing)
+    needs: [build, provenance]
+    runs-on: ubuntu-22.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ski-sdk/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-artifacts
+          path: dist/
+
+      - name: Select wheels and sdists (exclude SBOMs and signatures)
+        run: |
+          mkdir -p pypi-dist
+          find dist -maxdepth 1 -type f \( -name "*.whl" -o -name "*.tar.gz" \) -exec cp {} pypi-dist/ \;
+          ls -la pypi-dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: pypi-dist/
+          skip-existing: true
