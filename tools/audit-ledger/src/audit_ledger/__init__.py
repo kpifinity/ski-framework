@@ -10,7 +10,7 @@ from .models import (
     VerificationResult,
 )
 
-__version__ = "3.0.3"
+__version__ = "3.1.0a2"
 __all__ = [
     "BackupResult",
     "ExportResult",
