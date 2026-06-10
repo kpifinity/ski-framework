@@ -11,8 +11,9 @@ implementation version and is bumped through the RFC process in
 
 ## Versioning
 
-The reference implementation, the four CLI tools, and `ski-sdk` share
-a single semantic version. Releases follow [SemVer 2.0.0](https://semver.org/):
+The reference implementation and the four CLI tools share a single
+semantic version. `ski-sdk` is versioned independently (see RFC 0003);
+its compatibility table lives in the SDK README. Releases follow [SemVer 2.0.0](https://semver.org/):
 
 - `MAJOR` for breaking schema, wire-format, or public-API changes.
 - `MINOR` for backwards-compatible feature additions (new predicate
@@ -78,7 +79,8 @@ changes and nothing else:
 
 1. **Bump versions.** Move every version site to the new version: the
    `version` field **and** the Python classifiers in all four
-   `tools/*/pyproject.toml` (including `tools/ski-sdk`); each tool's `src/<pkg>/__init__.py`
+   `tools/*/pyproject.toml` (NOT `tools/ski-sdk`, which is versioned
+   independently per RFC 0003); each tool's `src/<pkg>/__init__.py`
    `__version__`; `reference-implementation/src/ski_model/__init__.py`'s
    `__version__`; and `reference-implementation/src/ski_model/server.py`'s
    `_VERSION`. Also update `CITATION.cff`'s `version` and `date-released`

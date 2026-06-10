@@ -99,7 +99,7 @@ Hardening defaults are documented in [reference-implementation/SECURITY_DEFAULTS
 
 ## Contributing
 
-We welcome contributions. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) and please read the [Code of Conduct](./CODE_OF_CONDUCT.md). The [MAINTAINERS](./MAINTAINERS.md) document lists the teams and their areas of ownership. Architectural changes follow the [RFC process](./docs/governance.md) — RFC 0002 is the current example.
+We welcome contributions. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) and please read the [Code of Conduct](./CODE_OF_CONDUCT.md). For how to get help, see [SUPPORT.md](./SUPPORT.md). The [MAINTAINERS](./MAINTAINERS.md) document lists the teams and their areas of ownership. Architectural changes follow the [RFC process](./docs/governance.md) — RFC 0002 is the current example.
 
 Local setup is the standard Python workflow: clone the repo, create a virtual environment, install `requirements-dev.txt`, run `pytest`. CI runs ruff, mypy, bandit, pip-audit, the Trivy container scan, the SBOM generator, the CodeQL scanner, and the conformance suite on every pull request. See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
@@ -113,7 +113,11 @@ Local setup is the standard Python workflow: clone the repo, create a virtual en
 
 CC explicitly recommends against using CC licenses for software, which is why we split. Apache 2.0 includes the explicit patent grant that regulated-industry adopters typically require.
 
+The licenses cover code and text, not names: “SKI Framework” and “SKI Conformant” are trademarks of KpiFinity Inc. — see [TRADEMARKS.md](./TRADEMARKS.md).
+
 ## Roadmap
+
+The authoritative, always-current roadmap is [ROADMAP.md](./ROADMAP.md). Summary:
 
 **v3.0 (shipped).** Specification at v3.0. The neuro-symbolic pivot per [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md): KG-grounded sovereign LLM as primary reasoner, Symbolic Verifier on the formalizable subset, typed-graph Knowledge Graph with jurisdictional scope + effective-date intervals, strict Risk-Tier Governor, signed LLM transcripts, agreement monitor, conformance reorganized around Provenance / Durability / Sovereignty.
 
