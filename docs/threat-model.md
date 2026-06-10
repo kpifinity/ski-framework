@@ -76,16 +76,20 @@ verdicts.
   service start. Mismatch -> refuse to start (specification B3.4).
 - Inference uses `temperature=0`, fixed `seed=42`, structured output
   enforcement.
-- The **determinism canary** re-runs a fixed canary input on a
-  schedule (default 300s). Canary failure raises an alert.
-- Track 1 (`track: "symbolic"`) does not call the LLM at all; only
-  Track 2 (`track: "llm"`) is exposed to this threat.
-- `audit-ledger replay` deterministically re-evaluates Track 1
-  entries and detects any divergence.
+- The **Symbolic Verifier** independently re-checks every
+  formalizable assertion the LLM emits; a drifted or substituted model
+  surfaces as `LLM_CONTRADICTION` / `NEURO_SYMBOLIC_DIVERGENCE`
+  statuses in the verdict envelope.
+- The **agreement monitor** tracks the rolling LLM-verifier agreement
+  rate and alerts on a sustained drop below threshold (default 0.95).
+- Every envelope records the model-weight hash, KG version hash,
+  prompt-template hash, and decoder seed; `audit-ledger replay`
+  re-evaluates the symbolically verifiable part and verifies the
+  signed transcript for the rest.
 
-**Residual risk:** Track 2 (LLM) is acknowledged best-effort; replay
-intentionally skips Track 2 entries. Pure determinism for natural-
-language rules is not currently provable.
+**Residual risk:** assertions outside the formalizable subset are
+`UNVERIFIABLE` by construction; defensibility for them rests on the
+signed transcript (reconstructible provenance), not re-generation.
 
 ### T-4: Producer claiming a rule_id
 
