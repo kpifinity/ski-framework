@@ -73,7 +73,7 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install -e tools/kg-extractor -e tools/kg-validator -e tools/ski-model-deploy -e tools/audit-ledger
+      - run: pip install -e tools/kg-extractor -e tools/kg-validator -e tools/ski-model-deploy -e tools/audit-ledger -e tools/ski-sdk
       - run: pytest -q --cov --cov-report=xml
       - uses: codecov/codecov-action@v4
         if: matrix.python == '3.11'

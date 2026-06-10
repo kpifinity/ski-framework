@@ -82,6 +82,7 @@ files = [
     "reference-implementation/src/tag_registry",
     "reference-implementation/src/telemetry_buffer",
     "tools/audit-ledger/src/audit_ledger/canonical.py",
+    "tools/ski-sdk/src/ski_sdk",
     "conformance",
 ]
 exclude = [
@@ -139,6 +140,7 @@ testpaths = [
     "reference-implementation/src/symbolic_evaluator/tests",
     "reference-implementation/src/telemetry_buffer/tests",
     "reference-implementation/src/ski_model/v3/tests",
+    "tools/ski-sdk/tests",
 ]
 addopts = [
     "-ra",
