@@ -50,12 +50,12 @@ external network call happens after this step.
 
 ## Step 3 — Stage the demo Knowledge Graph
 
-The energy demo KG is at `examples/energy/knowledge-graphs/kg-energy-demo.json`.
+The energy demo KG is at `examples/energy/knowledge-graphs/kg-energy-v3-demo.json`.
 The SKI Model service expects a file literally named `kg.json` in its
 mounted KG directory:
 
 ```bash
-cp examples/energy/knowledge-graphs/kg-energy-demo.json \
+cp examples/energy/knowledge-graphs/kg-energy-v3-demo.json \
    reference-implementation/examples/knowledge-graphs/kg.json
 ```
 

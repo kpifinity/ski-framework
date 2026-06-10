@@ -1,10 +1,9 @@
 # Finance — DEMO ONLY
 
-> **⚠ DEMO ONLY — NOT FOR PRODUCTION.** The KG and telemetry here are
-> illustrative artefacts for the SKI Framework reference implementation.
-> They are not a validated AML / BSA compliance KG and must not be
-> deployed against real transaction monitoring systems. The production
-> Finance KG library is proprietary — see [KpiFinity](https://kpifinity.com).
+> **⚠ DEMO ONLY — NOT FOR PRODUCTION.** Two illustrative v3 rules for
+> the SKI Framework reference implementation. Not a BSA/AML
+> compliance KG. The production Finance KG library is proprietary — see
+> [KpiFinity](https://kpifinity.com).
 
 ## What's in here
 
@@ -12,30 +11,20 @@
 finance/
 ├── README.md
 ├── knowledge-graphs/
-│   └── kg-finance-demo.json    # 3 illustrative rules, DEMO_UNSIGNED
+│   └── kg-finance-v3-demo.json   # v3 typed graph, 2 rules, unsigned
 └── telemetry/
-    └── sample-aml-alerts.jsonl # No `rule_id` — Tag Registry routes
+    └── sample-aml-alerts.jsonl
 ```
 
-## The three demo rules
+## The two demo rules
 
-| Rule id | Subject | Predicate | Track |
-|---|---|---|---|
-| `finance.wire.large_no_purpose` | `transaction.wire.large` | `has_business_purpose == true` | symbolic |
-| `finance.cip.completion_within_30d` | `transaction.account_opening.cip` | `days_to_cip_completion ≤ 30` | symbolic |
-| `finance.sar.discretionary` | `transaction.suspicious_activity.review` | discretionary, human review | llm |
+| Rule id | Obligation |
+|---|---|
+| `finance.cip.completion_within_30d` | `days_to_cip_completion must_not_exceed 30` |
+| `finance.wire.purpose_documented` | `purpose_documented_pct must_be_at_least 100` |
 
-The source_clause values are placeholders (`demo-BSA-...`) — any
-resemblance to current BSA/AML obligations is coincidental.
+The telemetry sample produces one CLEAR and one FLAG per rule, plus one
+NULL_UNMAPPED record (unknown subject) for the Coverage Register.
 
-## Sample telemetry
-
-`sample-aml-alerts.jsonl` exercises CLEAR, FLAG, DISCRETIONARY, and
-NULL_UNMAPPED paths. Crucially, **no record contains `rule_id`** — the
-previous version's pre-routing was an architectural bug.
-
-## Path to a real Finance KG
-
-See the matching note in [examples/energy/README.md](../energy/README.md).
-The production Finance KG library is available via
-[KpiFinity](https://kpifinity.com).
+See [examples/README.md](../README.md) for the v3 KG shape, the
+structural rules every demo follows, and how to run it.

@@ -1,0 +1,138 @@
+{
+ "metadata": {
+  "name": "Defense demo KG v3",
+  "schema_version": "3.0",
+  "sector": "defense",
+  "description": "DEMO ONLY - minimal illustrative v3 KG for the SKI Framework reference implementation. NOT a production compliance KG (NIST SP 800-171 (illustrative) references are illustrative). Two rules with typed obligations, jurisdictional scope, effective-date intervals, and citations.",
+  "compiled_at": "2026-06-10T00:00:00Z"
+ },
+ "nodes": {
+  "subjects": [
+   {
+    "id": "data.cui.storage",
+    "type": "Subject",
+    "version": "v3demo-0001",
+    "name": "CUI data stores",
+    "description": "Coverage of encryption-at-rest across stores holding Controlled Unclassified Information."
+   },
+   {
+    "id": "access.privileged",
+    "type": "Subject",
+    "version": "v3demo-0002",
+    "name": "Privileged access sessions",
+    "description": "MFA coverage across privileged (administrative) access sessions."
+   }
+  ],
+  "rules": [
+   {
+    "id": "defense.cui.encryption_at_rest",
+    "type": "Rule",
+    "version": "v3demo-0003",
+    "name": "CUI encryption at rest",
+    "risk_tier": "high",
+    "description": "Demo rule: no CUI store may be unencrypted at rest."
+   },
+   {
+    "id": "defense.access.mfa_required",
+    "type": "Rule",
+    "version": "v3demo-0004",
+    "name": "MFA on privileged access",
+    "risk_tier": "high",
+    "description": "Demo rule: privileged-session MFA coverage must be 100%."
+   }
+  ],
+  "obligations": [
+   {
+    "id": "defense.cui.unencrypted_stores_zero",
+    "type": "Obligation",
+    "version": "v3demo-0005",
+    "obligation_type": "must_not_exceed",
+    "metric": "unencrypted_cui_stores",
+    "value": 0,
+    "unit": "stores",
+    "effective_date_start": "2026-01-01T00:00:00Z",
+    "summary": "The count of CUI data stores without encryption at rest must not exceed 0."
+   },
+   {
+    "id": "defense.access.mfa_coverage_full",
+    "type": "Obligation",
+    "version": "v3demo-0006",
+    "obligation_type": "must_be_at_least",
+    "metric": "mfa_coverage_pct",
+    "value": 100,
+    "unit": "percent",
+    "effective_date_start": "2026-01-01T00:00:00Z",
+    "summary": "MFA coverage across privileged sessions must be at least 100%."
+   }
+  ],
+  "definitions": [],
+  "exemptions": [],
+  "precedents": [],
+  "jurisdictions": [
+   {
+    "id": "us.federal",
+    "type": "Jurisdiction",
+    "version": "v3demo-0007",
+    "name": "United States federal jurisdiction"
+   }
+  ],
+  "citations": [
+   {
+    "id": "cite.nist.800-171.3.13.16",
+    "type": "Citation",
+    "version": "v3demo-0008",
+    "source_document": "Demo - illustrative reference to NIST SP 800-171 (NOT a real legal citation)",
+    "source_clause": "3.13.16"
+   },
+   {
+    "id": "cite.nist.800-171.3.5.3",
+    "type": "Citation",
+    "version": "v3demo-0009",
+    "source_document": "Demo - illustrative reference to NIST SP 800-171 (NOT a real legal citation)",
+    "source_clause": "3.5.3"
+   }
+  ]
+ },
+ "edges": [
+  {
+   "type": "applies_to",
+   "from": "defense.cui.encryption_at_rest",
+   "to": "data.cui.storage"
+  },
+  {
+   "type": "consists_of",
+   "from": "defense.cui.encryption_at_rest",
+   "to": "defense.cui.unencrypted_stores_zero"
+  },
+  {
+   "type": "scoped_to",
+   "from": "defense.cui.unencrypted_stores_zero",
+   "to": "us.federal"
+  },
+  {
+   "type": "cited_by",
+   "from": "defense.cui.unencrypted_stores_zero",
+   "to": "cite.nist.800-171.3.13.16"
+  },
+  {
+   "type": "applies_to",
+   "from": "defense.access.mfa_required",
+   "to": "access.privileged"
+  },
+  {
+   "type": "consists_of",
+   "from": "defense.access.mfa_required",
+   "to": "defense.access.mfa_coverage_full"
+  },
+  {
+   "type": "scoped_to",
+   "from": "defense.access.mfa_coverage_full",
+   "to": "us.federal"
+  },
+  {
+   "type": "cited_by",
+   "from": "defense.access.mfa_coverage_full",
+   "to": "cite.nist.800-171.3.5.3"
+  }
+ ]
+}
