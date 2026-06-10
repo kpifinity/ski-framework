@@ -28,7 +28,10 @@ See [Governance](../governance.md) for the full process.
 
 ## Draft
 
-_(none currently)_
+- [RFC 0003 — Python SDK (`ski-sdk`) and shared schemas (`ski-schemas`)](0003-python-sdk.md)
+  — A thin, typed Python client with one-call provenance verification, plus a
+  shared `ski-schemas` contract package so client and server cannot drift.
+  Python-only, thin-client scope for v0.
 
 ## Templates
 
