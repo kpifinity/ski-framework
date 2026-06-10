@@ -4,7 +4,7 @@
 Usage:
     python scripts/export-kg.py [--endpoint URL] [--api-key KEY] > kg-backup.json
 
-The exported JSON contains the metadata, rules, tag_registry, and signature
+The exported JSON contains the loaded KG (metadata, nodes, edges) and signature
 block exactly as loaded. It can be re-loaded via POST /api/kg/load on any
 SKI Model instance with the same signing public key configured.
 """

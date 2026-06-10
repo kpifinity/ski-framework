@@ -75,7 +75,7 @@ energy, finance, manufacturing, and defense, contact
 Run the SKI conformance suite under [`conformance/`](../conformance/).
 Each test cites the spec section it validates. See
 [`docs/conformance.md`](./conformance.md) for the methodology and the
-Level 1 / 2 / 3 progression.
+Provenance / Durability / Sovereignty progression.
 
 ### "I'm reviewing this for purchase / regulatory approval."
 The fastest path to a credible assessment:
@@ -85,7 +85,7 @@ The fastest path to a credible assessment:
    compliance picture.
 3. Read [`reference-implementation/SECURITY_DEFAULTS.md`](../reference-implementation/SECURITY_DEFAULTS.md).
 4. Run the conformance suite against the reference implementation:
-   `pytest conformance -q -m level1`.
+   `pytest conformance -q -m "provenance or durability"`.
 5. Verify the audit ledger end-to-end: `python scripts/verify-ledger.py --strict`.
 
 ## What's in the repository

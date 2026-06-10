@@ -119,7 +119,6 @@ Expected verdict mix for the energy demo:
 - `CLEAR` for in-range measurements
 - `FLAG` for breaches (SO₂ above 100 ppm, pH outside 6.0–8.5)
 - `NULL_UNMAPPED` for the `facility.unknown.metric` record
-- `DISCRETIONARY` for the spill event (routed to Track 2)
 
 ## Step 5 — Dashboards
 
@@ -149,9 +148,10 @@ See [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md). Common gotchas:
 - *SKI Model refuses to start with "KG signature verification FAILED"* —
   expected for the demo KG. Either sign your KG or set
   `KG_REQUIRE_SIGNATURE=false` (non-conformant; demo only).
-- *Determinism canary reports FAILED* — your inference backend is
-  producing non-deterministic output. Most often the seed isn't being
-  passed through. See [`docs/CONCURRENCY.md`](./docs/CONCURRENCY.md).
+- *`/api/canary` reports `degraded`* — the neuro-symbolic agreement
+  monitor's LLM↔verifier agreement rate has dropped below threshold.
+  Inspect recent verdicts for `LLM_CONTRADICTION` /
+  `NEURO_SYMBOLIC_DIVERGENCE` statuses before processing more telemetry.
 - *Sidecar can't reach the SKI Model* — TLS verification with the
   self-signed cert. Either set `SKI_MODEL_CA_CERT` to the path of
   `tls/ca.crt` (already wired in the compose file), or use `--insecure`
