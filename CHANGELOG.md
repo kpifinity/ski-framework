@@ -9,6 +9,17 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+_(nothing yet)_
+
+## [3.1.0-alpha.2] — 2026-06-10
+
+> **Why alpha.2 and no alpha.1 on PyPI:** the `v3.1.0-alpha.1` tag was
+> cut before this version-bump PR merged, so its workflow built
+> 3.0.3-versioned artifacts under the new tag. No packages reached
+> PyPI. Per RELEASING.md the tag is not deleted; its GitHub release is
+> marked superseded, and alpha.2 is the first published cut of the
+> v3.1 line.
+
 ### Added
 - **PyPI distribution via trusted publishing.** The release workflow now
   publishes every wheel/sdist to PyPI using OIDC trusted publishing (no

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ski-model-deploy"
-version = "3.0.3"
+version = "3.1.0a2"
 description = "Deploy and verify signed Knowledge Graphs against a SKI Model runtime."
 readme = "README.md"
 requires-python = ">=3.10"
