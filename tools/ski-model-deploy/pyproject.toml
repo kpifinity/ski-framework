@@ -22,15 +22,15 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "click==8.1.7",
-    "pydantic==2.13.4",
-    "python-dotenv==1.2.2",
-    "pyyaml==6.0.1",
-    "jinja2==3.1.6",
-    "httpx==0.27.0",
-    "cryptography==46.0.7",
-    "docker==7.0.0",
-    "psycopg[binary]==3.1.18",
+    "click>=8.1.7,<9",
+    "pydantic>=2.13.4,<3",
+    "python-dotenv>=1.2.2,<2",
+    "pyyaml>=6.0.1,<7",
+    "jinja2>=3.1.6,<4",
+    "httpx>=0.27,<0.29",
+    "cryptography>=46,<48",
+    "docker>=7,<8",
+    "psycopg[binary]>=3.1.18,<4",
 ]
 
 [project.urls]

@@ -26,6 +26,12 @@ See [Governance](../governance.md) for the full process.
   as the defensibility story. Implemented across PRs 8–14 of the v3
   stream. Landed in **v3.0.0** (2026-06-01).
 
+- [RFC 0003 — `ski-sdk` and `ski-schemas`](0003-client-sdk-and-shared-schemas.md)
+  — A typed Python client (`SKIClient` / `AsyncSKIClient`) with one-call
+  Ed25519 provenance verification, plus extraction of the shared wire
+  models into a `ski-schemas` package. PR 2 (the SDK) landed June 2026;
+  PR 1 (`ski-schemas`) is deferred to v3.1.
+
 ## Draft
 
 _(none currently)_

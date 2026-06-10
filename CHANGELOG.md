@@ -10,6 +10,35 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Added
+- **PyPI distribution via trusted publishing.** The release workflow now
+  publishes every wheel/sdist to PyPI using OIDC trusted publishing (no
+  stored tokens), through the `pypi` GitHub environment. `ski-sdk` is
+  included in the release build for the first time.
+- **Governance and policy documents:** `ROADMAP.md` (single public
+  roadmap), `TRADEMARKS.md` (trademark + conformance-mark policy),
+  `SUPPORT.md`, and RFC 0003 (`ski-sdk` / `ski-schemas`), which the
+  shipped SDK referenced but which had never been filed.
+
+### Changed
+- **CLI tool distribution names are now namespaced** for PyPI:
+  `kg-extractor` → `ski-kg-extractor`, `kg-validator` →
+  `ski-kg-validator`, `audit-ledger` → `ski-audit-ledger`
+  (`ski-model-deploy` and `ski-sdk` unchanged). The installed CLI
+  command names and import paths are unchanged.
+- **Published packages declare dependency ranges instead of exact
+  pins.** Exact pins in a published library force resolver conflicts on
+  every consumer. The pinned versions move to each tool's
+  `requirements.txt` (which still drives SBOMs and reproducible dev
+  installs). This also resolves the latent `httpx==0.27.0` (tools) vs
+  `httpx==0.28.1` (requirements-dev) conflict in the editable-install
+  path used by CI.
+- **CI advisory jobs now gate.** Lint (ruff + mypy), unit tests
+  (3.10–3.12), bandit, pip-audit, SBOM, and the Trivy container scan
+  block merges; a coverage floor of 70% is enforced (measured 72% at
+  the time of the change). `commit-signatures` remains advisory by
+  design.
+
+### Added
 - **`ski-sdk` v0 — a typed Python client for the SKI Model.** `SKIClient` /
   `AsyncSKIClient` over `/api/*` returning parsed `V3VerdictEnvelope` objects,
   a typed error hierarchy, and a one-call `verify_transcript()` that checks a

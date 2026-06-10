@@ -1,5 +1,7 @@
 # ski-model-deploy
 
+> Install from PyPI: `pip install ski-model-deploy` (publishing starts with the first release after June 2026).
+
 > **⚠ STATUS: EARLY ALPHA (v0.1.0a0).** Alpha-quality tooling. See the
 > repo root `README.md` for the project-wide status.
 

@@ -5,14 +5,15 @@ of the SKI Framework reference implementation and CLI tools. It assumes
 the reader is a member of `@kpifinity/maintainers` with write access to
 the repository and the `kpifinity` GHCR namespace.
 
-The specification version (currently **v2.1**) is decoupled from the
+The specification version (currently **v3.0**) is decoupled from the
 implementation version and is bumped through the RFC process in
 [docs/governance.md](./docs/governance.md), not as part of a release.
 
 ## Versioning
 
 The reference implementation and the four CLI tools share a single
-semantic version. Releases follow [SemVer 2.0.0](https://semver.org/):
+semantic version. `ski-sdk` is versioned independently (see RFC 0003);
+its compatibility table lives in the SDK README. Releases follow [SemVer 2.0.0](https://semver.org/):
 
 - `MAJOR` for breaking schema, wire-format, or public-API changes.
 - `MINOR` for backwards-compatible feature additions (new predicate
@@ -39,11 +40,11 @@ genuine design mistakes during the v0.x line.
 
 Run these checks on `main` before opening the release PR.
 
-1. **Tests are green on `main`.** Both Level 1 and Level 2 conformance
-   markers, plus the full unit and integration suites.
+1. **Tests are green on `main`.** Both the Provenance and Durability
+   conformance markers, plus the full unit and integration suites.
    ```powershell
    pytest -q
-   pytest -q -m "conformance_level_1 or conformance_level_2"
+   pytest -q conformance/ -m "provenance or durability"
    ```
 2. **Lint and types are clean.**
    ```powershell
@@ -78,7 +79,8 @@ changes and nothing else:
 
 1. **Bump versions.** Move every version site to the new version: the
    `version` field **and** the Python classifiers in all four
-   `tools/*/pyproject.toml`; each tool's `src/<pkg>/__init__.py`
+   `tools/*/pyproject.toml` (NOT `tools/ski-sdk`, which is versioned
+   independently per RFC 0003); each tool's `src/<pkg>/__init__.py`
    `__version__`; `reference-implementation/src/ski_model/__init__.py`'s
    `__version__`; and `reference-implementation/src/ski_model/server.py`'s
    `_VERSION`. Also update `CITATION.cff`'s `version` and `date-released`
@@ -129,6 +131,15 @@ The `.github/workflows/release.yml` job:
    `slsa-framework/slsa-github-generator` and attaches it.
 6. Publishes the GitHub release with the matching CHANGELOG section
    as the release body.
+7. Publishes the wheels and sdists to PyPI via **trusted publishing**
+   (OIDC; the `pypi` GitHub environment; no stored API tokens).
+
+   *One-time setup per package:* on PyPI, add a "trusted publisher"
+   for each of `ski-sdk`, `ski-kg-extractor`, `ski-kg-validator`,
+   `ski-model-deploy`, `ski-audit-ledger` with owner `kpifinity`,
+   repository `ski-framework`, workflow `release.yml`, environment
+   `pypi`. New names can be pre-registered via PyPI's "pending
+   publisher" flow before the first release.
 
 If any of these steps fails, do not delete the tag — fix forward in a
 patch release. Deleted tags break SLSA provenance verification for
@@ -143,7 +154,7 @@ against the published artifacts:
 ```powershell
 # Wheel signature
 cosign verify-blob `
-  --certificate ski_model-0.2.2-py3-none-any.whl.cert `
+  --certificate ski_model-0.2.2-py3-none-any.whl.pem `
   --signature ski_model-0.2.2-py3-none-any.whl.sig `
   --certificate-identity-regexp "https://github.com/kpifinity/ski-framework/.*" `
   --certificate-oidc-issuer "https://token.actions.githubusercontent.com" `
@@ -172,8 +183,12 @@ issue and link it from the release page.
 Once verification passes:
 
 1. Post the release to GitHub Discussions in the **Releases** category.
-2. Update [skiframework.org](https://skiframework.org) (handled by the
-   docs workflow on the next push to `main`).
+2. Update [skiframework.org](https://skiframework.org). The marketing
+   site is maintained separately (Replit) and does **not** update
+   automatically — update every version string (hero badge, meta tags,
+   changelog section, citation block) to the new version. The docs site
+   (kpifinity.github.io/ski-framework) updates via the docs workflow on
+   the next push to `main`.
 3. Tag downstream integrators listed in `docs/integrations.md` (when
    that file exists — empty placeholder is fine until then).
 

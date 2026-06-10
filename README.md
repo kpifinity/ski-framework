@@ -7,7 +7,7 @@
 [![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
 [![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
 [![Spec](https://img.shields.io/badge/Spec-v3.0-blue.svg)](https://skiframework.org)
-[![Release](https://img.shields.io/badge/Release-v3.0.0-blue.svg)](https://github.com/kpifinity/ski-framework/releases)
+[![Release](https://img.shields.io/github/v/release/kpifinity/ski-framework?label=Release&color=blue)](https://github.com/kpifinity/ski-framework/releases)
 [![Docs](https://img.shields.io/badge/Docs-MkDocs%20Material-blue.svg)](https://kpifinity.github.io/ski-framework/)
 
 ## What SKI is
@@ -47,6 +47,21 @@ The repo layout is:
 
 ## Quick start
 
+### Install from PyPI
+
+```bash
+pip install ski-sdk          # typed client + one-call provenance verification
+pip install ski-kg-extractor ski-kg-validator ski-model-deploy ski-audit-ledger
+```
+
+The CLI command names are unchanged (`kg-extractor`, `kg-validator`,
+`ski-model-deploy`, `audit-ledger`). PyPI publication starts with the
+first release after June 2026; earlier wheels are attached to
+[GitHub Releases](https://github.com/kpifinity/ski-framework/releases),
+each with a cosign signature and SLSA provenance.
+
+### Run the full stack
+
 The reference implementation runs entirely on-premise. It does not require — and by default does not have — any cloud API key. Inference is performed by a local LLM runtime (Ollama). An optional "demo" backend can call the Anthropic API; it is non-conformant and clearly labelled as such.
 
 To run the stack: clone the repo, run `./scripts/setup.sh` to generate TLS certificates and write a `.env` file, start the Ollama container, pull the default open-weights model (`qwen2.5:7b-instruct`), bring up the rest of the stack with `docker compose`, send a sample telemetry record from `examples/`, and verify the audit ledger. The full walkthrough is in [reference-implementation/QUICKSTART.md](./reference-implementation/QUICKSTART.md). Production-track guidance is in [reference-implementation/docs/DEPLOYMENT.md](./reference-implementation/docs/DEPLOYMENT.md).
@@ -73,7 +88,7 @@ The verdict envelope carries the LLM transcript reference, KG citations, formali
 
 The specification under `docs/` defines the architecture, the Knowledge Graph schema (typed obligations, jurisdictional scope, effective dates, precedent edges), the Risk-Tier Governor, the Symbolic Verifier contract, the verdict envelope, and the audit ledger canonical serialization. It is CC BY 4.0.
 
-The reference implementation under `reference-implementation/` includes the v3 Evaluator (KG-grounded LLM + structured generation), the Symbolic Verifier with five stateless predicates and three stateful (window_count / window_sum / window_avg), the SKI Model service with pluggable LLM backends (FakeLLM for tests, Ollama for sovereign deployment), the signed-KG loader (Ed25519) with jurisdiction + effective-date scoping, the append-only audit ledger with database-level triggers, the agreement monitor (rolling LLM↔verifier health signal), the Risk-Tier Governor, signed LLM transcripts, and a Postgres-backed telemetry buffer. Kubernetes manifests and horizontal scaling are planned for v0.3.x.
+The reference implementation under `reference-implementation/` includes the v3 Evaluator (KG-grounded LLM + structured generation), the Symbolic Verifier with five stateless predicates and three stateful (window_count / window_sum / window_avg), the SKI Model service with pluggable LLM backends (FakeLLM for tests, Ollama for sovereign deployment), the signed-KG loader (Ed25519) with jurisdiction + effective-date scoping, the append-only audit ledger with database-level triggers, the agreement monitor (rolling LLM↔verifier health signal), the Risk-Tier Governor, signed LLM transcripts, and a Postgres-backed telemetry buffer. Kubernetes deployment (Helm chart) is targeted for v3.1; horizontal scaling and the operator for v3.2 — see [ROADMAP.md](./ROADMAP.md).
 
 The four CLI tools under `tools/` cover the framework's lifecycle: `kg-extractor` reads regulatory documents and emits v3 Knowledge Graphs; `kg-validator` runs the schema + §3.6 validation passes; `ski-model-deploy` refuses to load unsigned KGs; `audit-ledger` performs real hash recomputation, replay against historical telemetry, and uses real `pg_dump` for backups.
 
@@ -99,7 +114,7 @@ Hardening defaults are documented in [reference-implementation/SECURITY_DEFAULTS
 
 ## Contributing
 
-We welcome contributions. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) and please read the [Code of Conduct](./CODE_OF_CONDUCT.md). The [MAINTAINERS](./MAINTAINERS.md) document lists the teams and their areas of ownership. Architectural changes follow the [RFC process](./docs/governance.md) — RFC 0002 is the current example.
+We welcome contributions. Start with [CONTRIBUTING.md](./CONTRIBUTING.md) and please read the [Code of Conduct](./CODE_OF_CONDUCT.md). For how to get help, see [SUPPORT.md](./SUPPORT.md). The [MAINTAINERS](./MAINTAINERS.md) document lists the teams and their areas of ownership. Architectural changes follow the [RFC process](./docs/governance.md) — RFC 0002 is the current example.
 
 Local setup is the standard Python workflow: clone the repo, create a virtual environment, install `requirements-dev.txt`, run `pytest`. CI runs ruff, mypy, bandit, pip-audit, the Trivy container scan, the SBOM generator, the CodeQL scanner, and the conformance suite on every pull request. See [`.github/workflows/ci.yml`](./.github/workflows/ci.yml).
 
@@ -113,7 +128,11 @@ Local setup is the standard Python workflow: clone the repo, create a virtual en
 
 CC explicitly recommends against using CC licenses for software, which is why we split. Apache 2.0 includes the explicit patent grant that regulated-industry adopters typically require.
 
+The licenses cover code and text, not names: “SKI Framework” and “SKI Conformant” are trademarks of KpiFinity Inc. — see [TRADEMARKS.md](./TRADEMARKS.md).
+
 ## Roadmap
+
+The authoritative, always-current roadmap is [ROADMAP.md](./ROADMAP.md). Summary:
 
 **v3.0 (shipped).** Specification at v3.0. The neuro-symbolic pivot per [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md): KG-grounded sovereign LLM as primary reasoner, Symbolic Verifier on the formalizable subset, typed-graph Knowledge Graph with jurisdictional scope + effective-date intervals, strict Risk-Tier Governor, signed LLM transcripts, agreement monitor, conformance reorganized around Provenance / Durability / Sovereignty.
 

@@ -38,15 +38,15 @@ jobs:
       - uses: github/codeql-action/analyze@v3
 
   # ====================================================================
-  # ADVISORY — informational for the alpha. Tighten before v1.0.
-  # See pyproject.toml for the tooling configuration that scopes each
-  # check to the rewritten v2.1 packages and treats legacy code leniently.
+  # GATING (since Phase 0 hardening, 2026-06) — lint, types, unit tests,
+  # coverage floor, security scans, SBOM, and the container scan all
+  # block the merge. The only advisory job is commit-signatures (see the
+  # note on that job). See pyproject.toml for tool configuration.
   # ====================================================================
 
   lint:
     name: Lint (ruff + mypy)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -61,7 +61,6 @@ jobs:
   test:
     name: Unit tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -84,7 +83,6 @@ jobs:
   security:
     name: Security scans (bandit + pip-audit)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -112,7 +110,8 @@ jobs:
             tools/kg-extractor/requirements.txt \
             tools/kg-validator/requirements.txt \
             tools/ski-model-deploy/requirements.txt \
-            tools/audit-ledger/requirements.txt; do
+            tools/audit-ledger/requirements.txt \
+            tools/ski-sdk/requirements.txt; do
               echo "--- $req"
               pip-audit -r "$req" || fail=1
           done
@@ -121,7 +120,6 @@ jobs:
   sbom:
     name: SBOM (CycloneDX)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -139,7 +137,8 @@ jobs:
             tools/kg-extractor/requirements.txt \
             tools/kg-validator/requirements.txt \
             tools/ski-model-deploy/requirements.txt \
-            tools/audit-ledger/requirements.txt; do
+            tools/audit-ledger/requirements.txt \
+            tools/ski-sdk/requirements.txt; do
               name=$(echo "$req" | tr '/' '_')
               # cyclonedx-py requirements takes the requirements file as
               # a POSITIONAL argument (not -i).
@@ -154,7 +153,6 @@ jobs:
   container-scan:
     name: Trivy container scan
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: Build SKI Model image
@@ -170,19 +168,22 @@ jobs:
         with:
           image-ref: ski-model:ci
           severity: HIGH,CRITICAL
-          exit-code: "0"             # advisory
+          exit-code: "1"
           ignore-unfixed: true
       - name: Trivy scan — Sidecar
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ski-sidecar:ci
           severity: HIGH,CRITICAL
-          exit-code: "0"
+          exit-code: "1"
           ignore-unfixed: true
 
   commit-signatures:
     name: Commit signature verification
     runs-on: ubuntu-latest
+    # Deliberately advisory: external contributors and squash-merges
+    # cannot be forced to carry signed commits without blocking
+    # first-time PRs. Tags remain signed and verified (RELEASING.md).
     continue-on-error: true
     if: github.event_name == 'pull_request'
     steps:
