@@ -23,7 +23,7 @@ body:
     id: spec
     attributes:
       label: Specification linkage
-      description: Which sections of the SKI Framework v2.1 specification does this touch? Or is it purely an implementation concern?
+      description: Which sections of the SKI Framework v3.0 specification does this touch? Or is it purely an implementation concern?
   - type: textarea
     id: conformance
     attributes:

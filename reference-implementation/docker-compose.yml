@@ -36,10 +36,10 @@ services:
       start_period: 60s
 
   # --------------------------------------------------------------------------
-  # SKI Model service (formerly MiLM) — wraps the local LLM with the
-  # determinism controls, structured-output enforcement, and Tag Registry
-  # required by the v2.1 specification. Track 1 rules route to the Symbolic
-  # Evaluator; Track 2 rules route through the LLM under temperature=0.
+  # SKI Model service — the v3 runtime. Scopes the signed KG to the
+  # measurement's jurisdiction + effective date, evaluates via the local
+  # LLM (temperature=0, structured generation), and independently
+  # cross-checks every formalizable assertion with the Symbolic Verifier.
   # --------------------------------------------------------------------------
   ski-model:
     build:

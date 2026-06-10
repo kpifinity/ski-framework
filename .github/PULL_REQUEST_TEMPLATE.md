@@ -21,7 +21,7 @@ have what they need. PRs missing required information may be closed.
 
 ## Specification linkage
 
-<!-- Which sections of the SKI Framework v2.1 specification this PR touches.
+<!-- Which sections of the SKI Framework v3.0 specification this PR touches.
 Use spec section IDs (e.g. B3.4, B4.3). If none, write "N/A". -->
 
 ## Conformance impact

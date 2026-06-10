@@ -122,7 +122,8 @@ have their rule_id ignored, so this is fully mitigated.
   the air-gapped profile (`networks.ski-internal.internal: true`).
 - The service makes no outbound network calls during inference when
   the default backend is used. Verified by the
-  `test_no_outbound_calls` conformance test (planned for v0.3).
+  `sovereignty/test_no_outbound_calls` conformance test and the
+  runtime `test_no_egress` suite.
 
 **Residual risk:** the operator can intentionally choose a cloud
 backend. This is a policy violation, not a framework bug.
@@ -190,8 +191,8 @@ They are the operator's responsibility.
 - **Compromise of the offline signing key.** Key custody is the
   operator's responsibility.
 - **Side-channel attacks on the LLM.** Timing / cache attacks on the
-  inference path are not in scope; Track 1 has no LLM in the path
-  and is unaffected.
+  inference path are not in scope. The Symbolic Verifier's checks are
+  pure predicate evaluation with no LLM in the path and are unaffected.
 - **Denial of service.** Rate limiting and admission control are
   out of scope for the reference implementation; production
   deployments are expected to put the SKI Model behind an ingress
@@ -211,10 +212,11 @@ An external auditor can independently verify every control above:
    sequence_number = 1` — it must error.
 2. **Signature requirement**: corrupt one byte of `kg.json`; the SKI
    Model service must refuse to start.
-3. **Determinism canary**: read the canary metric in Prometheus;
-   confirm it is reporting PASS on the configured interval.
+3. **Agreement monitor**: `GET /api/canary`; confirm `status` is
+   `healthy` and `agreement_rate` is at or above the threshold.
 4. **Replay**: `audit-ledger replay --from 1 --to N --kg-path kg.json
-   --strict`. Must exit zero on Track 1 entries.
+   --strict`. Must exit zero; symbolically verifiable parts replay
+   exactly, LLM reasoning re-verifies via the signed transcript.
 5. **Chain integrity**: `audit-ledger verify`. Must report
    `chain_link_verified = N / N`.
 

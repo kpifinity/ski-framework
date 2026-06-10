@@ -9,18 +9,21 @@ hide:
 
 [![License (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](https://github.com/kpifinity/ski-framework/blob/main/LICENSE)
 [![License (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](https://github.com/kpifinity/ski-framework/blob/main/LICENSE-docs.md)
-[![Release](https://img.shields.io/badge/Release-v3.0.0-blue.svg)](https://github.com/kpifinity/ski-framework/releases)
+[![Release](https://img.shields.io/github/v/release/kpifinity/ski-framework?label=Release&color=blue)](https://github.com/kpifinity/ski-framework/releases)
 [![Spec](https://img.shields.io/badge/Spec-v3.0-blue.svg)](https://skiframework.org)
 
-!!! success "Status — v3.0 is current"
+!!! success "Status — spec v3.0; implementation on the v3.1.0-alpha line"
     A KG-grounded sovereign LLM is the primary reasoner on every verdict.
     The Symbolic Evaluator is repositioned as an independent verifier of
     the LLM's formalizable assertions. The Knowledge Graph is a typed
     semantic substrate with jurisdictional scope and effective-date
     intervals. The audit trail moves from *deterministic replay* to
     *verifiable provenance*. The architectural rationale is in
-    [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md) (Accepted,
-    implemented across PRs 8–14).
+    [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md) (Accepted;
+    implemented in v3.0.0). All packages are on
+    [PyPI](https://pypi.org/project/ski-sdk/); see the
+    [roadmap](https://github.com/kpifinity/ski-framework/blob/main/ROADMAP.md)
+    for what's next.
 
 ## Why SKI exists
 
