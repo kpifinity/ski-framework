@@ -2,7 +2,7 @@
 
 > **Sovereign Knowledge Intelligence** — an open neuro-symbolic architecture for AI compliance in regulated industries.
 
-> **STATUS.** v3.0 is current. A KG-grounded sovereign LLM is the primary reasoner on every verdict; the Symbolic Evaluator is repositioned as an independent verifier of the LLM's formalizable assertions; the Knowledge Graph is a typed semantic substrate, not a routing table. The audit trail moves from *deterministic replay* to *verifiable provenance*. The architectural rationale is in [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md) (Accepted, implemented across PRs 8–14). See [CHANGELOG.md](./CHANGELOG.md) for the full ship log.
+> **STATUS.** The specification is at **v3.0**; the reference implementation is on the **v3.1.0-alpha** line ([releases](https://github.com/kpifinity/ski-framework/releases), [PyPI](https://pypi.org/project/ski-sdk/)). A KG-grounded sovereign LLM is the primary reasoner on every verdict; the Symbolic Evaluator is repositioned as an independent verifier of the LLM's formalizable assertions; the Knowledge Graph is a typed semantic substrate, not a routing table. The audit trail moves from *deterministic replay* to *verifiable provenance*. The architectural rationale is in [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md) (Accepted; implemented in v3.0.0). See [CHANGELOG.md](./CHANGELOG.md) for the full ship log and [ROADMAP.md](./ROADMAP.md) for what's next.
 
 [![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
 [![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
