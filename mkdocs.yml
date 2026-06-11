@@ -101,6 +101,7 @@ nav:
       - replay.md
       - migrations.md
   - Conformance: conformance.md
+  - SKI Evals: evals.md
   - Governance & security:
       - governance.md
       - threat-model.md

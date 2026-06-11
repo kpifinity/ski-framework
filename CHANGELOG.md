@@ -9,7 +9,20 @@ referenced from each release entry.
 
 ## [Unreleased]
 
-_(nothing yet)_
+### Added
+- **SKI Evals — the verdict-accuracy evaluation suite** (`evals/`). A
+  50-case human-labeled energy golden dataset (boundary values,
+  jurisdiction scoping, effective-date scoping) evaluated through the
+  real production path (`kg_loader.scope_to` -> `V3Evaluator`), with
+  published metrics: verdict accuracy, FLAG recall/precision,
+  **breaches-silently-CLEARed** (must be 0), NULL_UNMAPPED recall,
+  assertion correctness, and the LLM-verifier agreement rate. The
+  deterministic FakeLLM baseline is pinned in CI and demonstrates the
+  architecture's safety property: on the model's deliberate blind spots
+  the Symbolic Verifier records LLM_CONTRADICTION and the verdict
+  routes to DISCRETIONARY - zero breaches silently cleared. Real-model
+  numbers run nightly via `.github/workflows/evals.yml` (Ollama,
+  qwen2.5:7b-instruct). Methodology: `docs/evals.md`.
 
 ## [3.1.0-alpha.2] — 2026-06-10
 
