@@ -111,7 +111,11 @@ class TestRequestPayload:
         body: Dict[str, Any] = json.loads(generate_req.content)
         assert body["model"] == "test-model:1b"
         assert body["stream"] is False
-        assert body["format"] == "json"
+        # Schema-constrained decoding: the full RESPONSE_GRAMMAR rides in the
+        # request so Ollama enforces the output contract at generation time.
+        from ski_model.v3.evaluator import RESPONSE_GRAMMAR
+
+        assert body["format"] == RESPONSE_GRAMMAR
         opts = body["options"]
         assert opts["temperature"] == 0
         assert opts["seed"] == 7  # The seed kwarg from evaluate(), not the constructor.

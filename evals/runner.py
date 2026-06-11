@@ -12,6 +12,7 @@ import hashlib
 import json
 import sys
 from dataclasses import dataclass
+from dataclasses import field as dataclasses_field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
@@ -35,6 +36,7 @@ class EvalRun:
     metrics: EvalMetrics
     results: List[CaseResult]
     provenance: Dict[str, Any]
+    raw_outputs: List[Dict[str, Any]] = dataclasses_field(default_factory=list)
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -88,6 +90,16 @@ async def run_eval(*, dataset_dir: Path, backend: V3LLMBackend, seed: int = 0) -
         decoder_seed=seed,
     )
 
+    raw_outputs: List[Dict[str, Any]] = []
+    inner_evaluate = backend.evaluate
+
+    async def _capturing_evaluate(**kwargs: Any) -> Dict[str, Any]:
+        raw = await inner_evaluate(**kwargs)
+        raw_outputs.append(raw)
+        return raw
+
+    backend.evaluate = _capturing_evaluate  # type: ignore[method-assign]
+
     results: List[CaseResult] = []
     for c in cases:
         as_of = _parse_ts(c["timestamp"])
@@ -127,9 +139,13 @@ async def run_eval(*, dataset_dir: Path, backend: V3LLMBackend, seed: int = 0) -
         "cases_file_hash": _sha256_file(cases_path),
         "n_cases": len(cases),
     }
-    return EvalRun(
+    run = EvalRun(
         dataset=dataset_dir.name,
         metrics=compute_metrics(results),
         results=results,
         provenance=provenance,
     )
+    run.raw_outputs = [
+        {"case_id": c["case_id"], "raw": raw} for c, raw in zip(cases, raw_outputs, strict=False)
+    ]
+    return run

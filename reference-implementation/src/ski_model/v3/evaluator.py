@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # ---- Prompt template + grammar -------------------------------------------------
 
-PROMPT_TEMPLATE_ID = "ski.v3.evaluate.1"
+PROMPT_TEMPLATE_ID = "ski.v3.evaluate.2"
 """Stable identifier for the v3 evaluation prompt. Bump on every prompt edit."""
 
 
@@ -58,8 +58,10 @@ You receive:
 Produce a structured verdict envelope per the schema below.
 
 RULES (non-negotiable):
-  * Cite ONLY KG nodes that appear in the snapshot. Citing a node not in
-    the snapshot causes your verdict to be discarded.
+  * Cite ONLY node ids from this exact list - any other id voids your
+    verdict: {valid_node_ids}
+  * Copy node ids character-for-character. Do not invent, shorten, or
+    rename them.
   * Every formalizable_assertion you emit must reference a specific
     KG obligation by ID. The Symbolic Verifier mechanically checks them.
   * Verdict MUST be one of: CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE,
@@ -534,7 +536,16 @@ class V3Evaluator:
         observability concern, not the audit contract. What we record is
         the framework's view of what was asked.
         """
+        valid_ids = sorted(
+            {
+                n["id"]
+                for key in ("obligations", "definitions")
+                for n in kg_snapshot.get(key, [])
+                if isinstance(n, dict) and "id" in n
+            }
+        )
         return PROMPT_TEMPLATE.format(
+            valid_node_ids=json.dumps(valid_ids, ensure_ascii=False),
             measurement_json=json.dumps(
                 measurement, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             ),
