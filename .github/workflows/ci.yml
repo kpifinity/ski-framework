@@ -27,6 +27,30 @@ jobs:
       - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
       - run: pytest conformance/ -q -m "provenance or durability" --tb=short
 
+  sovereignty-l3:
+    name: SKI conformance tests (Sovereignty L3, DB-backed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: l3test
+        ports: ["5433:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
+      - run: pytest conformance/sovereignty -q --tb=short
+        env:
+          SKI_L3_LEDGER_DSN: postgresql+psycopg://postgres:l3test@localhost:5433/postgres
+
   codeql:
     name: CodeQL (Python)
     runs-on: ubuntu-latest
