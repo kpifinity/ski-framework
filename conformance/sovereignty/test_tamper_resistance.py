@@ -22,6 +22,7 @@ import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -33,21 +34,21 @@ TRIGGERS = REPO / "reference-implementation" / "src" / "ledger" / "append_only.s
 pytestmark = pytest.mark.sovereignty
 
 
-def _connect():
+def _connect() -> tuple[Any, Any]:
     if not DSN:
         pytest.skip("SKI_L3_LEDGER_DSN not set; destructive tamper rig needs a throwaway Postgres.")
     sqlalchemy = pytest.importorskip("sqlalchemy")
     return sqlalchemy, sqlalchemy.create_engine(DSN)
 
 
-def _seed(engine, sqlalchemy, n: int = 3) -> None:
+def _seed(engine: Any, sqlalchemy: Any, n: int = 3) -> None:
     from audit_ledger.canonical import canonical_entry_payload
 
     text = sqlalchemy.text
     with engine.begin() as cx:
         cx.execute(text("DROP TABLE IF EXISTS ledger_entries CASCADE"))
-        cx.exec_driver_sql(SCHEMA.read_text(encoding="utf-8"))
-        cx.exec_driver_sql(TRIGGERS.read_text(encoding="utf-8"))
+        cx.exec_driver_sql(SCHEMA.read_text(encoding="utf-8").replace("%", "%%"))
+        cx.exec_driver_sql(TRIGGERS.read_text(encoding="utf-8").replace("%", "%%"))
         prev = "0" * 64
         for seq in range(1, n + 1):
             ts = datetime(2026, 6, 15, 12, seq, tzinfo=timezone.utc).isoformat()
@@ -100,6 +101,7 @@ def test_modified_ledger_row_fails_verify_integrity() -> None:
     _seed(engine, sqlalchemy)
     from audit_ledger.ledger import Ledger
 
+    assert DSN is not None
     assert Ledger(DSN).verify_integrity().is_valid, "seeded ledger must verify clean"
 
     # Superuser attack: disable triggers, flip a verdict, leave hashes alone.
@@ -109,6 +111,7 @@ def test_modified_ledger_row_fails_verify_integrity() -> None:
         cx.execute(sqlalchemy.text("UPDATE ledger_entries SET reasoning='tampered' WHERE sequence_number=2"))
         cx.execute(sqlalchemy.text("ALTER TABLE ledger_entries ENABLE TRIGGER USER"))
 
+    assert DSN is not None
     result = Ledger(DSN).verify_integrity()
     assert not result.is_valid, (
         "verify_integrity must detect an in-place edit via entry-hash recomputation, "
