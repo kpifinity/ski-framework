@@ -32,7 +32,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from ..evaluator import PROMPT_TEMPLATE, PROMPT_TEMPLATE_ID
+from ..evaluator import PROMPT_TEMPLATE, PROMPT_TEMPLATE_ID, RESPONSE_GRAMMAR
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +99,7 @@ class OllamaV3Backend:
             "model": self._model_name,
             "prompt": prompt,
             "stream": False,
-            "format": "json",
+            "format": RESPONSE_GRAMMAR,  # JSON-schema-constrained decoding (Ollama >= 0.5)
             "options": {
                 "temperature": 0,
                 "seed": seed,
@@ -122,7 +122,16 @@ class OllamaV3Backend:
     # ---- Internals -------------------------------------------------------------
 
     def _render_prompt(self, measurement: Dict[str, Any], kg_snapshot: Dict[str, Any]) -> str:
+        valid_ids = sorted(
+            {
+                n["id"]
+                for key in ("obligations", "definitions")
+                for n in kg_snapshot.get(key, [])
+                if isinstance(n, dict) and "id" in n
+            }
+        )
         return PROMPT_TEMPLATE.format(
+            valid_node_ids=json.dumps(valid_ids, ensure_ascii=False),
             measurement_json=json.dumps(
                 measurement, sort_keys=True, separators=(",", ":"), ensure_ascii=False
             ),

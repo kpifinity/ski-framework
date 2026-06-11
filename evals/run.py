@@ -31,6 +31,11 @@ def main() -> int:
         help="Output directory for the JSON + Markdown report.",
     )
     parser.add_argument("--seed", type=int, default=0, help="Decoder seed recorded in provenance.")
+    parser.add_argument(
+        "--dump-raw",
+        action="store_true",
+        help="Also write the raw LLM output for every case (diagnosis of format/citation failures).",
+    )
     args = parser.parse_args()
 
     # Route through the same factory the server uses, so backend
@@ -46,6 +51,12 @@ def main() -> int:
 
     run = asyncio.run(run_eval(dataset_dir=dataset_dir, backend=backend, seed=args.seed))
     write_report(run, Path(args.out))
+    if args.dump_raw:
+        import json as _json
+
+        raw_path = Path(args.out) / f"evals-{run.dataset}-{run.provenance['backend']}-raw.json"
+        raw_path.write_text(_json.dumps(run.raw_outputs, indent=2) + "\n", encoding="utf-8")
+        print(f"raw outputs -> {raw_path}", file=sys.stderr)
     print(render_markdown(run))
     return 0
 
