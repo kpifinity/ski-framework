@@ -1,0 +1,73 @@
+# SKI Evals — verdict-accuracy evaluation suite.
+#
+# Two jobs:
+#   * evals-fake: gating harness check on every PR that touches evals/
+#     or the v3 evaluator. FakeLLM baseline is pinned by
+#     evals/tests/test_evals_harness.py, so any behaviour change in the
+#     evaluator/verifier/scoping shows up here as a red diff.
+#   * evals-ollama: nightly real-model run (qwen2.5:7b-instruct on the
+#     runner's CPU). Best-effort: model download or inference flakiness
+#     must not block anything, so it is continue-on-error; the report is
+#     uploaded as an artifact either way.
+name: evals
+
+on:
+  schedule:
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "evals/**"
+      - "reference-implementation/src/ski_model/v3/**"
+      - ".github/workflows/evals.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  evals-fake:
+    name: Evals harness (FakeLLM, pinned baseline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q evals/tests/
+      - run: python -m evals.run --backend fake --out evals-report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evals-report-fake
+          path: evals-report/
+
+  evals-ollama:
+    name: Evals real model (Ollama, nightly)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    continue-on-error: true
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: Install and start Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          ollama serve &
+          sleep 5
+          ollama pull qwen2.5:7b-instruct
+      - name: Run evals against the local model
+        env:
+          OLLAMA_BASE_URL: http://localhost:11434
+          SKI_MODEL_NAME: qwen2.5:7b-instruct
+          SKI_MODEL_SEED: "42"
+        run: python -m evals.run --backend ollama --seed 42 --out evals-report
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evals-report-ollama
+          path: evals-report/

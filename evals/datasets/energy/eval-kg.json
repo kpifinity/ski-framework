@@ -1,0 +1,109 @@
+{
+ "metadata": {
+  "version": "ski-evals-energy-1.0.0",
+  "name": "SKI Evals - energy golden-dataset KG",
+  "description": "Evaluation KG for the SKI Evals verdict-accuracy suite. Runtime flat-rule shape (the post-Phase-1 artifact kg_loader consumes). Unsigned: evals load it with require_signature=False. All thresholds are illustrative, not regulatory citations."
+ },
+ "rules": [
+  {
+   "id": "energy.so2.cap",
+   "name": "SO2 emissions cap",
+   "metric": "so2_ppm",
+   "predicate": "must_not_exceed",
+   "value": 100,
+   "unit": "ppm",
+   "jurisdiction": "us.federal",
+   "effective_date": "2026-01-01T00:00:00Z"
+  },
+  {
+   "id": "energy.ph.range",
+   "name": "Wastewater pH range",
+   "metric": "ph",
+   "predicate": "must_be_within",
+   "value": [
+    6.0,
+    8.5
+   ],
+   "unit": "pH",
+   "jurisdiction": "global"
+  },
+  {
+   "id": "energy.nox.cap",
+   "name": "NOx emissions cap",
+   "metric": "nox_ppm",
+   "predicate": "must_not_exceed",
+   "value": 75,
+   "unit": "ppm",
+   "jurisdiction": "us.federal"
+  },
+  {
+   "id": "energy.flow.min",
+   "name": "Scrubber minimum flow",
+   "metric": "flow_m3h",
+   "predicate": "must_be_at_least",
+   "value": 10,
+   "unit": "m3/h",
+   "jurisdiction": "global"
+  },
+  {
+   "id": "energy.temp.range",
+   "name": "Effluent temperature range",
+   "metric": "temp_c",
+   "predicate": "must_be_within",
+   "value": [
+    5,
+    40
+   ],
+   "unit": "C",
+   "jurisdiction": "global"
+  },
+  {
+   "id": "energy.opacity.cap.ab",
+   "name": "Stack opacity cap (Alberta)",
+   "metric": "opacity_pct",
+   "predicate": "must_not_exceed",
+   "value": 20,
+   "unit": "%",
+   "jurisdiction": "ca.alberta"
+  },
+  {
+   "id": "energy.co.cap.future",
+   "name": "CO cap (future rule)",
+   "metric": "co_ppm",
+   "predicate": "must_not_exceed",
+   "value": 50,
+   "unit": "ppm",
+   "jurisdiction": "us.federal",
+   "effective_date": "2026-09-01T00:00:00Z"
+  },
+  {
+   "id": "energy.benzene.cap.sunset",
+   "name": "Benzene cap (sunset)",
+   "metric": "benzene_ppb",
+   "predicate": "must_not_exceed",
+   "value": 5,
+   "unit": "ppb",
+   "jurisdiction": "us.federal",
+   "sunset_date": "2026-03-31T00:00:00Z"
+  },
+  {
+   "id": "energy.methane.cap",
+   "name": "Methane leak cap",
+   "metric": "methane_kg_h",
+   "predicate": "must_not_exceed",
+   "value": 12,
+   "unit": "kg/h",
+   "jurisdiction": "us.federal"
+  },
+  {
+   "id": "energy.turbidity.cap",
+   "name": "Discharge turbidity cap",
+   "metric": "turbidity_ntu",
+   "predicate": "must_not_exceed",
+   "value": 1,
+   "unit": "NTU",
+   "jurisdiction": "global"
+  }
+ ],
+ "tag_registry": {}
+}

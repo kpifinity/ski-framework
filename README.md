@@ -43,6 +43,7 @@ The repo layout is:
 - `tools/` — Four CLI tools (Apache 2.0): `kg-extractor` (extract candidate rules from regulatory documents), `kg-validator` (human-in-the-loop validation), `ski-model-deploy` (sign and deploy a Knowledge Graph), `audit-ledger` (verify, export, back up the ledger).
 - `examples/` — Demo-only illustrative KGs and telemetry. Never production-grade.
 - `conformance/` — The SKI conformance test suite (Apache 2.0): Level 1 / 2 / 3 tests that any implementation can be run against.
+- `evals/` — SKI Evals (Apache 2.0): the verdict-accuracy suite — golden datasets + metrics (FLAG recall, verifier agreement) run against the real evaluation path. See [docs/evals.md](./docs/evals.md).
 - `scripts/` — Setup, deploy, and cleanup helpers.
 
 ## Quick start

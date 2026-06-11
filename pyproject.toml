@@ -141,6 +141,7 @@ testpaths = [
     "reference-implementation/src/telemetry_buffer/tests",
     "reference-implementation/src/ski_model/v3/tests",
     "tools/ski-sdk/tests",
+    "evals/tests",
 ]
 addopts = [
     "-ra",
