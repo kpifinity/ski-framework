@@ -66,7 +66,10 @@ jobs:
           OLLAMA_BASE_URL: http://localhost:11434
           SKI_MODEL_NAME: qwen2.5:7b-instruct
           SKI_MODEL_SEED: "42"
-        run: python -m evals.run --backend ollama --seed 42 --out evals-report
+          # 512 (default) truncates reasoning+assertions JSON; truncation
+          # parses as malformed and falls back to DISCRETIONARY.
+          SKI_MODEL_MAX_TOKENS: "1536"
+        run: python -m evals.run --backend ollama --seed 42 --dump-raw --out evals-report
       - uses: actions/upload-artifact@v4
         with:
           name: evals-report-ollama
