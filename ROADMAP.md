@@ -25,7 +25,8 @@ artifact.
   routing precision. Run nightly; results published in the docs.
 - **Performance benchmarks.** p50/p95/p99 verdict latency and
   throughput on stated reference hardware, per backend, harness in-repo.
-- **vLLM backend** behind the existing `V3LLMBackend` protocol.
+- **vLLM backend** behind the existing `V3LLMBackend` protocol. Shipped:
+  `SKI_V3_LLM_BACKEND=vllm` with decoder-level guided decoding.
 - **Helm chart** honoring the constraints in
   [KUBERNETES.md](./reference-implementation/docs/KUBERNETES.md)
   (append-only triggers across PVC rebinds, single writer per shard,

@@ -1,4 +1,4 @@
-"""CLI entry point: ``python -m evals.run --backend fake|ollama``."""
+"""CLI entry point: ``python -m evals.run --backend fake|ollama|vllm``."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the SKI Evals verdict-accuracy suite.")
     parser.add_argument(
         "--backend",
-        choices=["fake", "ollama"],
+        choices=["fake", "ollama", "vllm"],
         default="fake",
-        help="LLM backend. 'fake' validates the harness; 'ollama' produces real model numbers.",
+        help="LLM backend. 'fake' validates the harness; 'ollama'/'vllm' produce real model numbers.",
     )
     parser.add_argument(
         "--dataset",
