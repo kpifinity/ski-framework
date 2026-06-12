@@ -36,7 +36,7 @@ import logging
 import statistics
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple
 
 from .envelope import (
     FormalizableAssertion,
@@ -301,6 +301,46 @@ _STATEFUL_HANDLERS = {
 # ---- SymbolicVerifier ---------------------------------------------------------
 
 
+def _grounding_violation(assertion: FormalizableAssertion, measurement: Mapping[str, Any]) -> Optional[str]:
+    """Check an assertion's observation against the actual measurement.
+
+    The LLM asserts ``observed`` for ``metric``; the framework holds the
+    ground truth — the measurement record itself. An assertion whose
+    metric is not in the measurement, or whose observed value differs
+    from what the measurement records, is a **fabricated observation**:
+    internally consistent arithmetic must not pass verification when the
+    observation it rests on was never made. (Found by eval run 4, where
+    the model fuzzy-matched a deliberately unmapped measurement key onto
+    a KG metric and invented the reading — producing a false FLAG that
+    the arithmetic-only verifier agreed with.)
+
+    Stateful predicates (``window_seconds`` set) aggregate over history,
+    so their ``observed`` is not expected to equal the current reading;
+    they are grounded against the telemetry buffer instead.
+    """
+    if assertion.window_seconds is not None or assertion.observed is None:
+        return None
+    if assertion.metric not in measurement:
+        return (
+            f"[{assertion.obligation_id}] fabricated observation: metric "
+            f"{assertion.metric!r} is not a key of the measurement record "
+            f"(keys: {sorted(measurement)!r})."
+        )
+    actual = measurement[assertion.metric]
+    observed = assertion.observed
+    if isinstance(actual, (int, float)) and isinstance(observed, (int, float)):
+        mismatch = float(actual) != float(observed)
+    else:
+        mismatch = actual != observed
+    if mismatch:
+        return (
+            f"[{assertion.obligation_id}] fabricated observation: LLM asserted "
+            f"observed={observed!r} for {assertion.metric!r}, but the measurement "
+            f"records {actual!r}."
+        )
+    return None
+
+
 @dataclass
 class SymbolicVerifier:
     """Mechanically cross-checks :class:`FormalizableAssertion` instances.
@@ -359,6 +399,7 @@ class SymbolicVerifier:
         assertions: Sequence[FormalizableAssertion],
         *,
         llm_verdict: V3Verdict,
+        measurement: Optional[Mapping[str, Any]] = None,
     ) -> VerifierResult:
         """Aggregate per-assertion checks into a :class:`VerifierResult`.
 
@@ -388,6 +429,13 @@ class SymbolicVerifier:
         checked = 0
 
         for assertion in assertions:
+            if measurement is not None:
+                violation = _grounding_violation(assertion, measurement)
+                if violation is not None:
+                    checked += 1
+                    contradictions.append((assertion, _CheckOutcome(False, violation)))
+                    divergences.append(violation)
+                    continue
             outcome = self.check_assertion(assertion)
             if outcome.mechanically_satisfied is None:
                 unverifiable_count += 1
@@ -452,6 +500,7 @@ class SymbolicVerifier:
         subject: Optional[str] = None,
         as_of: Optional[datetime] = None,
         buffer: Optional[BufferLike] = None,
+        measurement: Optional[Mapping[str, Any]] = None,
     ) -> VerifierResult:
         """Async sibling of :meth:`verify` that handles stateful predicates.
 
@@ -474,6 +523,13 @@ class SymbolicVerifier:
         checked = 0
 
         for assertion in assertions:
+            if measurement is not None:
+                violation = _grounding_violation(assertion, measurement)
+                if violation is not None:
+                    checked += 1
+                    contradictions.append((assertion, _CheckOutcome(False, violation)))
+                    divergences.append(violation)
+                    continue
             outcome = await self.acheck_assertion(assertion, subject=subject, as_of=as_of, buffer=buffer)
             if outcome.mechanically_satisfied is None:
                 unverifiable_count += 1

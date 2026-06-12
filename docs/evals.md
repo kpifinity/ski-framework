@@ -91,7 +91,8 @@ dataset through the production path on a local Ollama backend.
 | 1 | `evaluate.1`, free-form JSON | 26% | 5.6% | n/a | **0** |
 | 2 | `evaluate.2` + schema-constrained decoding | 22% | 11% | n/a (no checkable assertions) | **0** |
 | 3 | `evaluate.3` + output-contract guard, raised token budget | 54% | 33% | 75% | **0** |
-| 4 | `evaluate.4` (scoping clarified, mapping defined, worked example) | — pending | — | — | **0 required** |
+| 4 | `evaluate.4` (scoping clarified, mapping defined, worked example) | 76% | 66.7% | 73% | **0** |
+| 5 | `evaluate.5` + verifier observation grounding | — pending | — | — | **0 required** |
 
 What each iteration found and fixed:
 
@@ -114,6 +115,21 @@ What each iteration found and fixed:
    the prompt now states the snapshot is pre-scoped, defines "maps"
    mechanically (obligation `metric` = measurement key), corrects the
    NULL_STALE definition, and includes one worked example.
+
+4. **Run 4 → 5:** NULL_UNMAPPED over-prediction collapsed (18 misses →
+   1); accuracy 54% → 76%. The remaining misses were raw 7B comparison
+   errors ("60 exceeds 75"; 100 ≤ 100 called a breach) — every one
+   caught by the Symbolic Verifier as LLM_CONTRADICTION and routed to
+   DISCRETIONARY. But run 4 also produced the suite's most valuable
+   finding yet: one **false FLAG** on a deliberately unmapped
+   measurement key (`so2` vs `so2_ppm`), where the model fuzzy-matched
+   the metric and *fabricated the observed value*. The arithmetic was
+   internally consistent, so the arithmetic-only verifier agreed.
+   Fixes: the verifier now **grounds observations** — `observed` must
+   match what the measurement actually records, and asserting a metric
+   the measurement doesn't contain is a fabrication, both degraded as
+   LLM_CONTRADICTION; the prompt pins explicit comparison semantics
+   (inclusive boundaries, range membership) per predicate.
 
 The row that never moves is the point: **across every run, zero
 breaches were silently CLEARed and FLAG precision held at 100%.** Every

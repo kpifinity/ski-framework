@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # ---- Prompt template + grammar -------------------------------------------------
 
-PROMPT_TEMPLATE_ID = "ski.v3.evaluate.4"
+PROMPT_TEMPLATE_ID = "ski.v3.evaluate.5"
 """Stable identifier for the v3 evaluation prompt. Bump on every prompt edit."""
 
 
@@ -82,8 +82,16 @@ RULES (non-negotiable):
   * NULL_UNMAPPED: NO obligation's "metric" matches ANY measurement key.
   * NULL_STALE: the telemetry itself is stale or missing (silent
     sensor). It is NEVER about rule dates.
-  * FLAG: a mapped obligation is breached (e.g. observed exceeds a
-    must_not_exceed value).
+  * FLAG: a mapped obligation is breached. Compute carefully, digit by
+    digit, before setting "satisfied":
+      - must_not_exceed: satisfied iff observed <= value. EQUAL IS
+        SATISFIED: observed 100 against value 100 is CLEAR, not FLAG.
+      - must_be_at_least: satisfied iff observed >= value.
+      - must_be_within [lo, hi]: satisfied iff lo <= observed AND
+        observed <= hi. Boundaries are inclusive. 5.4 is NOT within
+        [6.0, 8.5]; 8.6 is NOT within [6.0, 8.5].
+  * "observed" MUST be copied exactly from MEASUREMENT - the verifier
+    cross-checks it against the record and rejects invented readings.
   * CLEAR: every mapped obligation is satisfied.
   * DISCRETIONARY: a mapped obligation requires qualified human
     judgment that numbers alone cannot settle.
@@ -561,6 +569,7 @@ class V3Evaluator:
             subject=subject,
             as_of=as_of,
             buffer=buffer,
+            measurement=measurement,
         )
 
         envelope = V3VerdictEnvelope(
