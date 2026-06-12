@@ -33,7 +33,7 @@ conformance/
 │   ├── test_replay_determinism.py
 │   ├── test_replay_three_evaluations.py
 │   └── test_coverage_register.py
-└── sovereignty/          Level 3 — scaffold; harness pending
+└── sovereignty/          Level 3 — runnable; two checks carry infra rigs
     ├── test_no_outbound_calls.py
     ├── test_air_gapped.py
     ├── test_tamper_resistance.py
@@ -58,6 +58,13 @@ pytest conformance/ -q -m provenance \
 
 # Durability requires the ledger DSN for the live verify-integrity test:
 pytest conformance/ -q -m durability --ledger-dsn "$LEDGER_DSN"
+
+# Sovereignty: two checks bring their own infrastructure rigs and skip
+# without it. The tamper rig wants a THROWAWAY Postgres; the air-gap rig
+# wants Docker and is opt-in because it builds the runtime image:
+SKI_L3_LEDGER_DSN="postgresql+psycopg://postgres:x@localhost:5433/postgres" \
+SKI_L3_AIRGAP=1 \
+  pytest conformance/sovereignty -q
 ```
 
 `--ski-endpoint` / `--api-key` / `--ledger-dsn` can also be supplied via

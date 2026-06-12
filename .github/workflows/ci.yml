@@ -51,6 +51,25 @@ jobs:
         env:
           SKI_L3_LEDGER_DSN: postgresql+psycopg://postgres:l3test@localhost:5433/postgres
 
+  sovereignty-l3-airgap:
+    name: SKI conformance tests (Sovereignty L3, air-gapped boot)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
+      # Builds the runtime image, boots Postgres + SKI Model in one
+      # loopback-only network namespace (--network=none), replays the
+      # fixed workload, and verifies ledger persistence from inside.
+      - run: pytest conformance/sovereignty/test_air_gapped.py -q --tb=short
+        env:
+          SKI_L3_AIRGAP: "1"
+
+
   codeql:
     name: CodeQL (Python)
     runs-on: ubuntu-latest
