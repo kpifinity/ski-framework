@@ -63,7 +63,8 @@ def test_strict_governor_no_caller_settable_risk_tier(repo_root: Path) -> None:
     risk tier. The server derives it from the KG via
     ``RiskTierGovernor.tier_for_snapshot``.
     """
-    server_src = (repo_root / "reference-implementation" / "src" / "ski_model" / "server.py").read_text()
+    # MeasurementRecord is the shared wire model (RFC 0003 PR 1).
+    server_src = (repo_root / "tools" / "ski-schemas" / "src" / "ski_schemas" / "measurement.py").read_text()
     # Find the MeasurementRecord class block and assert no risk_tier field.
     marker = "class MeasurementRecord"
     assert marker in server_src, "MeasurementRecord class must exist."

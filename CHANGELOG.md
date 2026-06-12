@@ -10,6 +10,19 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Added
+- **`ski-schemas` — the wire contract, defined once** (RFC 0003 PR 1).
+  The verdict envelope, signed LLM transcript, and measurement record
+  now live in `tools/ski-schemas` (deps: pydantic only); the server,
+  `ski-sdk`, and the conformance suite import the same objects.
+  `ski_model.v3.envelope` / `ski_model.v3.transcript` remain as
+  re-export shims, so existing imports keep working. The SDK's vendored
+  models and the field-parity drift test are gone — replaced by an
+  identity test (drift is structurally impossible). The runtime image
+  now builds from the repo root so it carries the shared package;
+  compose, CI, the L3 air-gap rig, and the release workflow build
+  contexts updated. Sixth PyPI package: `ski-schemas` 0.1.0.
+
+### Added
 - **Helm chart** (`deploy/helm/ski`) — Kubernetes deployment that
   *enforces* the framework's constraints instead of documenting them:
   the render fails on `replicas`/`replicaCount` (single writer by

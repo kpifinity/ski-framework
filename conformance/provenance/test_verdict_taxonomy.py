@@ -41,7 +41,9 @@ def test_schema_does_not_admit_null_alone(repo_root: Path) -> None:
 @pytest.mark.provenance
 def test_v3_verdict_enum_has_all_five(repo_root: Path) -> None:
     """The reference v3 ``V3Verdict`` enum lists all five canonical verdicts."""
-    src = (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "envelope.py").read_text()
+    src = (
+        repo_root / "tools" / "ski-schemas" / "src" / "ski_schemas" / "envelope.py"
+    ).read_text()  # single source of truth (RFC 0003 PR 1)
     for verdict in REQUIRED_VERDICTS:
         assert f'{verdict} = "{verdict}"' in src, f"v3/envelope.py V3Verdict enum is missing {verdict}"
 
@@ -49,7 +51,9 @@ def test_v3_verdict_enum_has_all_five(repo_root: Path) -> None:
 @pytest.mark.provenance
 def test_v3_verdict_enum_does_not_define_bare_null(repo_root: Path) -> None:
     """The v3 ``V3Verdict`` enum must NOT define a bare ``NULL`` member."""
-    src = (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "envelope.py").read_text()
+    src = (
+        repo_root / "tools" / "ski-schemas" / "src" / "ski_schemas" / "envelope.py"
+    ).read_text()  # single source of truth (RFC 0003 PR 1)
     for prohibited in PROHIBITED_VERDICTS:
         bare = f'{prohibited} = "{prohibited}"'
         assert bare not in src, (

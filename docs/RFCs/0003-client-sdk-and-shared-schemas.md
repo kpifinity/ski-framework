@@ -1,6 +1,6 @@
 # RFC 0003 — `ski-sdk` and `ski-schemas`: a typed client and a single source of truth for wire models
 
-- **Status:** Accepted (PR 2 implemented; PR 1 deferred to v3.1)
+- **Status:** Accepted and fully implemented (PR 2 June 2026; PR 1 `ski-schemas` landed for v3.1)
 - **Author:** KpiFinity maintainers
 - **Created:** 2026-06
 - **Implemented in:** `ski-sdk` v0.1.0 (landed on `main`, June 2026)
@@ -61,12 +61,12 @@ This RFC introduces two packages:
 
 ### `ski-schemas` (PR 1 — deferred)
 
-Until PR 1 lands, the SDK carries its own copy of the wire models. The
-interim mitigation is `tools/ski-sdk/tests/test_sdk_contract_drift.py`,
-which asserts the SDK's models stay field-for-field in sync with the
-server's envelope, transcript, and measurement models — CI fails if they
-diverge. PR 1 replaces the mitigation with a real shared package and is
-scheduled for v3.1 (see ROADMAP.md).
+**Implemented (v3.1):** `tools/ski-schemas` is the shared package; the
+server, the SDK, and the runtime shims all import it, and the runtime
+image carries it (repo-root Docker build context). The former
+field-parity drift test is now an *identity* test — the models are the
+same objects, so drift is structurally impossible rather than merely
+detected.
 
 ## Versioning
 

@@ -1,8 +1,9 @@
-"""Contract-drift guard: SDK models must match the server's field-for-field.
+"""RFC 0003 PR 1: the SDK and the server share ONE set of wire models.
 
-Skips when the reference implementation is not importable (so the SDK package
-stays independently testable); runs in the repo CI where `ski_model` is on the
-path. If the server changes a model, this test fails and the SDK must follow.
+The old version of this test guarded field-for-field parity between the
+SDK's vendored models and the server's. The vendoring is gone — both
+import ``ski-schemas`` — so the guard is now an identity check: if these
+ever stop being the same objects, someone has re-introduced a copy.
 """
 
 from __future__ import annotations
@@ -16,26 +17,18 @@ from ski_model.v3 import transcript as srv_t
 from ski_sdk import models as sdk
 
 
-def _fields(model: object) -> set:
-    return set(model.model_fields)  # type: ignore[attr-defined]
+def test_sdk_and_server_models_are_the_same_objects() -> None:
+    assert srv.V3VerdictEnvelope is sdk.V3VerdictEnvelope
+    assert srv.KGCitation is sdk.KGCitation
+    assert srv.FormalizableAssertion is sdk.FormalizableAssertion
+    assert srv.VerifierResult is sdk.VerifierResult
+    assert srv.ModelProvenance is sdk.ModelProvenance
+    assert srv.V3Verdict is sdk.V3Verdict
+    assert srv.VerifierStatus is sdk.VerifierStatus
+    assert srv_t.LLMTranscript is sdk.LLMTranscript
 
 
-def test_envelope_and_nested_models_match() -> None:
-    pairs = [
-        (srv.V3VerdictEnvelope, sdk.V3VerdictEnvelope),
-        (srv.KGCitation, sdk.KGCitation),
-        (srv.FormalizableAssertion, sdk.FormalizableAssertion),
-        (srv.VerifierResult, sdk.VerifierResult),
-        (srv.ModelProvenance, sdk.ModelProvenance),
-        (srv_t.LLMTranscript, sdk.LLMTranscript),
-    ]
-    for server_model, sdk_model in pairs:
-        sf, df = _fields(server_model), _fields(sdk_model)
-        assert sf == df, f"{server_model.__name__} drift: only-server={sf - df} only-sdk={df - sf}"
-
-
-def test_measurement_record_matches() -> None:
-    srv_server = pytest.importorskip("ski_model.server")
-    sf = set(srv_server.MeasurementRecord.model_fields)
-    df = set(sdk.MeasurementRecord.model_fields)
-    assert sf == df, f"MeasurementRecord drift: only-server={sf - df} only-sdk={df - sf}"
+def test_shared_models_come_from_ski_schemas() -> None:
+    assert sdk.V3VerdictEnvelope.__module__ == "ski_schemas.envelope"
+    assert sdk.LLMTranscript.__module__ == "ski_schemas.transcript"
+    assert sdk.MeasurementRecord.__module__ == "ski_schemas.measurement"

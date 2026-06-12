@@ -1,27 +1,22 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ski-sdk"
+name = "ski-schemas"
 version = "0.1.0"
-description = "Typed Python client for the SKI Framework SKI Model, with one-call provenance verification."
+description = "SKI Framework wire models: verdict envelope, signed LLM transcript, measurement record. One definition, no drift (RFC 0003)."
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "Apache-2.0" }
-authors = [{ name = "KpiFinity Inc." }]
-dependencies = [
-    "ski-schemas>=0.1,<0.2",
-    "httpx>=0.27,<0.29",
-    "pydantic>=2.13.4,<3",
-    "cryptography>=46,<48",
-]
+license = {text = "Apache-2.0"}
+authors = [{name = "KpiFinity Inc."}]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]
+dependencies = ["pydantic>=2.5,<3"]
 
 [project.urls]
 Homepage = "https://github.com/kpifinity/ski-framework"
@@ -32,4 +27,4 @@ Issues = "https://github.com/kpifinity/ski-framework/issues"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ski_sdk = ["py.typed"]
+ski_schemas = ["py.typed"]

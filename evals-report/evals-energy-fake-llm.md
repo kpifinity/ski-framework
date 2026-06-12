@@ -1,6 +1,6 @@
 # SKI Evals report — `energy` dataset
 
-Backend **fake-llm** · seed 42 · 50 cases · 2026-06-12T18:46:13.619208+00:00
+Backend **fake-llm** · seed 42 · 50 cases · 2026-06-12T20:23:51.304879+00:00
 
 ## Headline metrics
 
@@ -42,7 +42,7 @@ Backend **fake-llm** · seed 42 · 50 cases · 2026-06-12T18:46:13.619208+00:00
 
 ```json
 {
-  "ran_at": "2026-06-12T18:46:13.619208+00:00",
+  "ran_at": "2026-06-12T20:23:51.304879+00:00",
   "backend": "fake-llm",
   "model_weight_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
   "prompt_template_id": "ski.v3.evaluate.5",
