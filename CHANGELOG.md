@@ -9,6 +9,19 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Fixed
+- **Validator ↔ verifier predicate parity.** The Symbolic Verifier now
+  mechanically checks every checkable spec §3.3 obligation type — adds
+  `must_be_below`/`must_be_above` (strict, per spec), `must_be_one_of`/
+  `must_not_be_one_of` (set membership) — and the kg-validator accepts
+  the runtime's implementation extensions (`must_equal`,
+  `must_not_equal`, and the stateful window predicates; flagged for
+  formal adoption in the v3.1 spec revision). Previously a KG author
+  could write spec-valid obligations that silently verified nothing, or
+  be unable to validate KGs the runtime supports. A parity test now
+  pins both directions; only `must`/`must_not`/`should`/`discretionary`/
+  `must_be_recorded_within` remain non-mechanical, by design.
+
 ### Added
 - **`/metrics` — the observability contract, implemented.** The
   Prometheus + Grafana stack and `monitoring/rules/ski-alerts.yml` have

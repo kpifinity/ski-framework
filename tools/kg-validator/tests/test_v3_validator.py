@@ -264,7 +264,15 @@ class TestEnumerations:
             "should",
             "discretionary",
         }
-        assert {member.value for member in ObligationType} == expected
+        extensions = {
+            # Runtime-checkable implementation extensions, pending formal
+            # adoption into spec §3.3 (tracked for the v3.1 spec revision).
+            "must_equal",
+            "must_not_equal",
+            "must_average_within",
+            "must_not_exceed_in_window",
+        }
+        assert {member.value for member in ObligationType} == expected | extensions
 
     def test_edge_type_enumeration_covers_spec_3_2(self) -> None:
         expected = {
