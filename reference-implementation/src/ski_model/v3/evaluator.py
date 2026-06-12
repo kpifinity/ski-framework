@@ -24,6 +24,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Protocol
 
+from pydantic import ValidationError as PydanticValidationError
+
 from .envelope import (
     FormalizableAssertion,
     KGCitation,
@@ -43,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # ---- Prompt template + grammar -------------------------------------------------
 
-PROMPT_TEMPLATE_ID = "ski.v3.evaluate.2"
+PROMPT_TEMPLATE_ID = "ski.v3.evaluate.3"
 """Stable identifier for the v3 evaluation prompt. Bump on every prompt edit."""
 
 
@@ -64,6 +66,10 @@ RULES (non-negotiable):
     rename them.
   * Every formalizable_assertion you emit must reference a specific
     KG obligation by ID. The Symbolic Verifier mechanically checks them.
+  * In assertions, "value" and "observed" are BARE scalars (or, for
+    range obligations like must_be_within, "value" is the two-element
+    array [min, max]). NEVER objects: write 7.2, not {{"value": 7.2}};
+    write [6.5, 8.5], not {{"min": 6.5, "max": 8.5}}.
   * Verdict MUST be one of: CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE,
     DISCRETIONARY.
   * No obligation maps to the measurement: NULL_UNMAPPED.
@@ -146,8 +152,8 @@ RESPONSE_GRAMMAR: Dict[str, Any] = {
                 "properties": {
                     "predicate": {"type": "string"},
                     "metric": {"type": "string"},
-                    "value": {},
-                    "observed": {},
+                    "value": {"type": ["number", "string", "array", "null"]},
+                    "observed": {"type": ["number", "string", "null"]},
                     "satisfied": {"type": "boolean"},
                     "obligation_id": {"type": "string"},
                 },
@@ -492,8 +498,46 @@ class V3Evaluator:
         # real VerifierResult. Async averify handles stateful predicates
         # against the optional telemetry buffer; falls back to identical
         # behaviour to verify() when no buffer / subject / as_of provided.
-        llm_verdict = V3Verdict(raw["verdict"])
-        assertions = [FormalizableAssertion(**a) for a in raw.get("formalizable_assertions", [])]
+        # Output-contract guard: a response that parsed as JSON can still
+        # violate the envelope schema (e.g. a model emitting
+        # {"min": 6.5, "max": 8.5} where the grammar wants [6.5, 8.5], or
+        # {"value": 7.2} where it wants 7.2 — found by the first real-model
+        # eval runs). A misbehaving model must NEVER crash the evaluator:
+        # contract violations degrade to DISCRETIONARY with zero checkable
+        # assertions, the same way malformed JSON does at the backend, and
+        # the violation is recorded for the auditor.
+        try:
+            llm_verdict = V3Verdict(raw["verdict"])
+            reasoning_text: str = raw["reasoning"]
+            assertions = [FormalizableAssertion(**a) for a in raw.get("formalizable_assertions", [])]
+            parsed_citations = [KGCitation(**c) for c in raw.get("kg_citations", [])]
+        except (PydanticValidationError, KeyError, TypeError, ValueError) as exc:
+            detail = f"{type(exc).__name__}: {exc}"
+            logger.warning(
+                "Output-contract violation from backend %s: %s. Degrading to DISCRETIONARY.",
+                self.llm.name,
+                detail[:300],
+            )
+            envelope = V3VerdictEnvelope(
+                verdict=V3Verdict.DISCRETIONARY,
+                reasoning=(
+                    "Output-contract violation: the model's response parsed as JSON "
+                    "but did not conform to the verdict-envelope schema. The verdict "
+                    "is routed to human review; no assertions were checkable. "
+                    f"Violation: {detail[:300]}"
+                ),
+                kg_citations=[],
+                formalizable_assertions=[],
+                verifier_result=VerifierResult(
+                    status=VerifierStatus.UNVERIFIABLE,
+                    checked_assertions=0,
+                    divergences=[f"output_contract: {detail[:300]}"],
+                ),
+                model_provenance=self._build_provenance(),
+                transcript_ref=effective_transcript_ref,
+            )
+            return EvaluationResult(envelope=envelope, transcript=transcript)
+
         verifier_result = await self.verifier.averify(
             assertions,
             llm_verdict=llm_verdict,
@@ -504,8 +548,8 @@ class V3Evaluator:
 
         envelope = V3VerdictEnvelope(
             verdict=llm_verdict,
-            reasoning=raw["reasoning"],
-            kg_citations=[KGCitation(**c) for c in raw.get("kg_citations", [])],
+            reasoning=reasoning_text,
+            kg_citations=parsed_citations,
             formalizable_assertions=assertions,
             verifier_result=verifier_result,
             model_provenance=self._build_provenance(),
