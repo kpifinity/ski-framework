@@ -23,7 +23,7 @@ def _scrape() -> str:
     # no ledger, no signer) — Prometheus scrapes whatever is up.
     response = TestClient(server.app).get("/metrics")
     assert response.status_code == 200
-    return response.text
+    return str(response.text)
 
 
 def test_alert_rule_series_are_exported() -> None:

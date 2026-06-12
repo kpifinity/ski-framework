@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-from ski_model.v3.envelope import FormalizableAssertion, V3Verdict
+from ski_model.v3.envelope import FormalizableAssertion, V3Verdict, VerifierResult
 from ski_model.v3.verifier import SymbolicVerifier
 
 
-def _result(predicate: str, value: object, observed: object, satisfied: bool, verdict: V3Verdict):
+def _result(
+    predicate: str, value: object, observed: object, satisfied: bool, verdict: V3Verdict
+) -> VerifierResult:
     a = FormalizableAssertion.model_validate(
         {
             "predicate": predicate,
