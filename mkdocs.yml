@@ -102,6 +102,7 @@ nav:
       - migrations.md
   - Conformance: conformance.md
   - SKI Evals: evals.md
+  - Benchmarks: benchmarks.md
   - Governance & security:
       - governance.md
       - threat-model.md

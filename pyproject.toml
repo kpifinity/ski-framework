@@ -84,6 +84,7 @@ files = [
     "tools/audit-ledger/src/audit_ledger/canonical.py",
     "tools/ski-sdk/src/ski_sdk",
     "conformance",
+    "benchmarks",
 ]
 exclude = [
     "build/",
@@ -142,6 +143,7 @@ testpaths = [
     "reference-implementation/src/ski_model/v3/tests",
     "tools/ski-sdk/tests",
     "evals/tests",
+    "benchmarks/tests",
 ]
 addopts = [
     "-ra",
