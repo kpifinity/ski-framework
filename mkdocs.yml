@@ -103,6 +103,8 @@ nav:
   - Conformance: conformance.md
   - SKI Evals: evals.md
   - Benchmarks: benchmarks.md
+  - Crosswalks:
+      - EU AI Act: crosswalks/eu-ai-act.md
   - Governance & security:
       - governance.md
       - threat-model.md

@@ -36,7 +36,9 @@ artifact.
   trusted publishing (`ski-sdk`, `ski-kg-extractor`, `ski-kg-validator`,
   `ski-model-deploy`, `ski-audit-ledger`).
 - **EU AI Act crosswalk.** Formal mapping of SKI controls to EU AI Act
-  articles (the regulatory crosswalk promised at v3.0).
+  articles (the regulatory crosswalk promised at v3.0). First revision
+  shipped: [docs/crosswalks/eu-ai-act.md](./docs/crosswalks/eu-ai-act.md);
+  revisions follow as harmonised standards and Commission guidance land.
 
 ## v3.2 — Scale and ecosystem (target: Q4 2026)
 

@@ -9,6 +9,16 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added
+- **EU AI Act crosswalk** (`docs/crosswalks/eu-ai-act.md`). Article-level
+  mapping of SKI controls to Regulation (EU) 2024/1689 ahead of the
+  2 August 2026 applicability date for high-risk AI system obligations.
+  Covers provider requirements (Articles 9-19, 72) and deployer
+  obligations (Article 26) with explicit coverage levels, an
+  element-by-element Article 12(3) record-keeping mapping onto the audit
+  ledger, and a stated out-of-scope boundary (classification, FRIA,
+  conformity assessment, GPAI). Informative, not legal advice.
+
 ### Fixed
 - **Evaluator crash on schema-violating model output.** The first
   nightly real-model eval run found that a response which parses as
