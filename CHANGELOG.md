@@ -10,6 +10,32 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Fixed
+- **Quickstart actually boots with a Knowledge Graph again.** The
+  compose stack mounted `reference-implementation/examples/knowledge-graphs/`,
+  a directory the v3 example cleanup removed — every fresh
+  `docker compose up` since then booted with **no KG** (`/api/health`:
+  `no_kg`). And the surviving v3 demo KGs are typed-graph documents the
+  runtime loader does not read (the documented kg_loader seam). Fix:
+  `scripts/make-demo-kg.py` (invoked by `scripts/setup.sh`) generates a
+  runtime-shape, ten-obligation energy demo KG and **signs it with a
+  locally generated ed25519 demo key** — so even the demo boots
+  conformantly (`KG_REQUIRE_SIGNATURE=true`) and no private key is ever
+  committed. The script round-trips the result through `load_signed_kg`
+  before writing.
+
+### Added
+- **5-minute demo mode** (`docker-compose.demo.yml`): the full v3
+  pipeline — verifier, signed transcripts, append-only ledger,
+  `/metrics` — under the deterministic FakeLLM backend, with no
+  multi-GB model pull between a new user and their first verdict
+  envelope. Clearly labeled non-conformant. QUICKSTART gains the
+  walkthrough with a copy-paste first FLAG.
+- **Helm chart defaults to the published images**
+  (`ghcr.io/kpifinity/ski-model`, signed build provenance via the
+  release workflow) — `helm install` now works without building images
+  first. Air-gapped clusters mirror and override `image.repository`.
+
+### Fixed
 - **Validator ↔ verifier predicate parity.** The Symbolic Verifier now
   mechanically checks every checkable spec §3.3 obligation type — adds
   `must_be_below`/`must_be_above` (strict, per spec), `must_be_one_of`/

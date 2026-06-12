@@ -19,9 +19,6 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- if or (hasKey .Values "replicas") (hasKey .Values "replicaCount") -}}
 {{- fail "The SKI Model is single-worker BY DESIGN (docs/CONCURRENCY.md): one Pod per ledger. replicas/replicaCount are not supported - shard by installing one release per shard." -}}
 {{- end -}}
-{{- if not .Values.image.repository -}}
-{{- fail "image.repository is required: build reference-implementation/Dockerfile.ski-model and push it to your registry." -}}
-{{- end -}}
 {{- if not .Values.existingSecret -}}
 {{- fail "existingSecret is required (keys: api-key, ledger-dsn; +postgres-password when postgres.bundled). This chart ships NO default secrets." -}}
 {{- end -}}

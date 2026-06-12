@@ -1,0 +1,69 @@
+# ============================================================================
+# SKI Framework — 5-MINUTE DEMO stack. NOT conformant. NOT for production.
+# ============================================================================
+# Runs the full v3 pipeline — evaluator, Symbolic Verifier, signed
+# transcripts, append-only ledger, /metrics — with the deterministic
+# FakeLLM backend instead of a local model, so there is no multi-GB
+# model download between you and your first verdict.
+#
+#   cd reference-implementation
+#   ../scripts/setup.sh                # secrets + self-signed TLS (once)
+#   docker compose -f docker-compose.demo.yml up -d
+#   curl -k https://localhost:8000/api/health
+#
+# Why "not conformant": SKI_V3_LLM_BACKEND=fake is a pattern-matching
+# stub. It exercises every framework guarantee (provenance, signing,
+# verification, ledger) but performs no real language-model evaluation.
+# Use the main docker-compose.yml (Ollama) or a vLLM deployment for
+# anything beyond a demo.
+# ============================================================================
+
+services:
+
+  ski-model:
+    build:
+      context: ..
+      dockerfile: reference-implementation/Dockerfile.ski-model
+    container_name: ski-model-demo
+    ports:
+      - "8000:8000"
+    environment:
+      SKI_V3_LLM_BACKEND: fake
+      KG_PATH: /app/kg/kg.json
+      # Even the demo boots conformantly: setup.sh generates and SIGNS
+      # the demo KG locally (scripts/make-demo-kg.py).
+      KG_REQUIRE_SIGNATURE: "true"
+      LEDGER_DSN: postgresql://${POSTGRES_USER:?run ../scripts/setup.sh first}:${POSTGRES_PASSWORD:?run ../scripts/setup.sh first}@postgres:5432/${POSTGRES_DB:-ski_ledger}
+      API_KEY: ${SKI_API_KEY:?run ../scripts/setup.sh first}
+      TLS_ENABLED: ${TLS_ENABLED:-true}
+      LOG_LEVEL: INFO
+    volumes:
+      - ./examples/knowledge-graphs/kg.json:/app/kg/kg.json:ro
+      - ./tls:/app/tls:ro
+    networks: [ski-demo]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:15.6-alpine
+    container_name: ski-ledger-db-demo
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ski_ledger}
+      POSTGRES_USER: ${POSTGRES_USER:?run ../scripts/setup.sh first}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ../scripts/setup.sh first}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+    volumes:
+      - ./src/ledger/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./src/ledger/append_only.sql:/docker-entrypoint-initdb.d/02-append-only.sql:ro
+      - ./src/ledger/migrations/0002_transcript_columns.sql:/docker-entrypoint-initdb.d/03-transcript-columns.sql:ro
+    networks: [ski-demo]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+networks:
+  ski-demo:
+    driver: bridge
