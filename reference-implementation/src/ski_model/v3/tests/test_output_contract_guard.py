@@ -118,6 +118,6 @@ def test_grammar_forbids_object_valued_assertion_fields() -> None:
 
 
 def test_prompt_pins_scalar_assertion_shapes_and_id_bumped() -> None:
-    assert PROMPT_TEMPLATE_ID == "ski.v3.evaluate.4"
+    assert PROMPT_TEMPLATE_ID == "ski.v3.evaluate.5"
     assert "BARE scalars" in PROMPT_TEMPLATE
     assert "[min, max]" in PROMPT_TEMPLATE

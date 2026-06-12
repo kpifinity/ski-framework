@@ -9,6 +9,21 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Fixed
+- **Verifier observation grounding — fabricated observations no longer
+  pass verification.** Eval run 4 produced a false FLAG: the model
+  fuzzy-matched a deliberately unmapped measurement key onto a KG
+  metric and invented the reading; the arithmetic was internally
+  consistent, so the arithmetic-only Symbolic Verifier agreed. The
+  verifier now cross-checks every stateless assertion against the
+  actual measurement record: a metric the measurement doesn't contain,
+  or an `observed` differing from what it records, is a fabricated
+  observation → LLM_CONTRADICTION → DISCRETIONARY. Stateful (windowed)
+  assertions are exempt (their observation is an aggregate, grounded
+  against the telemetry buffer). Prompt pins per-predicate comparison
+  semantics (inclusive boundaries) and warns that observations are
+  cross-checked; template bumped to `ski.v3.evaluate.5`.
+
 ### Added
 - **EU AI Act crosswalk** (`docs/crosswalks/eu-ai-act.md`). Article-level
   mapping of SKI controls to Regulation (EU) 2024/1689 ahead of the
