@@ -92,7 +92,8 @@ dataset through the production path on a local Ollama backend.
 | 2 | `evaluate.2` + schema-constrained decoding | 22% | 11% | n/a (no checkable assertions) | **0** |
 | 3 | `evaluate.3` + output-contract guard, raised token budget | 54% | 33% | 75% | **0** |
 | 4 | `evaluate.4` (scoping clarified, mapping defined, worked example) | 76% | 66.7% | 73% | **0** |
-| 5 | `evaluate.5` + verifier observation grounding | — pending | — | — | **0 required** |
+| 5 | `evaluate.5` + verifier observation grounding | 72% | 72.2% | 69% | **0** |
+| 6 | taxonomy guard (no unverified CLEAR) + obligation-side grounding | — pending | — | — | **0 required** |
 
 What each iteration found and fixed:
 
@@ -130,6 +131,24 @@ What each iteration found and fixed:
    the measurement doesn't contain is a fabrication, both degraded as
    LLM_CONTRADICTION; the prompt pins explicit comparison semantics
    (inclusive boundaries, range membership) per predicate.
+
+5. **Run 5 → 6:** observation grounding worked — the false-FLAG class
+   is gone (FLAG precision back to 100%) and FLAG recall rose to 72%.
+   But run 5 found the framework's own deepest gap yet: on two
+   deliberately unmapped cases the model *reasoned correctly* ("nothing
+   maps") and then emitted **CLEAR anyway** — zero citations, zero
+   assertions — and the envelope shipped as CLEAR. An unverifiable
+   compliance claim; a coverage gap masked as green. Fixes: the
+   **taxonomy guard** — a CLEAR with no formalizable assertions is
+   remapped deterministically (no citations → NULL_UNMAPPED; citations
+   → DISCRETIONARY) and noted in the envelope; and **obligation-side
+   grounding** — an assertion's `metric` and `value` must now match the
+   obligation it cites, closing the fabricated-cap hole the same
+   analysis exposed. Accuracy (72% vs 76%) is qwen-7B noise at this
+   dataset size; the remaining misses are arithmetic errors the
+   verifier catches and routes to human review. Model-quality gains
+   from here come from a larger model on the vLLM backend, not from
+   prompt surgery.
 
 The row that never moves is the point: **across every run, zero
 breaches were silently CLEARed and FLAG precision held at 100%.** Every
