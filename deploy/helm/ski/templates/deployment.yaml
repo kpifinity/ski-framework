@@ -1,0 +1,133 @@
+{{- include "ski.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "ski.fullname" . }}-model
+  labels:
+    {{- include "ski.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ski-model
+spec:
+  # ONE Pod per ledger. Recreate strategy: the old single writer must be
+  # gone before the new one starts. Do not put this behind an HPA.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ski.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ski-model
+  template:
+    metadata:
+      labels:
+        {{- include "ski.labels" . | nindent 8 }}
+        app.kubernetes.io/component: ski-model
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: ski-model
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          ports:
+            - name: api
+              containerPort: 8000
+          env:
+            - name: SKI_MODEL_WORKERS
+              value: "1"
+            - name: SKI_V3_LLM_BACKEND
+              value: {{ .Values.skiModel.backend | quote }}
+            - name: SKI_MODEL_NAME
+              value: {{ .Values.skiModel.modelName | quote }}
+            - name: SKI_MODEL_SEED
+              value: {{ .Values.skiModel.seed | quote }}
+            - name: SKI_MODEL_MAX_TOKENS
+              value: {{ .Values.skiModel.maxTokens | quote }}
+            {{- if .Values.skiModel.modelFileSha256 }}
+            - name: SKI_MODEL_FILE_SHA256
+              value: {{ .Values.skiModel.modelFileSha256 | quote }}
+            {{- end }}
+            {{- if eq .Values.skiModel.backend "ollama" }}
+            - name: OLLAMA_BASE_URL
+              value: {{ include "ski.ollamaUrl" . | quote }}
+            {{- end }}
+            {{- if eq .Values.skiModel.backend "vllm" }}
+            - name: VLLM_BASE_URL
+              value: {{ .Values.skiModel.externalVllmUrl | quote }}
+            {{- end }}
+            - name: KG_PATH
+              value: /app/kg/kg.json
+            - name: KG_REQUIRE_SIGNATURE
+              value: {{ .Values.kg.requireSignature | quote }}
+            - name: TLS_ENABLED
+              value: {{ .Values.tls.enabled | quote }}
+            - name: SKI_TENANT_ID
+              value: {{ .Values.skiModel.tenantId | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.skiModel.logLevel | quote }}
+            - name: SKI_AGREEMENT_WINDOW
+              value: {{ .Values.skiModel.agreementWindow | quote }}
+            - name: SKI_AGREEMENT_THRESHOLD
+              value: {{ .Values.skiModel.agreementThreshold | quote }}
+            {{- if .Values.skiModel.persistence.enabled }}
+            - name: SKI_TRANSCRIPT_KEY_PATH
+              value: /data/keys/transcript.ed25519
+            {{- end }}
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret | quote }}, key: api-key}
+            - name: LEDGER_DSN
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret | quote }}, key: ledger-dsn}
+          volumeMounts:
+            - {name: kg, mountPath: /app/kg, readOnly: true}
+            {{- if .Values.tls.enabled }}
+            - {name: tls, mountPath: /app/tls, readOnly: true}
+            {{- end }}
+            {{- if .Values.skiModel.persistence.enabled }}
+            - {name: data, mountPath: /data}
+            {{- end }}
+          {{- $scheme := .Values.tls.enabled | ternary "HTTPS" "HTTP" }}
+          startupProbe:
+            httpGet: {path: /api/health, port: api, scheme: {{ $scheme }}}
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /api/health, port: api, scheme: {{ $scheme }}}
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: {path: /api/health, port: api, scheme: {{ $scheme }}}
+            periodSeconds: 10
+          resources: {{- toYaml .Values.skiModel.resources | nindent 12 }}
+      volumes:
+        - name: kg
+          {{- if .Values.kg.fromSecret }}
+          secret: {secretName: {{ .Values.kg.configMapName | quote }}}
+          {{- else }}
+          configMap: {name: {{ .Values.kg.configMapName | quote }}}
+          {{- end }}
+        {{- if .Values.tls.enabled }}
+        - name: tls
+          secret:
+            secretName: {{ .Values.tls.secretName | quote }}
+            items:
+              - {key: tls.crt, path: ski-model.crt}
+              - {key: tls.key, path: ski-model.key}
+        {{- end }}
+        {{- if .Values.skiModel.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "ski.fullname" . }}-model-data
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}

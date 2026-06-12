@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ski.fullname" . }}-model
+  labels:
+    {{- include "ski.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ski-model
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - {name: api, port: {{ .Values.service.port }}, targetPort: api}
+  selector:
+    app.kubernetes.io/name: {{ include "ski.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: ski-model

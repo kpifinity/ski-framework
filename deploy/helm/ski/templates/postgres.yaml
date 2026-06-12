@@ -1,0 +1,89 @@
+{{- if .Values.postgres.bundled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ski.fullname" . }}-ledger-init
+  labels: {{- include "ski.labels" . | nindent 4 }}
+data:
+  01-schema.sql: |
+{{ .Files.Get "files/schema.sql" | indent 4 }}
+  02-append-only.sql: |
+{{ .Files.Get "files/append_only.sql" | indent 4 }}
+  03-transcript-columns.sql: |
+{{ .Files.Get "files/0002_transcript_columns.sql" | indent 4 }}
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ski.fullname" . }}-postgres
+  labels:
+    {{- include "ski.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ledger-db
+spec:
+  serviceName: {{ include "ski.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ski.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ledger-db
+  template:
+    metadata:
+      labels:
+        {{- include "ski.labels" . | nindent 8 }}
+        app.kubernetes.io/component: ledger-db
+    spec:
+      containers:
+        - name: postgres
+          image: {{ .Values.postgres.image | quote }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret | quote }}, key: postgres-password}
+            - name: POSTGRES_INITDB_ARGS
+              value: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+          ports:
+            - {name: pg, containerPort: 5432}
+          volumeMounts:
+            - {name: data, mountPath: /var/lib/postgresql/data}
+            - {name: init, mountPath: /docker-entrypoint-initdb.d, readOnly: true}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", {{ .Values.postgres.username | quote }}, "-d", {{ .Values.postgres.database | quote }}]
+            periodSeconds: 10
+          resources: {{- toYaml .Values.postgres.resources | nindent 12 }}
+      volumes:
+        - name: init
+          configMap: {name: {{ include "ski.fullname" . }}-ledger-init}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size }}
+        {{- with .Values.postgres.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ski.fullname" . }}-postgres
+  labels:
+    {{- include "ski.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ledger-db
+spec:
+  clusterIP: None
+  ports:
+    - {name: pg, port: 5432, targetPort: pg}
+  selector:
+    app.kubernetes.io/name: {{ include "ski.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: ledger-db
+{{- end }}

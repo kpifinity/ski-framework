@@ -10,6 +10,19 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Added
+- **Helm chart** (`deploy/helm/ski`) — Kubernetes deployment that
+  *enforces* the framework's constraints instead of documenting them:
+  the render fails on `replicas`/`replicaCount` (single writer by
+  design; shard by release), fails without an operator-supplied Secret
+  (no default credentials anywhere), and fails without a signed-KG
+  ConfigMap. The sovereign boundary ships as a NetworkPolicy (egress
+  only to ledger + LLM backend; `networkPolicy.airgap=true` drops DNS
+  too). Bundled evaluation Postgres (ledger SQL byte-identical to the
+  reference implementation, CI-enforced) and Ollama; vLLM via external
+  GPU endpoint. CI lints, renders three permutations, and asserts the
+  constraint failures fail.
+
+### Added
 - **vLLM backend** (`SKI_V3_LLM_BACKEND=vllm`) — the production GPU
   inference path. OpenAI-compatible `/v1/chat/completions` with vLLM's
   `guided_json` decoder-level grammar enforcement (token masking against

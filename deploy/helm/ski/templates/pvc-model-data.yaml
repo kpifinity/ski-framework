@@ -1,0 +1,15 @@
+{{- if .Values.skiModel.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "ski.fullname" . }}-model-data
+  labels: {{- include "ski.labels" . | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.skiModel.persistence.size }}
+  {{- with .Values.skiModel.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

@@ -1,0 +1,31 @@
+SKI Framework — {{ .Chart.AppVersion }} ({{ .Values.skiModel.backend }} backend)
+
+The SKI Model is running as ONE Pod, on purpose. Scale by sharding
+(one release per shard), never by adding replicas — the chart fails
+the render if you try.
+
+Next steps:
+
+1. Verify health (TLS {{ .Values.tls.enabled | ternary "on" "OFF — non-default" }}):
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ski.fullname" . }}-model {{ .Values.service.port }}
+     curl {{ .Values.tls.enabled | ternary "https" "http" }}://localhost:{{ .Values.service.port }}/api/health
+   Expect kg_loaded=true and kg_signature_verified=true. A conformant
+   deployment never runs with an unverified KG.
+
+{{- if and .Values.ollama.bundled (eq .Values.skiModel.backend "ollama") }}
+2. Stage the model weights (first install only):
+     kubectl -n {{ .Release.Namespace }} exec sts/{{ include "ski.fullname" . }}-ollama -- ollama pull {{ .Values.skiModel.modelName }}
+   For air-gapped clusters, pre-stage the model directory into the
+   ollama PVC from your internal mirror instead.
+{{- end }}
+
+{{- if .Values.postgres.bundled }}
+3. The bundled Postgres is for EVALUATION. Production ledgers belong on
+   a DBA-managed instance with documented backups; apply the SQL in the
+   chart's files/ directory there and point ledger-dsn at it.
+{{- end }}
+
+4. Run the conformance suite against the deployment:
+     pytest conformance/ -q --ski-endpoint https://<host>:{{ .Values.service.port }} --api-key $SKI_API_KEY
+
+Sovereign boundary: NetworkPolicy {{ .Values.networkPolicy.enabled | ternary "ENABLED" "DISABLED — non-default" }}{{ if .Values.networkPolicy.airgap }} (air-gap mode){{ end }}.
