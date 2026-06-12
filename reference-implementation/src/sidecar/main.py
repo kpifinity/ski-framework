@@ -21,7 +21,8 @@ from typing import Any, AsyncIterator, Optional
 
 import httpx
 import uvicorn
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, Response, status
+from prometheus_client import CONTENT_TYPE_LATEST, CollectorRegistry, Gauge, generate_latest
 from pydantic import BaseModel
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -72,6 +73,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(title="SKI Data Sidecar", version="0.1.0-alpha", lifespan=lifespan)
 
+# Observability contract: monitoring/rules/ski-alerts.yml pages on
+# telemetry going silent via this exact series name.
+METRICS_REGISTRY = CollectorRegistry()
+LAST_TELEMETRY_TS = Gauge(
+    "ski_sidecar_last_telemetry_timestamp",
+    "Unix time of the last telemetry record the sidecar forwarded.",
+    registry=METRICS_REGISTRY,
+)
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics() -> Response:
+    return Response(content=generate_latest(METRICS_REGISTRY), media_type=CONTENT_TYPE_LATEST)
+
 
 class TelemetryPayload(BaseModel):
     id: Optional[str] = None
@@ -101,6 +116,7 @@ async def receive_telemetry(payload: TelemetryPayload) -> dict[str, Any]:
 
     state.telemetry_received += 1
     state.last_telemetry_time = time.time()
+    LAST_TELEMETRY_TS.set(state.last_telemetry_time)
 
     record = {
         "telemetry_id": payload.id or f"tel_{state.telemetry_received}",

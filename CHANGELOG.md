@@ -10,6 +10,23 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Added
+- **`/metrics` — the observability contract, implemented.** The
+  Prometheus + Grafana stack and `monitoring/rules/ski-alerts.yml` have
+  shipped since v2.1, but the runtime never exported the series the
+  alert rules fire on. The SKI Model now exposes `/metrics`
+  (`ski_agreement_rate`, `ski_kg_signature_verified`,
+  `ski_ledger_sequence_gaps_total`, verdict counters by type, evaluation
+  latency histogram, runtime info), the sidecar exports
+  `ski_sidecar_last_telemetry_timestamp`, and the ledger client trips
+  the sequence-gap counter when the single-writer invariant is violated
+  (rows appearing/vanishing underneath the writer — a tamper/ops
+  signal). A regression test parses the alert rules and asserts every
+  referenced series is exported, so the contract can't silently drift
+  again. `/metrics` is unauthenticated by design (scrape endpoint;
+  aggregates only) and contained by the sovereign-boundary
+  NetworkPolicy.
+
+### Added
 - **`ski-schemas` — the wire contract, defined once** (RFC 0003 PR 1).
   The verdict envelope, signed LLM transcript, and measurement record
   now live in `tools/ski-schemas` (deps: pydantic only); the server,

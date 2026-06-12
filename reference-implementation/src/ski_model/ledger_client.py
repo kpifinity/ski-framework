@@ -68,6 +68,10 @@ class LedgerClient:
             dsn = dsn.replace("postgresql://", "postgresql+psycopg://", 1)
         self._dsn = dsn
         self._engine: Optional[AsyncEngine] = None
+        # Sequence-gap tripwire: this process is THE single writer, so after
+        # the first append it knows exactly what the ledger head must be.
+        # Any other head means rows appeared/vanished underneath us.
+        self._expected_next_seq: Optional[int] = None
         self._session_factory: Optional[async_sessionmaker[AsyncSession]] = None
 
     async def initialize(self) -> None:
@@ -106,6 +110,19 @@ class LedgerClient:
             else:
                 sequence_number = int(row[0]) + 1
                 previous_hash = str(row[1])
+
+            if self._expected_next_seq is not None and sequence_number != self._expected_next_seq:
+                from . import metrics
+
+                metrics.LEDGER_SEQUENCE_GAPS.inc()
+                logger.warning(
+                    "Ledger sequence gap: this writer expected next sequence %d but the "
+                    "ledger head implies %d. Single-writer invariant violated - "
+                    "investigate for tampering or a concurrent writer.",
+                    self._expected_next_seq,
+                    sequence_number,
+                )
+            self._expected_next_seq = sequence_number + 1
 
             timestamp_iso = datetime.now(timezone.utc).isoformat()
             payload = canonical_entry_payload(
