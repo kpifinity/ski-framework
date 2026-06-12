@@ -71,3 +71,15 @@ Treat the generated `.env` file as a secret. Do not commit it. The
 ## What to do if you find a security defect
 
 See [`SECURITY.md`](../SECURITY.md). Do not open a public issue.
+
+## Metrics endpoint
+
+`GET /metrics` (Prometheus exposition) is **unauthenticated by
+design** — scrape agents cannot carry the API key. It exposes aggregate
+operational counters only: verdict counts by taxonomy type, agreement
+rate, KG-signature status, latency histograms. No measurement payloads,
+verdict bodies, reasoning text, or tenant identifiers are ever exported.
+Network exposure is bounded the same way as every other port: the
+compose network / Helm NetworkPolicy keep it inside the sovereign
+boundary. If your threat model requires it, front the port with an
+authenticating scrape proxy.

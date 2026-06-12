@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel
 
 # Allow execution as `python -m ski_model.server` (package mode) OR as a
@@ -47,6 +47,7 @@ except ImportError:  # pragma: no cover
 
 from ski_schemas.measurement import MeasurementRecord
 
+from . import metrics
 from .kg_loader import KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
 from .ledger_migrations import ensure_v3_ledger_schema
@@ -208,6 +209,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     except FileNotFoundError:
         logger.warning("No Knowledge Graph at %s. /api/kg/load can supply one.", kg_path)
 
+    metrics.KG_SIGNATURE_VERIFIED.set(
+        1 if (state.knowledge_graph is not None and state.knowledge_graph.signature_verified) else 0
+    )
+
     if state.knowledge_graph is not None:
         state.tag_registry = TagRegistry.from_knowledge_graph(state.knowledge_graph)
 
@@ -260,6 +265,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         window_size=int(os.getenv("SKI_AGREEMENT_WINDOW", "1000")),
         threshold=float(os.getenv("SKI_AGREEMENT_THRESHOLD", "0.95")),
     )
+
+    metrics.RUNTIME_INFO.labels(version=_VERSION, backend=state.llm_backend.name).set(1)
+    metrics.AGREEMENT_RATE.set(1.0)  # empty window == no observed disagreement
 
     logger.info(
         "SKI Model ready (evaluator=v3, llm=%s, agreement_window=%d, agreement_threshold=%.3f)",
@@ -318,6 +326,7 @@ async def load_kg(kg_data: Dict[str, Any]) -> Dict[str, Any]:
     if state.evaluator is not None:
         state.evaluator.kg_version_hash = state.kg_version_hash
 
+    metrics.KG_SIGNATURE_VERIFIED.set(1 if kg.signature_verified else 0)
     logger.info("KG (re)loaded: version=%s, rules=%d", kg.version, len(kg.rules))
     return {"status": "success", "rules_loaded": len(kg.rules), "version": kg.version}
 
@@ -339,6 +348,8 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No KG loaded.")
     if state.evaluator is None or state.ledger is None:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Service not initialised.")
+    _eval_started = datetime.now(timezone.utc)
+    metrics.LAST_TELEMETRY_TS.set(_eval_started.timestamp())
 
     # Write to the telemetry buffer BEFORE evaluation so stateful predicates
     # in PR 10c can see the current event via subsequent queries. Same
@@ -396,7 +407,13 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     # PR 12: record the verifier outcome for the agreement-rate monitor.
     if state.agreement_monitor is not None:
         state.agreement_monitor.record(envelope.verifier_result.status)
+        snapshot = state.agreement_monitor.snapshot()
+        rate = snapshot.get("agreement_rate")
+        if rate is not None:
+            metrics.AGREEMENT_RATE.set(float(rate))
 
+    metrics.VERDICTS.labels(verdict=getattr(envelope.verdict, "value", str(envelope.verdict))).inc()
+    metrics.EVALUATION_SECONDS.observe((datetime.now(timezone.utc) - _eval_started).total_seconds())
     return envelope
 
 
@@ -425,6 +442,15 @@ async def canary_status() -> Dict[str, Any]:
     snapshot = state.agreement_monitor.snapshot()
     snapshot["status"] = "healthy" if snapshot["is_healthy"] else "degraded"
     return snapshot
+
+
+@app.get("/metrics", include_in_schema=False)
+async def prometheus_metrics() -> Response:
+    """Prometheus exposition. Unauthenticated by design (scrape endpoint):
+    aggregate counters only — no payloads, verdict bodies, or tenant data —
+    and contained by the sovereign-boundary NetworkPolicy."""
+    payload, content_type = metrics.render()
+    return Response(content=payload, media_type=content_type)
 
 
 # ============================================================================

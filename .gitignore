@@ -81,3 +81,7 @@ Thumbs.db
 # Type-checker / linter caches
 .mypy_cache/
 .ruff_cache/
+
+# Generated, locally-signed demo KG + local keys/certs (scripts/setup.sh, scripts/make-demo-kg.py)
+reference-implementation/examples/knowledge-graphs/kg.json
+reference-implementation/tls/

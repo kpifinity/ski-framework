@@ -10,10 +10,11 @@
 # per shard), never by adding replicas.
 
 image:
-  # REQUIRED. No public image is published yet — build
-  # reference-implementation/Dockerfile.ski-model and push it to your
-  # (private, air-gap-mirrored) registry.
-  repository: ""
+  # Public images are published to GHCR on every release with signed
+  # build provenance (Sigstore attestations via release.yml). Air-gapped
+  # clusters: mirror this image into your internal registry and point
+  # repository at the mirror.
+  repository: ghcr.io/kpifinity/ski-model
   tag: "3.1.0-alpha.2"
   pullPolicy: IfNotPresent
 imagePullSecrets: []

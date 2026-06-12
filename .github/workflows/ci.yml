@@ -110,17 +110,16 @@ jobs:
       - name: Render — default (bundled postgres + ollama, TLS)
         run: |
           helm template ski deploy/helm/ski \
-            --set image.repository=registry.internal/ski-model \
             --set existingSecret=ski-secrets \
             --set kg.configMapName=ski-kg \
             --set tls.secretName=ski-tls > /tmp/render-default.yaml
+          grep -q "ghcr.io/kpifinity/ski-model" /tmp/render-default.yaml
           grep -q "SKI_MODEL_WORKERS" /tmp/render-default.yaml
           grep -q "replicas: 1" /tmp/render-default.yaml
           grep -q "NetworkPolicy" /tmp/render-default.yaml
       - name: Render — air-gap + vllm external
         run: |
           helm template ski deploy/helm/ski \
-            --set image.repository=registry.internal/ski-model \
             --set existingSecret=ski-secrets \
             --set kg.configMapName=ski-kg \
             --set tls.secretName=ski-tls \
@@ -132,12 +131,10 @@ jobs:
       - name: Constraints fail the render (not the pod)
         run: |
           ! helm template ski deploy/helm/ski \
-            --set image.repository=r --set existingSecret=s --set kg.configMapName=k --set tls.secretName=t \
+            --set existingSecret=s --set kg.configMapName=k --set tls.secretName=t \
             --set replicaCount=3 2>/dev/null
           ! helm template ski deploy/helm/ski \
-            --set image.repository=r --set kg.configMapName=k --set tls.secretName=t 2>/dev/null
-          ! helm template ski deploy/helm/ski \
-            --set existingSecret=s --set kg.configMapName=k --set tls.secretName=t 2>/dev/null
+            --set kg.configMapName=k --set tls.secretName=t 2>/dev/null
 
 
 

@@ -96,7 +96,11 @@ _STATELESS_PREDICATES = frozenset(
     {
         "must_not_exceed",
         "must_be_at_least",
+        "must_be_below",
+        "must_be_above",
         "must_be_within",
+        "must_be_one_of",
+        "must_not_be_one_of",
         "must_equal",
         "must_not_equal",
     }
@@ -153,10 +157,54 @@ def _check_must_not_equal(observed: Any, value: Any) -> _CheckOutcome:
     return _CheckOutcome(ok, f"observed={observed!r} != value={value!r}: {ok}")
 
 
+def _check_must_be_below(observed: Any, value: Any) -> _CheckOutcome:
+    if not isinstance(observed, (int, float)) or not isinstance(value, (int, float)):
+        return _CheckOutcome(
+            None,
+            f"must_be_below requires numeric operands; got observed={observed!r} value={value!r}.",
+        )
+    ok = observed < value  # strictly below, per spec §3.3
+    return _CheckOutcome(ok, f"observed={observed} < value={value}: {ok}")
+
+
+def _check_must_be_above(observed: Any, value: Any) -> _CheckOutcome:
+    if not isinstance(observed, (int, float)) or not isinstance(value, (int, float)):
+        return _CheckOutcome(
+            None,
+            f"must_be_above requires numeric operands; got observed={observed!r} value={value!r}.",
+        )
+    ok = observed > value  # strictly above, per spec §3.3
+    return _CheckOutcome(ok, f"observed={observed} > value={value}: {ok}")
+
+
+def _check_must_be_one_of(observed: Any, value: Any) -> _CheckOutcome:
+    if not isinstance(value, (list, tuple)) or not value:
+        return _CheckOutcome(
+            None,
+            f"must_be_one_of requires value to be a non-empty list; got {value!r}.",
+        )
+    ok = observed in value
+    return _CheckOutcome(ok, f"observed={observed!r} in {list(value)!r}: {ok}")
+
+
+def _check_must_not_be_one_of(observed: Any, value: Any) -> _CheckOutcome:
+    if not isinstance(value, (list, tuple)) or not value:
+        return _CheckOutcome(
+            None,
+            f"must_not_be_one_of requires value to be a non-empty list; got {value!r}.",
+        )
+    ok = observed not in value
+    return _CheckOutcome(ok, f"observed={observed!r} not in {list(value)!r}: {ok}")
+
+
 _PREDICATE_HANDLERS = {
     "must_not_exceed": _check_must_not_exceed,
     "must_be_at_least": _check_must_be_at_least,
+    "must_be_below": _check_must_be_below,
+    "must_be_above": _check_must_be_above,
     "must_be_within": _check_must_be_within,
+    "must_be_one_of": _check_must_be_one_of,
+    "must_not_be_one_of": _check_must_not_be_one_of,
     "must_equal": _check_must_equal,
     "must_not_equal": _check_must_not_equal,
 }

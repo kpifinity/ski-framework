@@ -9,11 +9,13 @@
 ## Install
 
 ```bash
-# 1. Build and push the runtime image to YOUR registry (no public
-#    image is published; air-gapped clusters mirror it internally):
-docker build -f reference-implementation/Dockerfile.ski-model \
-  -t registry.internal/ski-model:3.1.0-alpha.2 reference-implementation/
-docker push registry.internal/ski-model:3.1.0-alpha.2
+# 1. Images: public images are published to ghcr.io/kpifinity/ski-model
+#    on every release, with signed build provenance (verify with
+#    `gh attestation verify`). The chart defaults to them. Air-gapped
+#    clusters mirror the image internally and override image.repository.
+#    To build from source instead (repo-root context — the image carries
+#    the shared ski-schemas package):
+#      docker build -f reference-implementation/Dockerfile.ski-model -t <registry>/ski-model:tag .
 
 # 2. Create the secret — the chart ships NO defaults and refuses to
 #    render without it. Use your secret manager in production.
@@ -28,7 +30,6 @@ kubectl create secret tls ski-tls --cert=ski-model.crt --key=ski-model.key
 
 # 4. Install:
 helm install ski deploy/helm/ski \
-  --set image.repository=registry.internal/ski-model \
   --set existingSecret=ski-secrets \
   --set kg.configMapName=ski-kg \
   --set tls.secretName=ski-tls

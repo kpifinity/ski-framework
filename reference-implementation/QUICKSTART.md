@@ -6,6 +6,38 @@ This walks you through running the SKI Framework reference implementation
 on a single machine. No cloud API key is required. Total time: ~10 minutes
 the first time, ~2 minutes thereafter.
 
+## First verdict in 5 minutes (demo mode — not conformant)
+
+No model download, no GPU: the deterministic FakeLLM backend exercises
+the full v3 pipeline — evaluator, Symbolic Verifier, signed transcripts,
+append-only ledger, /metrics — so you can see a real verdict envelope
+immediately. **Not conformant** (no real language model); use the full
+stack below for anything beyond a demo.
+
+```bash
+./scripts/setup.sh          # secrets + TLS + signed demo KG (once, from repo root)
+cd reference-implementation
+docker compose -f docker-compose.demo.yml up -d --build
+
+# Health — expect kg_loaded:true, kg_signature_verified:true
+curl -k https://localhost:8000/api/health
+
+# Your first verdict (use the API key setup.sh wrote to .env):
+source .env
+curl -k -X POST https://localhost:8000/api/evaluate \
+  -H "X-API-Key: $SKI_API_KEY" -H "Content-Type: application/json" \
+  -d '{"measurement_id":"demo-001","timestamp":"2026-06-15T12:00:00Z",
+       "subject":"facility.so2","jurisdiction":"us.federal",
+       "measurement":{"so2_ppm":142}}'
+```
+
+You get back a full `V3VerdictEnvelope`: `"verdict": "FLAG"` (142 ppm
+breaches the 100 ppm cap), the KG citation, the formalizable assertion,
+the Symbolic Verifier's `AGREED` cross-check, six provenance hash
+anchors, and a `transcript_ref` into the signed audit trail. Then:
+`curl -k https://localhost:8000/metrics` to watch the verdict counters
+move, and `python ../scripts/verify-ledger.py` to verify the hash chain.
+
 ## Prerequisites
 
 | Tool | Version | Notes |

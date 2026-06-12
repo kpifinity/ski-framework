@@ -9,6 +9,62 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Fixed
+- **Quickstart actually boots with a Knowledge Graph again.** The
+  compose stack mounted `reference-implementation/examples/knowledge-graphs/`,
+  a directory the v3 example cleanup removed — every fresh
+  `docker compose up` since then booted with **no KG** (`/api/health`:
+  `no_kg`). And the surviving v3 demo KGs are typed-graph documents the
+  runtime loader does not read (the documented kg_loader seam). Fix:
+  `scripts/make-demo-kg.py` (invoked by `scripts/setup.sh`) generates a
+  runtime-shape, ten-obligation energy demo KG and **signs it with a
+  locally generated ed25519 demo key** — so even the demo boots
+  conformantly (`KG_REQUIRE_SIGNATURE=true`) and no private key is ever
+  committed. The script round-trips the result through `load_signed_kg`
+  before writing.
+
+### Added
+- **5-minute demo mode** (`docker-compose.demo.yml`): the full v3
+  pipeline — verifier, signed transcripts, append-only ledger,
+  `/metrics` — under the deterministic FakeLLM backend, with no
+  multi-GB model pull between a new user and their first verdict
+  envelope. Clearly labeled non-conformant. QUICKSTART gains the
+  walkthrough with a copy-paste first FLAG.
+- **Helm chart defaults to the published images**
+  (`ghcr.io/kpifinity/ski-model`, signed build provenance via the
+  release workflow) — `helm install` now works without building images
+  first. Air-gapped clusters mirror and override `image.repository`.
+
+### Fixed
+- **Validator ↔ verifier predicate parity.** The Symbolic Verifier now
+  mechanically checks every checkable spec §3.3 obligation type — adds
+  `must_be_below`/`must_be_above` (strict, per spec), `must_be_one_of`/
+  `must_not_be_one_of` (set membership) — and the kg-validator accepts
+  the runtime's implementation extensions (`must_equal`,
+  `must_not_equal`, and the stateful window predicates; flagged for
+  formal adoption in the v3.1 spec revision). Previously a KG author
+  could write spec-valid obligations that silently verified nothing, or
+  be unable to validate KGs the runtime supports. A parity test now
+  pins both directions; only `must`/`must_not`/`should`/`discretionary`/
+  `must_be_recorded_within` remain non-mechanical, by design.
+
+### Added
+- **`/metrics` — the observability contract, implemented.** The
+  Prometheus + Grafana stack and `monitoring/rules/ski-alerts.yml` have
+  shipped since v2.1, but the runtime never exported the series the
+  alert rules fire on. The SKI Model now exposes `/metrics`
+  (`ski_agreement_rate`, `ski_kg_signature_verified`,
+  `ski_ledger_sequence_gaps_total`, verdict counters by type, evaluation
+  latency histogram, runtime info), the sidecar exports
+  `ski_sidecar_last_telemetry_timestamp`, and the ledger client trips
+  the sequence-gap counter when the single-writer invariant is violated
+  (rows appearing/vanishing underneath the writer — a tamper/ops
+  signal). A regression test parses the alert rules and asserts every
+  referenced series is exported, so the contract can't silently drift
+  again. `/metrics` is unauthenticated by design (scrape endpoint;
+  aggregates only) and contained by the sovereign-boundary
+  NetworkPolicy.
+
 ### Added
 - **`ski-schemas` — the wire contract, defined once** (RFC 0003 PR 1).
   The verdict envelope, signed LLM transcript, and measurement record

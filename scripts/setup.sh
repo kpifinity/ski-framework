@@ -124,6 +124,13 @@ main() {
         fi
     fi
 
+    print_header "Generating signed demo Knowledge Graph"
+    if python3 "$REPO_ROOT/scripts/make-demo-kg.py"; then
+        print_success "Demo KG signed (key: reference-implementation/tls/demo-kg-signing.key)"
+    else
+        print_warning "Demo KG generation failed - install Python deps (pip install -r requirements-dev.txt) and re-run."
+    fi
+
     print_header "Next steps"
     cat <<EOF
 1. (One time) Pull the local LLM weights into the Ollama volume:

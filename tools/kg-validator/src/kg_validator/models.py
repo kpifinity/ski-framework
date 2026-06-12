@@ -40,6 +40,13 @@ class ObligationType(str, Enum):
     MUST_BE_RECORDED_WITHIN = "must_be_recorded_within"
     SHOULD = "should"
     DISCRETIONARY = "discretionary"
+    # ---- Implementation extensions (runtime-checkable; pending formal
+    # adoption into spec §3.3 — tracked for the v3.1 spec revision).
+    # The Symbolic Verifier mechanically checks all four.
+    MUST_EQUAL = "must_equal"
+    MUST_NOT_EQUAL = "must_not_equal"
+    MUST_AVERAGE_WITHIN = "must_average_within"
+    MUST_NOT_EXCEED_IN_WINDOW = "must_not_exceed_in_window"
 
 
 class RiskTier(str, Enum):
