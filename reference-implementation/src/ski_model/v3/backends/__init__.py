@@ -63,6 +63,7 @@ def build_backend() -> V3LLMBackend:
             model_name=os.getenv("SKI_MODEL_NAME", "qwen2.5:7b-instruct"),
             seed=int(os.getenv("SKI_MODEL_SEED", "42")),
             max_tokens=int(os.getenv("SKI_MODEL_MAX_TOKENS", "512")),
+            request_timeout_seconds=float(os.getenv("SKI_OLLAMA_TIMEOUT_S", "60")),
             prompt_template_hash=PROMPT_TEMPLATE_HASH,
             structured_grammar_hash=STRUCTURED_GRAMMAR_HASH,
         )

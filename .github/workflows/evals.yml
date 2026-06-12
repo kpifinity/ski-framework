@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     continue-on-error: true
-    timeout-minutes: 60
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -69,6 +69,10 @@ jobs:
           # 512 (default) truncates reasoning+assertions JSON; truncation
           # parses as malformed and falls back to DISCRETIONARY.
           SKI_MODEL_MAX_TOKENS: "1536"
+          # CPU inference with schema-constrained decoding takes minutes
+          # per case; the 60s default read-timeout was the real cause of
+          # runs 1-3's DISCRETIONARY flood (ReadTimeout fallbacks).
+          SKI_OLLAMA_TIMEOUT_S: "600"
         run: python -m evals.run --backend ollama --seed 42 --dump-raw --out evals-report
       - uses: actions/upload-artifact@v4
         with:
