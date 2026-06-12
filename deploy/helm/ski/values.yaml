@@ -1,0 +1,131 @@
+# SKI Framework Helm chart — values.
+#
+# Security posture (see reference-implementation/SECURITY_DEFAULTS.md):
+# there are NO default secrets anywhere in this chart. You must create
+# a Secret before installing; the chart refuses to render without it.
+#
+# Single-worker constraint (see docs/CONCURRENCY.md): the SKI Model is
+# one Pod per ledger, full stop. There is deliberately no replicaCount
+# value; setting one fails the render. Scale by sharding (one release
+# per shard), never by adding replicas.
+
+image:
+  # REQUIRED. No public image is published yet — build
+  # reference-implementation/Dockerfile.ski-model and push it to your
+  # (private, air-gap-mirrored) registry.
+  repository: ""
+  tag: "3.1.0-alpha.2"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# REQUIRED. Name of a v1 Secret in the release namespace providing:
+#   api-key     — the SKI Model API key (openssl rand -hex 32)
+#   ledger-dsn  — full PostgreSQL DSN for the audit ledger
+# When postgres.bundled=true the DSN should point at
+# <release>-ski-postgres:5432 and the Secret must also provide:
+#   postgres-password
+# Manage it with your secret manager (ExternalSecrets, Vault, CSI) —
+# not with values files.
+existingSecret: ""
+
+# REQUIRED. Name of a ConfigMap (or Secret, see kg.fromSecret) holding
+# the SIGNED Knowledge Graph as key kg.json. Unsigned KGs are refused
+# at boot unless you explicitly disable verification (non-conformant).
+kg:
+  configMapName: ""
+  fromSecret: false
+  requireSignature: true
+
+skiModel:
+  # fake | ollama | vllm
+  backend: ollama
+  modelName: "qwen2.5:7b-instruct"
+  seed: 42
+  maxTokens: 1536
+  # Strongly recommended for vllm: digest of the served weights,
+  # recorded as the model_weight_hash provenance anchor.
+  modelFileSha256: ""
+  # Used when the corresponding bundled service is disabled.
+  externalOllamaUrl: ""
+  externalVllmUrl: ""
+  tenantId: default
+  logLevel: INFO
+  agreementWindow: 1000
+  agreementThreshold: "0.95"
+  resources:
+    requests: {cpu: 500m, memory: 1Gi}
+    limits: {memory: 2Gi}
+  # Persistent volume for the transcript signing key. Losing this key
+  # does not invalidate past transcripts (public keys are recorded),
+  # but key continuity is an audit courtesy.
+  persistence:
+    enabled: true
+    size: 1Gi
+    storageClass: ""
+
+tls:
+  enabled: true
+  # Name of a kubernetes.io/tls Secret with the server cert/key.
+  # REQUIRED when tls.enabled. The CA used by in-cluster clients is
+  # your concern (mount/trust per your PKI).
+  secretName: ""
+
+service:
+  type: ClusterIP
+  port: 8000
+
+postgres:
+  # Bundled single-node Postgres for evaluation clusters. Production
+  # deployments should disable it and point ledger-dsn at an external,
+  # DBA-managed instance with documented backups; the ledger schema +
+  # append-only triggers in files/ MUST be applied there (they are
+  # byte-identical copies of reference-implementation/src/ledger/,
+  # enforced by CI).
+  bundled: true
+  image: postgres:16-alpine
+  database: ski_ledger
+  username: postgres
+  persistence:
+    size: 10Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {memory: 1Gi}
+
+ollama:
+  # Bundled Ollama for skiModel.backend=ollama. Pre-stage models into
+  # the PVC for air-gapped clusters (kubectl cp, or an init job from a
+  # private mirror).
+  bundled: true
+  image: ollama/ollama:0.3.12
+  persistence:
+    size: 30Gi
+    storageClass: ""
+  resources:
+    requests: {cpu: "1", memory: 4Gi}
+    limits: {memory: 8Gi}
+
+networkPolicy:
+  # The sovereign boundary, enforced at the cluster level: default-deny
+  # egress for the SKI Model except the ledger and the LLM backend.
+  enabled: true
+  # Air-gap mode: additionally deny DNS and all ingress except the
+  # in-namespace sidecar/clients you list. With bundled services the
+  # stack is fully functional without any cluster-external egress.
+  airgap: false
+  # Extra egress rules (e.g. an external vLLM on a GPU node pool).
+  extraEgress: []
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false  # /app/tls + tmp writes; tighten per deployment
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

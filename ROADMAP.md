@@ -27,7 +27,7 @@ artifact.
   throughput on stated reference hardware, per backend, harness in-repo.
 - **vLLM backend** behind the existing `V3LLMBackend` protocol. Shipped:
   `SKI_V3_LLM_BACKEND=vllm` with decoder-level guided decoding.
-- **Helm chart** honoring the constraints in
+- **Helm chart** (shipped: `deploy/helm/ski`) honoring the constraints in
   [KUBERNETES.md](./reference-implementation/docs/KUBERNETES.md)
   (append-only triggers across PVC rebinds, single writer per shard,
   sovereign-boundary NetworkPolicy).

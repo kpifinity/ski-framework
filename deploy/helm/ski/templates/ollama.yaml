@@ -1,0 +1,62 @@
+{{- if and .Values.ollama.bundled (eq .Values.skiModel.backend "ollama") }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "ski.fullname" . }}-ollama
+  labels:
+    {{- include "ski.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm
+spec:
+  serviceName: {{ include "ski.fullname" . }}-ollama
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ski.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: llm
+  template:
+    metadata:
+      labels:
+        {{- include "ski.labels" . | nindent 8 }}
+        app.kubernetes.io/component: llm
+    spec:
+      containers:
+        - name: ollama
+          image: {{ .Values.ollama.image | quote }}
+          ports:
+            - {name: api, containerPort: 11434}
+          volumeMounts:
+            - {name: models, mountPath: /root/.ollama}
+          readinessProbe:
+            httpGet: {path: /api/tags, port: api}
+            periodSeconds: 15
+          resources: {{- toYaml .Values.ollama.resources | nindent 12 }}
+      volumes: []
+  volumeClaimTemplates:
+    - metadata:
+        name: models
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: {{ .Values.ollama.persistence.size }}
+        {{- with .Values.ollama.persistence.storageClass }}
+        storageClassName: {{ . }}
+        {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ski.fullname" . }}-ollama
+  labels:
+    {{- include "ski.labels" . | nindent 4 }}
+    app.kubernetes.io/component: llm
+spec:
+  clusterIP: None
+  ports:
+    - {name: api, port: 11434, targetPort: api}
+  selector:
+    app.kubernetes.io/name: {{ include "ski.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/component: llm
+{{- end }}

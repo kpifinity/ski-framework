@@ -94,6 +94,52 @@ jobs:
             benchmark-report.md
             benchmark-report.json
 
+  helm-chart:
+    name: Helm chart (lint + render + drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The ledger SQL in the chart must be byte-identical to the
+      # reference implementation's — the chart is not allowed to drift.
+      - name: Ledger SQL drift check
+        run: |
+          diff deploy/helm/ski/files/schema.sql reference-implementation/src/ledger/schema.sql
+          diff deploy/helm/ski/files/append_only.sql reference-implementation/src/ledger/append_only.sql
+          diff deploy/helm/ski/files/0002_transcript_columns.sql reference-implementation/src/ledger/migrations/0002_transcript_columns.sql
+      - run: helm lint deploy/helm/ski
+      - name: Render — default (bundled postgres + ollama, TLS)
+        run: |
+          helm template ski deploy/helm/ski \
+            --set image.repository=registry.internal/ski-model \
+            --set existingSecret=ski-secrets \
+            --set kg.configMapName=ski-kg \
+            --set tls.secretName=ski-tls > /tmp/render-default.yaml
+          grep -q "SKI_MODEL_WORKERS" /tmp/render-default.yaml
+          grep -q "replicas: 1" /tmp/render-default.yaml
+          grep -q "NetworkPolicy" /tmp/render-default.yaml
+      - name: Render — air-gap + vllm external
+        run: |
+          helm template ski deploy/helm/ski \
+            --set image.repository=registry.internal/ski-model \
+            --set existingSecret=ski-secrets \
+            --set kg.configMapName=ski-kg \
+            --set tls.secretName=ski-tls \
+            --set networkPolicy.airgap=true \
+            --set skiModel.backend=vllm \
+            --set skiModel.externalVllmUrl=http://vllm.gpu-pool:8000 \
+            --set ollama.bundled=false > /tmp/render-airgap.yaml
+          ! grep -q "port: 53" /tmp/render-airgap.yaml
+      - name: Constraints fail the render (not the pod)
+        run: |
+          ! helm template ski deploy/helm/ski \
+            --set image.repository=r --set existingSecret=s --set kg.configMapName=k --set tls.secretName=t \
+            --set replicaCount=3 2>/dev/null
+          ! helm template ski deploy/helm/ski \
+            --set image.repository=r --set kg.configMapName=k --set tls.secretName=t 2>/dev/null
+          ! helm template ski deploy/helm/ski \
+            --set existingSecret=s --set kg.configMapName=k --set tls.secretName=t 2>/dev/null
+
+
 
 
   codeql:

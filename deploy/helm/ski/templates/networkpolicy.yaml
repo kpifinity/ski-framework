@@ -1,0 +1,55 @@
+{{- if .Values.networkPolicy.enabled }}
+# The sovereign boundary, enforced at the cluster level: the SKI Model
+# may speak to its ledger and its LLM backend, and to NOTHING else.
+# With networkPolicy.airgap=true, DNS egress is also denied (all
+# in-boundary destinations are addressed by Service DNS resolved at the
+# CNI's discretion — air-gap mode requires a CNI honoring policy for
+# kube-dns, and bundled postgres+ollama so no external destination
+# exists at all).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "ski.fullname" . }}-model-boundary
+  labels: {{- include "ski.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "ski.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: ski-model
+  policyTypes: ["Ingress", "Egress"]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - {protocol: TCP, port: 8000}
+  egress:
+    {{- if .Values.postgres.bundled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: ledger-db
+      ports:
+        - {protocol: TCP, port: 5432}
+    {{- end }}
+    {{- if and .Values.ollama.bundled (eq .Values.skiModel.backend "ollama") }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              app.kubernetes.io/component: llm
+      ports:
+        - {protocol: TCP, port: 11434}
+    {{- end }}
+    {{- if not .Values.networkPolicy.airgap }}
+    # DNS (kube-dns/CoreDNS). Denied in airgap mode.
+    - to: []
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+    {{- end }}
+    {{- with .Values.networkPolicy.extraEgress }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}

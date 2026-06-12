@@ -1,0 +1,17 @@
+apiVersion: v2
+name: ski
+description: >-
+  SKI Framework reference runtime — sovereign, neuro-symbolic compliance
+  monitoring. Deploys the SKI Model (single-worker by design), the
+  append-only audit ledger, and optionally a bundled Ollama runtime,
+  inside a NetworkPolicy-enforced sovereign boundary.
+type: application
+version: 0.1.0
+appVersion: "3.1.0-alpha.2"
+kubeVersion: ">=1.25.0-0"
+home: https://skiframework.org
+sources:
+  - https://github.com/kpifinity/ski-framework
+maintainers:
+  - name: KpiFinity Inc.
+    email: hello@skiframework.org

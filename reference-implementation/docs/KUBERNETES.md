@@ -1,81 +1,85 @@
 # Kubernetes deployment
 
-> **Status:** not yet shipped. The v3.0.x reference implementation
-> ships docker-compose only. A Helm chart is targeted for **v3.1**;
-> the Kubernetes operator, CRDs, and per-shard horizontal scaling are
-> targeted for **v3.2** (designed via an RFC before implementation).
-> See [ROADMAP.md](../../ROADMAP.md). This document captures the
-> intended direction so adopters can plan around it.
+> **Status:** the v3.1 Helm chart is in tree at
+> [`deploy/helm/ski`](../../deploy/helm/ski). The Kubernetes operator,
+> CRDs, and per-shard horizontal scaling remain targeted for **v3.2**
+> (designed via an RFC before implementation) — see
+> [ROADMAP.md](../../ROADMAP.md).
 
-## Why not yet
+## Install
 
-For a sovereign-by-default, audit-grade workload, the Kubernetes
-manifests must address:
+```bash
+# 1. Build and push the runtime image to YOUR registry (no public
+#    image is published; air-gapped clusters mirror it internally):
+docker build -f reference-implementation/Dockerfile.ski-model \
+  -t registry.internal/ski-model:3.1.0-alpha.2 reference-implementation/
+docker push registry.internal/ski-model:3.1.0-alpha.2
 
-1. **Append-only ledger guarantees.** The `BEFORE UPDATE / DELETE /
-   TRUNCATE` triggers must survive PVC rebinds and StatefulSet rollouts.
-2. **Single-writer constraint.** The SKI Model service is single-worker
-   by design. The deployment must guarantee one Pod per shard, not
-   "scale to N for capacity."
-3. **Secrets handling.** Production secrets (API keys, DB passwords,
-   signing keys) belong in your cluster's secret manager (Vault,
-   ExternalSecrets, AWS Secrets Manager via the CSI driver, etc.) —
-   not in environment variables baked into manifests.
-4. **Air-gapped image distribution.** Many target deployments are
-   air-gapped. The manifests must work with privately-mirrored images
-   and pre-staged Ollama model files.
+# 2. Create the secret — the chart ships NO defaults and refuses to
+#    render without it. Use your secret manager in production.
+kubectl create secret generic ski-secrets \
+  --from-literal=api-key="$(openssl rand -hex 32)" \
+  --from-literal=postgres-password="$(openssl rand -hex 24)" \
+  --from-literal=ledger-dsn="postgresql://postgres:<password>@ski-ski-postgres:5432/ski_ledger"
 
-We would rather ship Kubernetes support that is right than fast.
+# 3. Your SIGNED Knowledge Graph and TLS certificate:
+kubectl create configmap ski-kg --from-file=kg.json=signed-kg.json
+kubectl create secret tls ski-tls --cert=ski-model.crt --key=ski-model.key
 
-## Planned shape
-
-```
-deploy/k8s/
-├── namespace.yaml
-├── secrets/                       (ExternalSecrets recommended)
-├── postgres/
-│   ├── statefulset.yaml           anti-affinity, PV with retain policy
-│   ├── service.yaml
-│   └── triggers-job.yaml          one-shot Job to apply append_only.sql
-├── ollama/
-│   ├── statefulset.yaml
-│   └── pvc-model-files.yaml
-├── ski-model/
-│   ├── deployment.yaml            replicas=1 per shard (not scaled by HPA)
-│   ├── service.yaml
-│   └── networkpolicy.yaml         denies egress except to ollama/postgres
-├── sidecar/
-│   ├── deployment.yaml            HPA permitted (stateless)
-│   └── service.yaml
-└── monitoring/
-    ├── prometheus.yaml
-    ├── postgres-exporter.yaml
-    └── alertmanager.yaml
+# 4. Install:
+helm install ski deploy/helm/ski \
+  --set image.repository=registry.internal/ski-model \
+  --set existingSecret=ski-secrets \
+  --set kg.configMapName=ski-kg \
+  --set tls.secretName=ski-tls
 ```
 
-## What works today on Kubernetes anyway
+The post-install notes walk through staging model weights and running
+the conformance suite against the deployment.
 
-The docker-compose stack runs on `docker compose` running on a single
-node. If that node is a Kubernetes node, you can run the stack there
-and accept the operational caveats. For multi-node clusters, wait for
-the v3.1 Helm chart or contribute manifests via a PR.
+## What the chart enforces (not just documents)
 
-## Operational requirements regardless of platform
+- **Single writer.** `replicas: 1`, `strategy: Recreate`, and the
+  render **fails** if you set `replicas`/`replicaCount`. Scale by
+  installing one release per shard.
+- **No default secrets.** The render fails without `existingSecret`;
+  there is no password, key, or token anywhere in the chart.
+- **Signed KG.** `KG_REQUIRE_SIGNATURE=true` by default; the render
+  fails without a KG ConfigMap/Secret.
+- **The sovereign boundary as NetworkPolicy.** Egress from the SKI
+  Model is limited to the ledger and the LLM backend.
+  `networkPolicy.airgap=true` additionally drops DNS egress — with
+  bundled Postgres and Ollama the stack is fully functional with zero
+  cluster-external destinations (the same property the L3 air-gapped
+  conformance rig proves with `--network=none`).
+- **Ledger SQL fidelity.** The schema and append-only triggers in the
+  chart are byte-identical copies of
+  `reference-implementation/src/ledger/` — CI diffs them on every
+  build.
+- **Hardened pods.** `runAsNonRoot`, uid 10001, all capabilities
+  dropped, no privilege escalation.
 
-Any Kubernetes deployment must satisfy:
+## Backends
 
-- One SKI Model Pod per ledger / shard at all times. Use a Deployment
-  with `replicas=1` per shard and `strategy: Recreate`. Do not put it
-  behind an HPA.
-- A `NetworkPolicy` that denies egress to anything except `postgres`
-  and `ollama`. This is how you enforce the sovereign boundary at the
-  cluster level.
-- A `PodSecurityContext` with `runAsNonRoot: true`, `readOnlyRootFilesystem: true`,
-  `allowPrivilegeEscalation: false`, and a tightly-scoped `securityContext.capabilities.drop`.
-- Postgres on a `PersistentVolume` whose `reclaimPolicy: Retain` and
-  whose backup schedule is documented in your runbook.
-- An external Alertmanager configured for the four SKI alert rules in
-  `monitoring/rules/ski-alerts.yml`.
+| `skiModel.backend` | Inference | Notes |
+|---|---|---|
+| `ollama` (default) | bundled StatefulSet or `skiModel.externalOllamaUrl` | pre-stage models into the PVC for air-gapped clusters |
+| `vllm` | `skiModel.externalVllmUrl` (your GPU node pool; not bundled) | set `skiModel.modelFileSha256` for the provenance anchor |
+| `fake` | in-process deterministic stub | CI/evaluation only — not conformant for production |
 
-If you build a manifests PR ahead of the v3.1 chart, please align with
-these requirements and add a conformance-suite job to the chart's CI.
+## Production ledger
+
+The bundled Postgres is for evaluation. Production deployments set
+`postgres.bundled=false`, point `ledger-dsn` at a DBA-managed instance
+(with `reclaimPolicy: Retain` storage and a documented backup schedule
+— see `SECURITY_DEFAULTS.md`), and apply the chart's `files/*.sql`
+there. The append-only triggers are load-bearing for L3 conformance:
+verify with `pytest conformance/ -m sovereignty`.
+
+## Telemetry sidecar
+
+The read-only telemetry sidecar is intentionally not in this chart yet:
+its deployment shape depends on your data buses (Kafka, OPC-UA, files)
+and it is stateless — run it wherever the data is, pointed at the SKI
+Model Service. A sidecar sub-chart is tracked for v3.2 alongside the
+operator.
