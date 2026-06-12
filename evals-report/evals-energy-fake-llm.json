@@ -1,0 +1,514 @@
+{
+  "dataset": "energy",
+  "provenance": {
+    "ran_at": "2026-06-12T14:50:15.471563+00:00",
+    "backend": "fake-llm",
+    "model_weight_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "prompt_template_id": "ski.v3.evaluate.3",
+    "prompt_template_hash": "sha256:2593fd93402d253e9e42114342cebd357db98b500816486bd27e67c226b90ce4",
+    "structured_grammar_hash": "sha256:c67866106b1759e4fc4f3d4f203459bbd9f8f6bea08d9383403bee6cfbd60789",
+    "decoder_seed": 42,
+    "kg_version": "ski-evals-energy-1.0.0",
+    "kg_file_hash": "sha256:af6aef66572e49e73957f1dd3cd919bd14a7fdc8b9a0f0725822ae4bb27577d6",
+    "cases_file_hash": "sha256:e9a7def6b30af9379b7bd3b06c78a672e7d9b971d48fa14a9c95fea58d5311bf",
+    "n_cases": 50
+  },
+  "metrics": {
+    "n_cases": 50,
+    "verdict_accuracy": 0.96,
+    "flag_recall": 0.8889,
+    "flag_precision": 1.0,
+    "breaches_silently_cleared": 0,
+    "unmapped_recall": 1.0,
+    "assertion_accuracy": 0.9474,
+    "verifier_agreement_rate": 0.9474,
+    "confusion": {
+      "CLEAR": {
+        "CLEAR": 20
+      },
+      "FLAG": {
+        "FLAG": 16,
+        "DISCRETIONARY": 2
+      },
+      "NULL_UNMAPPED": {
+        "NULL_UNMAPPED": 12
+      }
+    },
+    "per_category_accuracy": {
+      "boundary": 0.9444,
+      "clear": 1.0,
+      "effective-date": 1.0,
+      "flag": 0.8889,
+      "jurisdiction": 1.0,
+      "null_unmapped": 1.0
+    },
+    "mismatches": [
+      {
+        "case_id": "flag-flow-just-under",
+        "expected": "FLAG",
+        "predicted": "DISCRETIONARY",
+        "verifier_status": "LLM_CONTRADICTION",
+        "notes": "must_be_at_least breach; known FakeLLM blind spot"
+      },
+      {
+        "case_id": "flag-flow-zero",
+        "expected": "FLAG",
+        "predicted": "DISCRETIONARY",
+        "verifier_status": "LLM_CONTRADICTION",
+        "notes": "must_be_at_least breach; known FakeLLM blind spot"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "case_id": "clear-so2-mid",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-so2-low",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-so2-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-so2-near",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-ph-mid",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-ph-low-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-ph-high-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-ph-high",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-nox-mid",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-nox-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-nox-low",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-flow-mid",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-flow-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-temp-mid",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-temp-low-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-temp-high-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-methane",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-turbidity-mid",
+      "category": "clear",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-turbidity-boundary",
+      "category": "boundary",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "clear-opacity-ab",
+      "category": "jurisdiction",
+      "expected": "CLEAR",
+      "predicted": "CLEAR",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-so2-breach",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-so2-just-over",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-so2-gross",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-so2-101",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-ph-low",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-ph-high",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-ph-zero",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-ph-just-over",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-nox-just-over",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-nox-gross",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-flow-just-under",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "DISCRETIONARY",
+      "verdict_correct": false,
+      "assertions_correct": false,
+      "verifier_status": "LLM_CONTRADICTION"
+    },
+    {
+      "case_id": "flag-flow-zero",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "DISCRETIONARY",
+      "verdict_correct": false,
+      "assertions_correct": false,
+      "verifier_status": "LLM_CONTRADICTION"
+    },
+    {
+      "case_id": "flag-temp-low",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-temp-high",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-methane-just-over",
+      "category": "boundary",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-methane-gross",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-turbidity",
+      "category": "flag",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "flag-opacity-ab",
+      "category": "jurisdiction",
+      "expected": "FLAG",
+      "predicted": "FLAG",
+      "verdict_correct": true,
+      "assertions_correct": true,
+      "verifier_status": "AGREED"
+    },
+    {
+      "case_id": "unmapped-helium",
+      "category": "null_unmapped",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-noise",
+      "category": "null_unmapped",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-spill",
+      "category": "null_unmapped",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-typo",
+      "category": "null_unmapped",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-x",
+      "category": "null_unmapped",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-opacity-us-breach",
+      "category": "jurisdiction",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-opacity-us-ok",
+      "category": "jurisdiction",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-co-future-breach",
+      "category": "effective-date",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-co-future-ok",
+      "category": "effective-date",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-benzene-sunset-breach",
+      "category": "effective-date",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-benzene-sunset-ok",
+      "category": "effective-date",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    },
+    {
+      "case_id": "unmapped-alberta-so2",
+      "category": "jurisdiction",
+      "expected": "NULL_UNMAPPED",
+      "predicted": "NULL_UNMAPPED",
+      "verdict_correct": true,
+      "assertions_correct": null,
+      "verifier_status": "UNVERIFIABLE"
+    }
+  ]
+}

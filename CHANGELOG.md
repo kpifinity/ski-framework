@@ -9,6 +9,20 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Fixed
+- **Evaluator crash on schema-violating model output.** The first
+  nightly real-model eval run found that a response which parses as
+  JSON but violates the envelope schema (qwen2.5:7b emitted
+  `"value": {"min": 6.0, "max": 8.5}` and `"observed": {"value": 7.2}`)
+  raised `pydantic.ValidationError` out of
+  `aevaluate_with_transcript` — a 500 on `/api/evaluate` in production.
+  Contract violations now degrade to DISCRETIONARY with zero checkable
+  assertions and the violation recorded in the envelope, the same way
+  malformed JSON degrades at the backend. Hardened at all three layers:
+  output-contract guard in the evaluator, `RESPONSE_GRAMMAR` now types
+  `value`/`observed` (objects forbidden), and the prompt pins the
+  scalar/array shapes (template bumped to `ski.v3.evaluate.3`).
+
 ### Added
 - **Performance benchmark suite** (`benchmarks/`). Measures the
   production evaluation path with the latency decomposition the spec's
