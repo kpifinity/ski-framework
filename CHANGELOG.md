@@ -10,6 +10,16 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Added
+- **Performance benchmark suite** (`benchmarks/`). Measures the
+  production evaluation path with the latency decomposition the spec's
+  claims actually rest on: `pipeline` mode isolates **framework
+  overhead** (scoping, citation validation, symbolic verification,
+  risk-tier policy, ed25519 transcript signing — everything except LLM
+  inference) and `http` mode measures end-to-end against a live
+  deployment. Reference numbers: framework overhead is **sub-millisecond
+  at p99** (0.36 ms on 2 vCPUs) — ~250× inside the 100 ms budget. CI
+  gates every build on `framework_total` p99 ≤ 100 ms and uploads the
+  full report as an artifact. Methodology and caveats: `docs/benchmarks.md`.
 - **L3 air-gapped boot rig — Sovereignty conformance is now 6/6 runnable**
   (`conformance/sovereignty/test_air_gapped.py`). The rig boots the audit
   ledger with `--network=none` and joins the SKI Model runtime to the same

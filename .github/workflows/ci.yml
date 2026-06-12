@@ -69,6 +69,32 @@ jobs:
         env:
           SKI_L3_AIRGAP: "1"
 
+  benchmarks:
+    name: Benchmarks (framework overhead budget)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      # Framework overhead per verdict (FakeLLM pipeline; excludes model
+      # inference). Budget is deliberately generous for shared runners —
+      # reference numbers live in docs/benchmarks.md; per-build numbers
+      # in the uploaded report artifact.
+      - run: |
+          python -m benchmarks.run --mode pipeline --n 2000 --warmup 200 \
+            --max-framework-p99-ms 100 \
+            --md-out benchmark-report.md --json-out benchmark-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-report
+          path: |
+            benchmark-report.md
+            benchmark-report.json
+
+
 
   codeql:
     name: CodeQL (Python)
