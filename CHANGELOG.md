@@ -9,6 +9,18 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added
+- **vLLM backend** (`SKI_V3_LLM_BACKEND=vllm`) — the production GPU
+  inference path. OpenAI-compatible `/v1/chat/completions` with vLLM's
+  `guided_json` decoder-level grammar enforcement (token masking against
+  `RESPONSE_GRAMMAR` — stronger than post-hoc validation), temperature 0
+  and per-request seed, and the same malformed-output -> DISCRETIONARY
+  degradation contract as every backend. Provenance: set
+  `$SKI_MODEL_FILE_SHA256` to anchor the served-weights digest; the
+  vendor-commitment fallback is logged as a weaker signal. The backend
+  verifies the configured model is actually served via `/v1/models`.
+  `python -m evals.run --backend vllm` wires it into the eval suite.
+
 ### Fixed
 - **Verifier observation grounding — fabricated observations no longer
   pass verification.** Eval run 4 produced a false FLAG: the model

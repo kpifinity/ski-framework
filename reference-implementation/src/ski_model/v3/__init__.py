@@ -12,6 +12,7 @@ from .backends import (
     PROMPT_TEMPLATE_HASH,
     STRUCTURED_GRAMMAR_HASH,
     OllamaV3Backend,
+    VLLMV3Backend,
     build_backend,
 )
 from .envelope import (
@@ -61,6 +62,7 @@ __all__ = [
     "V3LLMBackend",
     "V3Verdict",
     "V3VerdictEnvelope",
+    "VLLMV3Backend",
     "VerifierResult",
     "VerifierStatus",
     "apply_risk_policy",
