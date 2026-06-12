@@ -83,6 +83,7 @@ files = [
     "reference-implementation/src/telemetry_buffer",
     "tools/audit-ledger/src/audit_ledger/canonical.py",
     "tools/ski-sdk/src/ski_sdk",
+    "tools/ski-schemas/src/ski_schemas",
     "conformance",
     "benchmarks",
 ]

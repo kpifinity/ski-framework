@@ -19,8 +19,10 @@ from typing import Any, Dict, List
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 _SRC = REPO_ROOT / "reference-implementation" / "src"
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
+_SCHEMAS_SRC = REPO_ROOT / "tools" / "ski-schemas" / "src"
+for _p in (_SRC, _SCHEMAS_SRC):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from ski_model.kg_loader import KnowledgeGraph  # noqa: E402
 from ski_model.v3.evaluator import V3Evaluator, V3LLMBackend  # noqa: E402

@@ -16,11 +16,14 @@ from pathlib import Path
 import pytest
 
 V3 = ("reference-implementation", "src", "ski_model", "v3")
+# The transcript MODEL moved to the shared schemas package (RFC 0003 PR 1);
+# signing stays in the runtime.
+SCHEMAS = ("tools", "ski-schemas", "src", "ski_schemas")
 
 
 @pytest.mark.sovereignty
 def test_transcript_is_signed_over_the_hash_pair(repo_root: Path) -> None:
-    transcript = (repo_root.joinpath(*V3, "transcript.py")).read_text()
+    transcript = (repo_root.joinpath(*SCHEMAS, "transcript.py")).read_text()
     assert "def signing_message" in transcript, "no signing_message() defining the signed bytes."
     body = transcript.split("def signing_message", 1)[1].split("class ", 1)[0]
     assert "request_hash" in body and "response_hash" in body, (

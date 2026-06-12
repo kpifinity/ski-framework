@@ -311,7 +311,7 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
                 image,
                 "-f",
                 str(REF_IMPL / "Dockerfile.ski-model"),
-                str(REF_IMPL),
+                str(REPO),  # repo-root context: the image carries ski-schemas (RFC 0003)
             ],
             timeout=1800,
         )

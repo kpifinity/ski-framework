@@ -24,7 +24,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
+      - run: pip install -e tools/ski-schemas -e tools/audit-ledger -e tools/ski-model-deploy
       - run: pytest conformance/ -q -m "provenance or durability" --tb=short
 
   sovereignty-l3:
@@ -46,7 +46,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
+      - run: pip install -e tools/ski-schemas -e tools/audit-ledger -e tools/ski-model-deploy
       - run: pytest conformance/sovereignty -q --tb=short
         env:
           SKI_L3_LEDGER_DSN: postgresql+psycopg://postgres:l3test@localhost:5433/postgres
@@ -61,7 +61,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install -e tools/audit-ledger -e tools/ski-model-deploy
+      - run: pip install -e tools/ski-schemas -e tools/audit-ledger -e tools/ski-model-deploy
       # Builds the runtime image, boots Postgres + SKI Model in one
       # loopback-only network namespace (--network=none), replays the
       # fixed workload, and verifies ledger persistence from inside.
@@ -187,7 +187,7 @@ jobs:
           python-version: ${{ matrix.python }}
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install -e tools/kg-extractor -e tools/kg-validator -e tools/ski-model-deploy -e tools/audit-ledger -e tools/ski-sdk
+      - run: pip install -e tools/ski-schemas -e tools/kg-extractor -e tools/kg-validator -e tools/ski-model-deploy -e tools/audit-ledger -e tools/ski-sdk
       - run: pytest -q --cov --cov-report=xml
       - uses: codecov/codecov-action@v4
         if: matrix.python == '3.11'
@@ -271,7 +271,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build SKI Model image
-        run: docker build -f reference-implementation/Dockerfile.ski-model -t ski-model:ci reference-implementation
+        run: docker build -f reference-implementation/Dockerfile.ski-model -t ski-model:ci .
       - name: Build Sidecar image
         run: docker build -f reference-implementation/Dockerfile.sidecar -t ski-sidecar:ci reference-implementation
       # trivy-action is pinned by commit SHA, not by tag — upstream had a

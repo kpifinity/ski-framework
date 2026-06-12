@@ -31,7 +31,7 @@ artifact.
   [KUBERNETES.md](./reference-implementation/docs/KUBERNETES.md)
   (append-only triggers across PVC rebinds, single writer per shard,
   sovereign-boundary NetworkPolicy).
-- **`ski-schemas` extraction** (RFC 0003 PR 1): one shared package for
+- **`ski-schemas` extraction** (RFC 0003 PR 1, shipped): one shared package for
   envelope/transcript/measurement models.
 - **PyPI distribution.** All five packages installable from PyPI via
   trusted publishing (`ski-sdk`, `ski-kg-extractor`, `ski-kg-validator`,

@@ -16,8 +16,12 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent
 _SRC = _REPO_ROOT / "reference-implementation" / "src"
+# ski-schemas (RFC 0003 PR 1): the shared wire-model package, importable
+# without an editable install for the same reason as the runtime src.
+_SCHEMAS_SRC = _REPO_ROOT / "tools" / "ski-schemas" / "src"
 
-if _SRC.is_dir():
-    src_str = str(_SRC)
-    if src_str not in sys.path:
-        sys.path.insert(0, src_str)
+for _p in (_SRC, _SCHEMAS_SRC):
+    if _p.is_dir():
+        _p_str = str(_p)
+        if _p_str not in sys.path:
+            sys.path.insert(0, _p_str)

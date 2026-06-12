@@ -43,8 +43,8 @@ services:
   # --------------------------------------------------------------------------
   ski-model:
     build:
-      context: .
-      dockerfile: Dockerfile.ski-model
+      context: ..
+      dockerfile: reference-implementation/Dockerfile.ski-model
     container_name: ski-model
     ports:
       - "8000:8000"

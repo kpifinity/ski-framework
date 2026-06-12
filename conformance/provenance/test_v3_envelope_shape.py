@@ -49,7 +49,9 @@ _REQUIRED_CITATION_ROLES = {
 
 
 def _envelope_source(repo_root: Path) -> str:
-    return (repo_root / "reference-implementation" / "src" / "ski_model" / "v3" / "envelope.py").read_text()
+    return (
+        repo_root / "tools" / "ski-schemas" / "src" / "ski_schemas" / "envelope.py"
+    ).read_text()  # single source of truth (RFC 0003 PR 1)
 
 
 @pytest.mark.provenance

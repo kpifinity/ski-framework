@@ -35,7 +35,7 @@ jobs:
       - name: Build sdists/wheels for tools
         run: |
           mkdir -p dist
-          for tool in kg-extractor kg-validator ski-model-deploy audit-ledger ski-sdk; do
+          for tool in ski-schemas kg-extractor kg-validator ski-model-deploy audit-ledger ski-sdk; do
             (cd tools/$tool && python -m build --outdir ../../dist/)
           done
 
@@ -49,7 +49,8 @@ jobs:
             tools/kg-validator/requirements.txt \
             tools/ski-model-deploy/requirements.txt \
             tools/audit-ledger/requirements.txt \
-            tools/ski-sdk/requirements.txt; do
+            tools/ski-sdk/requirements.txt \
+            tools/ski-schemas/requirements.txt; do
               name=$(echo "$req" | tr '/' '_')
               cyclonedx-py requirements -o "dist/sbom/sbom-${name}.json" "$req" || true
           done
@@ -98,7 +99,7 @@ jobs:
         image:
           - name: ski-model
             dockerfile: reference-implementation/Dockerfile.ski-model
-            context: reference-implementation
+            context: .
           - name: ski-sidecar
             dockerfile: reference-implementation/Dockerfile.sidecar
             context: reference-implementation
