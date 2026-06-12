@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # ---- Prompt template + grammar -------------------------------------------------
 
-PROMPT_TEMPLATE_ID = "ski.v3.evaluate.3"
+PROMPT_TEMPLATE_ID = "ski.v3.evaluate.4"
 """Stable identifier for the v3 evaluation prompt. Bump on every prompt edit."""
 
 
@@ -70,13 +70,30 @@ RULES (non-negotiable):
     range obligations like must_be_within, "value" is the two-element
     array [min, max]). NEVER objects: write 7.2, not {{"value": 7.2}};
     write [6.5, 8.5], not {{"min": 6.5, "max": 8.5}}.
+  * The KG snapshot is ALREADY scoped: every obligation in it is in
+    force for this measurement's jurisdiction and date. Do NOT re-check
+    jurisdictions or effective dates - the framework did that. A past
+    effective_date means the rule IS in force.
+  * An obligation MAPS to the measurement when its "metric" field
+    equals a key in MEASUREMENT. If it maps, you MUST evaluate it and
+    emit a formalizable_assertion - never NULL_UNMAPPED.
   * Verdict MUST be one of: CLEAR, FLAG, NULL_UNMAPPED, NULL_STALE,
     DISCRETIONARY.
-  * No obligation maps to the measurement: NULL_UNMAPPED.
-  * Obligation maps but its effective_date has passed: NULL_STALE.
-  * Clear breach of an applicable obligation: FLAG.
-  * Clearly compliant: CLEAR.
-  * Obligation requires qualified human judgment: DISCRETIONARY.
+  * NULL_UNMAPPED: NO obligation's "metric" matches ANY measurement key.
+  * NULL_STALE: the telemetry itself is stale or missing (silent
+    sensor). It is NEVER about rule dates.
+  * FLAG: a mapped obligation is breached (e.g. observed exceeds a
+    must_not_exceed value).
+  * CLEAR: every mapped obligation is satisfied.
+  * DISCRETIONARY: a mapped obligation requires qualified human
+    judgment that numbers alone cannot settle.
+
+  Worked example: MEASUREMENT {{"so2_ppm": 85}}; obligation
+  {{"id": "x.so2", "metric": "so2_ppm", "predicate": "must_not_exceed",
+  "value": 100}} -> metric matches, 85 <= 100 -> verdict CLEAR, one
+  assertion: {{"predicate": "must_not_exceed", "metric": "so2_ppm",
+  "value": 100, "observed": 85, "satisfied": true,
+  "obligation_id": "x.so2"}}.
 
 OUTPUT (strict JSON, no other prose):
   {{
