@@ -563,6 +563,30 @@ class V3Evaluator:
             )
             return EvaluationResult(envelope=envelope, transcript=transcript)
 
+        # Taxonomy guard (spec §4.1): CLEAR asserts *verified* satisfaction.
+        # A CLEAR with zero formalizable assertions is an unverifiable
+        # compliance claim — the exact "trust me" verdict the framework
+        # forbids. Found by eval run 5: the model reasoned "nothing maps"
+        # and then said CLEAR anyway. Deterministic remap, recorded in
+        # envelope.notes for the auditor:
+        #   - no citations either  -> the model itself claims nothing
+        #     applies: NULL_UNMAPPED (coverage gap, never silent green).
+        #   - citations but no assertions -> something applies but nothing
+        #     is checkable: DISCRETIONARY (human review).
+        taxonomy_notes: List[str] = []
+        if llm_verdict == V3Verdict.CLEAR and not assertions:
+            remapped = V3Verdict.NULL_UNMAPPED if not parsed_citations else V3Verdict.DISCRETIONARY
+            taxonomy_notes.append(
+                f"taxonomy_guard: LLM verdict CLEAR carried no formalizable assertions "
+                f"({'no citations' if not parsed_citations else 'citations present'}); "
+                f"remapped to {remapped.value} per spec §4.1 — CLEAR requires verified satisfaction."
+            )
+            logger.warning(taxonomy_notes[-1])
+            llm_verdict = remapped
+
+        obligations_index = {
+            ob["id"]: ob for ob in kg_snapshot.get("obligations", []) if isinstance(ob, dict) and "id" in ob
+        }
         verifier_result = await self.verifier.averify(
             assertions,
             llm_verdict=llm_verdict,
@@ -570,6 +594,7 @@ class V3Evaluator:
             as_of=as_of,
             buffer=buffer,
             measurement=measurement,
+            obligations=obligations_index,
         )
 
         envelope = V3VerdictEnvelope(
@@ -580,6 +605,7 @@ class V3Evaluator:
             verifier_result=verifier_result,
             model_provenance=self._build_provenance(),
             transcript_ref=effective_transcript_ref,
+            notes=taxonomy_notes,
         )
 
         # Risk-tier policy may downgrade verdict to DISCRETIONARY and / or

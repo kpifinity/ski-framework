@@ -196,8 +196,14 @@ class TestCitationEnforcement:
             kg_snapshot=_kg_snapshot(),
             transcript_ref="ledger:t1/seq:7",
         )
-        # def.units.ppm is in the snapshot's definitions, so citation is valid.
-        assert env.verdict == V3Verdict.CLEAR.value
+        # def.units.ppm is in the snapshot's definitions, so the citation is
+        # VALID: enforcement must not force NULL_UNMAPPED. (The verdict is
+        # DISCRETIONARY rather than CLEAR because this scripted response
+        # carries no formalizable assertions - the taxonomy guard forbids
+        # unverified CLEARs since eval run 5; see test_taxonomy_guard.py.)
+        assert env.verdict != V3Verdict.NULL_UNMAPPED.value, "valid citation rejected"
+        assert env.verdict == V3Verdict.DISCRETIONARY.value
+        assert any("taxonomy_guard" in n for n in env.notes)
 
 
 # ---- Empty / unmapped KG ------------------------------------------------------

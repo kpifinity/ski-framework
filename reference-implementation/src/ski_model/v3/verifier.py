@@ -349,6 +349,49 @@ _STATEFUL_HANDLERS = {
 # ---- SymbolicVerifier ---------------------------------------------------------
 
 
+def _obligation_grounding_violation(
+    assertion: FormalizableAssertion, obligations: Mapping[str, Mapping[str, Any]]
+) -> Optional[str]:
+    """Check an assertion's claim against the cited KG obligation.
+
+    Measurement grounding (above) pins ``observed`` to reality; this pins
+    ``metric`` and ``value`` to the *obligation the assertion cites*. Found
+    by eval run 5's analysis: nothing stopped a model from asserting a
+    fabricated cap (value=999 against a KG value of 100) or attaching the
+    right obligation id to the wrong metric — internally consistent
+    arithmetic would then verify a claim the KG never made.
+    """
+    ob = obligations.get(assertion.obligation_id)
+    if ob is None:
+        return (
+            f"[{assertion.obligation_id}] fabricated obligation reference: id is not "
+            f"present in the scoped KG snapshot."
+        )
+    ob_metric = ob.get("metric")
+    if ob_metric is not None and assertion.metric != ob_metric:
+        return (
+            f"[{assertion.obligation_id}] obligation mismatch: assertion metric "
+            f"{assertion.metric!r} but the obligation governs {ob_metric!r}."
+        )
+    ob_value = ob.get("value")
+    if ob_value is not None and assertion.value is not None:
+        a_val = assertion.value
+        if isinstance(ob_value, (int, float)) and isinstance(a_val, (int, float)):
+            mismatch = float(ob_value) != float(a_val)
+        elif isinstance(ob_value, (list, tuple)) and isinstance(a_val, (list, tuple)):
+            mismatch = [float(x) if isinstance(x, (int, float)) else x for x in ob_value] != [
+                float(x) if isinstance(x, (int, float)) else x for x in a_val
+            ]
+        else:
+            mismatch = ob_value != a_val
+        if mismatch:
+            return (
+                f"[{assertion.obligation_id}] fabricated obligation value: assertion "
+                f"claims {a_val!r} but the KG records {ob_value!r}."
+            )
+    return None
+
+
 def _grounding_violation(assertion: FormalizableAssertion, measurement: Mapping[str, Any]) -> Optional[str]:
     """Check an assertion's observation against the actual measurement.
 
@@ -448,6 +491,7 @@ class SymbolicVerifier:
         *,
         llm_verdict: V3Verdict,
         measurement: Optional[Mapping[str, Any]] = None,
+        obligations: Optional[Mapping[str, Mapping[str, Any]]] = None,
     ) -> VerifierResult:
         """Aggregate per-assertion checks into a :class:`VerifierResult`.
 
@@ -483,6 +527,13 @@ class SymbolicVerifier:
                     checked += 1
                     contradictions.append((assertion, _CheckOutcome(False, violation)))
                     divergences.append(violation)
+                    continue
+            if obligations is not None:
+                ob_violation = _obligation_grounding_violation(assertion, obligations)
+                if ob_violation is not None:
+                    checked += 1
+                    contradictions.append((assertion, _CheckOutcome(False, ob_violation)))
+                    divergences.append(ob_violation)
                     continue
             outcome = self.check_assertion(assertion)
             if outcome.mechanically_satisfied is None:
@@ -549,6 +600,7 @@ class SymbolicVerifier:
         as_of: Optional[datetime] = None,
         buffer: Optional[BufferLike] = None,
         measurement: Optional[Mapping[str, Any]] = None,
+        obligations: Optional[Mapping[str, Mapping[str, Any]]] = None,
     ) -> VerifierResult:
         """Async sibling of :meth:`verify` that handles stateful predicates.
 
@@ -577,6 +629,13 @@ class SymbolicVerifier:
                     checked += 1
                     contradictions.append((assertion, _CheckOutcome(False, violation)))
                     divergences.append(violation)
+                    continue
+            if obligations is not None:
+                ob_violation = _obligation_grounding_violation(assertion, obligations)
+                if ob_violation is not None:
+                    checked += 1
+                    contradictions.append((assertion, _CheckOutcome(False, ob_violation)))
+                    divergences.append(ob_violation)
                     continue
             outcome = await self.acheck_assertion(assertion, subject=subject, as_of=as_of, buffer=buffer)
             if outcome.mechanically_satisfied is None:

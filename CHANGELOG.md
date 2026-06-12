@@ -10,6 +10,23 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Fixed
+- **No unverified CLEAR — the taxonomy guard.** Eval run 5 caught the
+  framework's deepest gap to date: a model emitted CLEAR with zero
+  citations and zero assertions (its own reasoning said "nothing
+  maps"), and the envelope shipped as CLEAR — an unverifiable
+  compliance claim. CLEAR now *requires* verified satisfaction: with no
+  formalizable assertions it is deterministically remapped (no
+  citations → NULL_UNMAPPED; citations present → DISCRETIONARY) and the
+  remap is recorded in `envelope.notes` for the auditor.
+- **Obligation-side grounding.** Assertions are now pinned to the
+  obligation they cite: a `metric` the obligation doesn't govern, a
+  `value` the KG doesn't record (the fabricated-cap hole), or an
+  obligation id absent from the scoped snapshot all degrade as
+  LLM_CONTRADICTION. Together with run 4's measurement grounding,
+  every field of a formalizable assertion is now verified against a
+  source of truth the model cannot invent.
+
+### Fixed
 - **Quickstart actually boots with a Knowledge Graph again.** The
   compose stack mounted `reference-implementation/examples/knowledge-graphs/`,
   a directory the v3 example cleanup removed — every fresh
