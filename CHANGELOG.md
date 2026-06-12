@@ -10,6 +10,17 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Added
+- **L3 air-gapped boot rig — Sovereignty conformance is now 6/6 runnable**
+  (`conformance/sovereignty/test_air_gapped.py`). The rig boots the audit
+  ledger with `--network=none` and joins the SKI Model runtime to the same
+  loopback-only network namespace (`--network=container:`), so neither
+  process has an interface, route, or resolver beyond `lo`. It then proves
+  the namespace is loopback-only, replays a fixed five-measurement workload
+  against a **signed** KG from inside the gap, and verifies hash-chained
+  ledger persistence via `psql` from inside the same namespace. Opt-in via
+  `SKI_L3_AIRGAP=1` (Docker required; `SKI_L3_IMAGE` overrides the image);
+  skips cleanly otherwise. CI runs it as a gating job. Conformance suite
+  revision bumped to 0.5.0.
 - **SKI Evals — the verdict-accuracy evaluation suite** (`evals/`). A
   50-case human-labeled energy golden dataset (boundary values,
   jurisdiction scoping, effective-date scoping) evaluated through the

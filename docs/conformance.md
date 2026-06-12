@@ -1,10 +1,11 @@
 # SKI conformance methodology
 
 > **License:** CC BY 4.0. See [LICENSE-docs.md](../LICENSE-docs.md).
-> **Status:** Provenance + Durability runnable today. Sovereignty: four of
-> six checks runnable (single-worker, no-egress boundary, jurisdiction scope,
-> signed transcript); tamper-resistance and air-gapped boot pending their
-> Postgres / container fixtures.
+> **Status:** Provenance + Durability runnable today. Sovereignty: all six
+> checks runnable — the tamper-resistance rig needs a throwaway Postgres
+> (`SKI_L3_LEDGER_DSN`), and the air-gapped boot rig needs Docker plus the
+> `SKI_L3_AIRGAP=1` opt-in. Both skip cleanly when their infrastructure
+> is absent.
 
 This document defines what it means for an implementation to claim SKI
 Framework v3.0 conformance. It complements the runnable test suite
@@ -76,16 +77,18 @@ reproduce historical verdicts.
 ### Level 3 — Sovereignty
 
 The runtime is operable air-gapped, tamper-evident, and end-to-end
-signed. Four of the six checks below are runnable today as black-box
-structural checks (with matching functional proofs in the runtime test
-suite); tamper-resistance and air-gapped boot remain pending their
-destructive-Postgres and `--network=none` container fixtures.
+signed. All six checks below are runnable. Four are black-box structural
+checks (with matching functional proofs in the runtime test suite); the
+remaining two carry their own infrastructure rigs: tamper-resistance
+seeds and attacks a throwaway Postgres (`SKI_L3_LEDGER_DSN`), and
+air-gapped boot runs the full runtime + ledger in a loopback-only
+`--network=none` namespace (Docker + `SKI_L3_AIRGAP=1`).
 
 | Requirement | Spec | Test | Status |
 |---|---|---|---|
 | No outbound HTTP during CLEAR-path evaluation (local LLM) | Pillar S | `sovereignty/test_no_outbound_calls.py` (+ runtime `v3/tests/test_no_egress.py`) | ✅ runnable |
-| Runtime boots and serves with `--network=none` | Pillar S | `sovereignty/test_air_gapped.py` | ⏳ pending container fixture |
-| Modified ledger row fails `verify_integrity` even after chain forward | §6 | `sovereignty/test_tamper_resistance.py` | ⏳ pending Postgres fixture |
+| Runtime boots, serves, and persists with `--network=none` | Pillar S | `sovereignty/test_air_gapped.py` | ✅ runnable (Docker + `SKI_L3_AIRGAP=1`) |
+| Modified ledger row fails `verify_integrity` even after chain forward | §6 | `sovereignty/test_tamper_resistance.py` | ✅ runnable (throwaway Postgres via `SKI_L3_LEDGER_DSN`) |
 | Runtime refuses to start with `SKI_MODEL_WORKERS != 1` | Concurrency | `sovereignty/test_single_worker.py` | ✅ runnable |
 | Recorded transcript carries the snapshot's `scope` block | §3.6 + §6 | `sovereignty/test_jurisdiction_scope_captured.py` | ✅ runnable |
 | Recorded `LLMTranscript` ed25519 signature verifies | §4.7 | `sovereignty/test_signed_llm_transcript.py` (+ runtime `test_signing.py`, `test_transcript.py`) | ✅ runnable |
@@ -96,7 +99,10 @@ destructive-Postgres and `--network=none` container fixtures.
 pip install -r requirements-dev.txt
 pytest conformance/ -m provenance
 pytest conformance/ -m durability
-pytest conformance/ -m sovereignty   # 4 of 6 runnable today
+pytest conformance/ -m sovereignty   # all 6 checks; the two rig-backed ones
+                                     # skip without their infrastructure:
+                                     #   SKI_L3_LEDGER_DSN=...  tamper rig (throwaway Postgres)
+                                     #   SKI_L3_AIRGAP=1        air-gap rig (Docker)
 ```
 
 Against a live deployment:
@@ -140,7 +146,7 @@ test suite at the revision matching the spec.
 ## Contributing tests
 
 New tests are among the highest-leverage contributions you can make,
-especially in the Sovereignty bucket where coverage is still growing
-(tamper-resistance and air-gapped boot). See [`conformance/README.md`](../conformance/README.md) for
+especially hardening the Sovereignty rigs (tamper-resistance, air-gapped
+boot) against new attack shapes. See [`conformance/README.md`](../conformance/README.md) for
 the conventions (one spec citation per test; black-box only; no
 dependency on the reference implementation's internals).
