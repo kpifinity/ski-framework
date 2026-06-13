@@ -9,6 +9,8 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+## [3.1.0-beta.1] -- 2026-06-13
+
 ### Fixed
 - **No unverified CLEAR — the taxonomy guard.** Eval run 5 caught the
   framework's deepest gap to date: a model emitted CLEAR with zero
