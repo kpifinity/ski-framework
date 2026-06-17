@@ -276,3 +276,143 @@ class TestRoundTrip:
         text = original.model_dump_json()
         reparsed = V3VerdictEnvelope.model_validate(json.loads(text))
         assert reparsed.model_dump(mode="json") == original.model_dump(mode="json")
+
+
+# ---- Normalization integration ------------------------------------------------
+
+
+class _WrongSatisfiedLLM:
+    """Test backend that emits the right verdict but inverts ``satisfied``
+    for every assertion -- exactly the failure mode seen in Run 6.
+    """
+
+    name = "wrong-satisfied-llm"
+
+    @property
+    def model_weight_hash(self) -> str:
+        return "sha256:" + "e" * 64
+
+    @property
+    def prompt_template_id(self) -> str:
+        return "ski.v3.evaluate.test"
+
+    @property
+    def prompt_template_hash(self) -> str:
+        return "sha256:" + "f" * 64
+
+    @property
+    def structured_grammar_hash(self) -> str:
+        return "sha256:" + "0" * 64
+
+    async def evaluate(
+        self,
+        *,
+        measurement: Dict[str, Any],
+        kg_snapshot: Dict[str, Any],
+        seed: int,
+    ) -> Dict[str, Any]:
+        """Emit CLEAR for so2_ppm<=100 but with satisfied=False (wrong boolean)."""
+        return {
+            "verdict": "CLEAR",
+            "reasoning": "SO2 is within limit, but I inverted the boolean.",
+            "kg_citations": [
+                {
+                    "node_id": "energy.so2.lte_100ppm",
+                    "version": kg_snapshot.get("version", "unknown"),
+                    "role": "obligation",
+                }
+            ],
+            "formalizable_assertions": [
+                {
+                    "predicate": "must_not_exceed",
+                    "metric": "so2_ppm",
+                    "value": 100,
+                    "observed": 50,
+                    "satisfied": False,  # deliberately wrong
+                    "obligation_id": "energy.so2.lte_100ppm",
+                }
+            ],
+        }
+
+
+class TestNormalizationIntegration:
+    """Verifier normalization wired into the evaluator: a model that emits the
+    right verdict but wrong ``satisfied`` flag should produce AGREED (not
+    LLM_CONTRADICTION / DISCRETIONARY) because the verifier corrects the flag
+    before the aggregate check runs."""
+
+    @pytest.mark.asyncio
+    async def test_wrong_satisfied_corrected_yields_agreed_and_clear(self) -> None:
+        evaluator = V3Evaluator(
+            llm=_WrongSatisfiedLLM(),
+            kg_version_hash=_KG_HASH,
+        )
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+        )
+        # Verdict must remain CLEAR (model was right about the verdict)
+        assert env.verdict == V3Verdict.CLEAR.value
+        # Verifier must agree (normalization corrected satisfied=False -> True)
+        assert env.verifier_result.status == VerifierStatus.AGREED.value
+        # The corrected assertion in the envelope must now show satisfied=True
+        assert len(env.formalizable_assertions) == 1
+        assert env.formalizable_assertions[0].satisfied is True
+        # A normalization note must be present in the envelope
+        assert any("satisfied normalised" in note for note in env.notes)
+
+    @pytest.mark.asyncio
+    async def test_normalization_note_records_correction(self) -> None:
+        evaluator = V3Evaluator(
+            llm=_WrongSatisfiedLLM(),
+            kg_version_hash=_KG_HASH,
+        )
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+        )
+        # The note must cite the obligation and both boolean values
+        norm_notes = [n for n in env.notes if "satisfied normalised" in n]
+        assert len(norm_notes) == 1
+        assert "energy.so2.lte_100ppm" in norm_notes[0]
+        assert "False" in norm_notes[0]
+        assert "True" in norm_notes[0]
+
+    @pytest.mark.asyncio
+    async def test_grounding_failure_still_contradicts_after_normalization(self) -> None:
+        """If the model invents an observed value, normalization must NOT rescue it."""
+
+        class FabricatedObservationLLM(_WrongSatisfiedLLM):
+            async def evaluate(self, *, measurement, kg_snapshot, seed):
+                return {
+                    "verdict": "CLEAR",
+                    "reasoning": "I fabricated the observed value.",
+                    "kg_citations": [
+                        {
+                            "node_id": "energy.so2.lte_100ppm",
+                            "version": kg_snapshot.get("version", "unknown"),
+                            "role": "obligation",
+                        }
+                    ],
+                    "formalizable_assertions": [
+                        {
+                            "predicate": "must_not_exceed",
+                            "metric": "so2_ppm",
+                            "value": 100,
+                            "observed": 999,  # fabricated -- measurement has 50
+                            "satisfied": True,
+                            "obligation_id": "energy.so2.lte_100ppm",
+                        }
+                    ],
+                }
+
+        evaluator = V3Evaluator(
+            llm=FabricatedObservationLLM(),
+            kg_version_hash=_KG_HASH,
+        )
+        env = await evaluator.aevaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot=_kg_snapshot(),
+        )
+        # Fabricated observation is a grounding failure -- must NOT be papered over
+        assert env.verifier_result.status == VerifierStatus.LLM_CONTRADICTION.value
