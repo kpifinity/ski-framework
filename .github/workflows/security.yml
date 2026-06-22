@@ -43,6 +43,7 @@ jobs:
     name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    continue-on-error: true   # advisory until Dependency Graph is enabled (Settings > Code security)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/dependency-review-action@v4
