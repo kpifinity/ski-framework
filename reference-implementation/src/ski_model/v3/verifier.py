@@ -485,6 +485,68 @@ class SymbolicVerifier:
             )
         return await stateful(assertion, subject=subject, as_of=as_of, buffer=buffer)
 
+    def normalize_satisfied(
+        self,
+        assertions: Sequence[FormalizableAssertion],
+        *,
+        measurement: Optional[Mapping[str, Any]] = None,
+        obligations: Optional[Mapping[str, Mapping[str, Any]]] = None,
+    ) -> tuple[list[FormalizableAssertion], list[str]]:
+        """Correct ``satisfied`` flags that the verifier can compute mechanically.
+
+        This is the neuro-symbolic handoff for assertion truth values. For any
+        stateless predicate (``must_not_exceed``, ``must_be_at_least``,
+        ``must_be_within``, ``must_equal``, ``must_not_equal``) the verifier
+        re-evaluates the predicate from ``observed`` and ``value`` and, when its
+        answer differs from the LLM's ``satisfied`` flag, replaces the flag with
+        the mechanically correct value. The correction is noted for the envelope's
+        ``notes`` field so auditors can see what was fixed.
+
+        Grounding failures (metric absent from measurement, value mismatch vs
+        obligation) are intentionally left untouched — the grounding error itself
+        is the signal, and ``averify`` will record it as ``LLM_CONTRADICTION``.
+
+        Call this *before* :meth:`averify` and pass the returned assertion list
+        to ``averify``. The resulting :class:`VerifierResult` will reflect the
+        mechanically correct values; the raw LLM claims live in the transcript.
+
+        Returns:
+            A ``(corrected_assertions, notes)`` pair where ``notes`` is a list
+            of human-readable strings describing each correction made.
+        """
+        corrected: list[FormalizableAssertion] = []
+        notes: list[str] = []
+
+        for assertion in assertions:
+            # Skip normalization when grounding has already failed — the
+            # grounding error is the real signal; averify will catch it.
+            if measurement is not None:
+                violation = _grounding_violation(assertion, measurement)
+                if violation is not None:
+                    corrected.append(assertion)
+                    continue
+            if obligations is not None:
+                ob_violation = _obligation_grounding_violation(assertion, obligations)
+                if ob_violation is not None:
+                    corrected.append(assertion)
+                    continue
+
+            outcome = self.check_assertion(assertion)
+            if (
+                outcome.mechanically_satisfied is not None
+                and outcome.mechanically_satisfied != assertion.satisfied
+            ):
+                notes.append(
+                    f"[{assertion.obligation_id}] satisfied normalised "
+                    f"{assertion.satisfied!r} -> {outcome.mechanically_satisfied!r}: "
+                    f"{outcome.reason}"
+                )
+                corrected.append(assertion.model_copy(update={"satisfied": outcome.mechanically_satisfied}))
+            else:
+                corrected.append(assertion)
+
+        return corrected, notes
+
     def verify(
         self,
         assertions: Sequence[FormalizableAssertion],

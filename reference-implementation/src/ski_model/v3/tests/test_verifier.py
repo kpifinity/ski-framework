@@ -242,3 +242,151 @@ class TestPredicates:
             llm_verdict=V3Verdict.CLEAR if expected else V3Verdict.FLAG,
         )
         assert result.status == VerifierStatus.AGREED.value
+
+
+# ---- normalize_satisfied ------------------------------------------------------
+
+
+class TestNormalizeSatisfied:
+    """The verifier corrects wrong ``satisfied`` flags for mechanically
+    verifiable predicates, leaving assertions with grounding failures or
+    stateful/unknown predicates unchanged."""
+
+    def test_wrong_satisfied_corrected_for_must_not_exceed(self) -> None:
+        """NOx=60 vs limit=75: model says satisfied=False; verifier corrects to True."""
+        v = SymbolicVerifier()
+        a = _assertion(
+            predicate="must_not_exceed",
+            metric="nox_ppm",
+            value=75,
+            observed=60,
+            satisfied=False,  # wrong — 60 <= 75 => True
+            obligation_id="energy.nox.cap",
+        )
+        corrected, notes = v.normalize_satisfied([a])
+        assert corrected[0].satisfied is True
+        assert len(notes) == 1
+        assert "energy.nox.cap" in notes[0]
+        assert "False" in notes[0] and "True" in notes[0]
+
+    def test_wrong_satisfied_corrected_for_must_be_at_least(self) -> None:
+        """flow=15 vs min=10: model says satisfied=False; verifier corrects to True."""
+        v = SymbolicVerifier()
+        a = _assertion(
+            predicate="must_be_at_least",
+            metric="flow_m3h",
+            value=10,
+            observed=15,
+            satisfied=False,  # wrong — 15 >= 10 => True
+            obligation_id="energy.flow.min",
+        )
+        corrected, notes = v.normalize_satisfied([a])
+        assert corrected[0].satisfied is True
+        assert notes
+
+    def test_wrong_satisfied_corrected_for_must_be_within(self) -> None:
+        """pH=9.1 vs [6.0, 8.5]: model says satisfied=True; verifier corrects to False."""
+        v = SymbolicVerifier()
+        a = _assertion(
+            predicate="must_be_within",
+            metric="ph",
+            value=[6.0, 8.5],
+            observed=9.1,
+            satisfied=True,  # wrong — 9.1 not in [6.0, 8.5] => False
+            obligation_id="energy.ph.range",
+        )
+        corrected, notes = v.normalize_satisfied([a])
+        assert corrected[0].satisfied is False
+        assert notes
+
+    def test_correct_satisfied_unchanged(self) -> None:
+        """When the model's satisfied is already mechanically correct, no note is emitted."""
+        v = SymbolicVerifier()
+        a = _assertion(
+            predicate="must_not_exceed",
+            metric="so2_ppm",
+            value=100,
+            observed=85,
+            satisfied=True,  # correct
+            obligation_id="energy.so2.cap",
+        )
+        corrected, notes = v.normalize_satisfied([a])
+        assert corrected[0].satisfied is True
+        assert notes == []
+
+    def test_stateful_predicate_not_normalized(self) -> None:
+        """Stateful predicates need a buffer; normalize_satisfied leaves them alone."""
+        v = SymbolicVerifier()
+        a = _assertion(
+            predicate="must_average_within",
+            metric="temp_c",
+            value=[5, 40],
+            observed=22,
+            satisfied=False,  # possibly wrong, but we cannot compute without buffer
+            obligation_id="energy.temp.avg",
+        )
+        corrected, notes = v.normalize_satisfied([a])
+        assert corrected[0].satisfied is False  # unchanged
+        assert notes == []
+
+    def test_unknown_predicate_not_normalized(self) -> None:
+        """Unknown predicates are left unchanged (no handler)."""
+        v = SymbolicVerifier()
+        a = _assertion(
+            predicate="must_comply_with",
+            metric="x",
+            value=None,
+            observed=None,
+            satisfied=True,
+            obligation_id="ob.unknown",
+        )
+        corrected, notes = v.normalize_satisfied([a])
+        assert corrected[0].satisfied is True
+        assert notes == []
+
+    def test_grounding_failure_skips_normalization(self) -> None:
+        """If an assertion's metric is not in the measurement, skip normalisation."""
+        v = SymbolicVerifier()
+        a = _assertion(
+            predicate="must_not_exceed",
+            metric="typo_ppm",  # not in measurement
+            value=100,
+            observed=50,
+            satisfied=False,  # would be wrong if we normalized, but we shouldn't
+            obligation_id="energy.so2.cap",
+        )
+        measurement = {"so2_ppm": 50}
+        corrected, notes = v.normalize_satisfied([a], measurement=measurement)
+        assert corrected[0].satisfied is False  # left as-is
+        assert notes == []
+
+    @pytest.mark.asyncio
+    async def test_normalization_then_averify_yields_agreed(self) -> None:
+        """End-to-end: normalize wrong satisfied, then averify returns AGREED."""
+        v = SymbolicVerifier()
+        assertions = [
+            _assertion(
+                predicate="must_not_exceed",
+                metric="nox_ppm",
+                value=75,
+                observed=60,
+                satisfied=False,  # wrong
+                obligation_id="energy.nox.cap",
+            ),
+            _assertion(
+                predicate="must_be_within",
+                metric="ph",
+                value=[6.0, 8.5],
+                observed=7.0,
+                satisfied=True,  # correct
+                obligation_id="energy.ph.range",
+            ),
+        ]
+        corrected, notes = v.normalize_satisfied(assertions)
+        assert corrected[0].satisfied is True
+        assert corrected[1].satisfied is True
+        assert len(notes) == 1
+
+        result = await v.averify(corrected, llm_verdict=V3Verdict.CLEAR)
+        assert result.status == VerifierStatus.AGREED.value
+        assert result.checked_assertions == 2

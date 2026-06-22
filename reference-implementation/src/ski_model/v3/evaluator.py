@@ -587,6 +587,26 @@ class V3Evaluator:
         obligations_index = {
             ob["id"]: ob for ob in kg_snapshot.get("obligations", []) if isinstance(ob, dict) and "id" in ob
         }
+
+        # Neuro-symbolic handoff: for any assertion whose predicate is
+        # mechanically verifiable, let the Symbolic Verifier compute the
+        # correct ``satisfied`` value rather than trusting the LLM's claim.
+        # The model is responsible for identifying the right obligation,
+        # metric, and observed value -- the verifier is responsible for
+        # computing the boolean result of applying the predicate. This
+        # eliminates ``LLM_CONTRADICTION`` cases caused by model arithmetic
+        # errors (e.g. emitting ``satisfied=false`` for NOx=60 vs limit=75)
+        # that produce correct verdicts but wrong per-assertion booleans.
+        # Grounding failures are intentionally left uncorrected -- the
+        # grounding error is the real signal and averify will catch it.
+        # The raw LLM claims are preserved in the signed transcript.
+        assertions, normalization_notes = self.verifier.normalize_satisfied(
+            assertions,
+            measurement=measurement,
+            obligations=obligations_index,
+        )
+        all_notes = taxonomy_notes + normalization_notes
+
         verifier_result = await self.verifier.averify(
             assertions,
             llm_verdict=llm_verdict,
@@ -605,7 +625,7 @@ class V3Evaluator:
             verifier_result=verifier_result,
             model_provenance=self._build_provenance(),
             transcript_ref=effective_transcript_ref,
-            notes=taxonomy_notes,
+            notes=all_notes,
         )
 
         # Risk-tier policy may downgrade verdict to DISCRETIONARY and / or

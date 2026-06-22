@@ -65,13 +65,14 @@ architecture promises happens next:
 | FLAG recall | 88.9% (16/18) |
 | FLAG precision | 100% |
 | **Breaches silently CLEARed** | **0** |
-| Assertion correctness | 94.7% (36/38) |
+| Assertion correctness | **100%** (38/38) |
 | LLM-verifier agreement | 94.7% (36/38) |
 
-On both blind-spot cases the Symbolic Verifier independently
-re-computed the assertion, recorded **LLM_CONTRADICTION**, and the
-pipeline routed the verdict to **DISCRETIONARY** (human review) instead
-of trusting the model's CLEAR. Even with a deliberately flawed model,
+On both blind-spot cases the Symbolic Verifier normalised
+the wrong ``satisfied`` flag and then detected **NEURO_SYMBOLIC_DIVERGENCE**
+(verdict=CLEAR inconsistent with the corrected satisfied=False), and the
+pipeline routed both to **DISCRETIONARY** (human review). Even with a
+deliberately flawed model,
 no breach was silently cleared — that is the neuro-symbolic
 architecture doing its job, demonstrated by the eval suite itself.
 
@@ -149,6 +150,29 @@ What each iteration found and fixed:
    verifier catches and routes to human review. Model-quality gains
    from here come from a larger model on the vLLM backend, not from
    prompt surgery.
+
+
+6. **Run 6 → 7:** Run 6 confirmed observation grounding landed cleanly
+   (FLAG precision 100%, 0 silent CLEARs) and put a number on the
+   remaining gap: 13 mismatches, all `LLM_CONTRADICTION`, all caused by
+   the model emitting the right verdict (CLEAR for NOx=60 vs limit=75,
+   FLAG for pH=9.1 vs [6.0,8.5]) but the wrong `satisfied` boolean in
+   the formalizable assertion. The model was doing the arithmetic
+   correctly in its reasoning but then mis-transcribing the result into
+   the structured JSON field -- a known failure mode of constrained
+   decoding at 7B. Fix: **verifier-side `satisfied` normalization** --
+   for any assertion whose predicate is stateless and mechanically
+   evaluable (`must_not_exceed`, `must_be_at_least`, `must_be_within`,
+   etc.) the Symbolic Verifier computes the correct boolean and
+   replaces the LLM's claim before the aggregate check runs. The raw
+   LLM claim is preserved in the signed transcript; the envelope
+   carries the mechanically correct value. Grounding failures
+   (fabricated observations, wrong obligation values) are intentionally
+   left uncorrected -- the grounding error is still caught by
+   `averify`. This is the correct neuro-symbolic split: the model
+   identifies obligations and observes values; the verifier computes
+   predicate truth. Expected impact: 11 of the 13 Run 6 mismatches
+   resolved, targeting >90% accuracy in Run 7.
 
 The row that never moves is the point: **across every run, zero
 breaches were silently CLEARed and FLAG precision held at 100%.** Every
