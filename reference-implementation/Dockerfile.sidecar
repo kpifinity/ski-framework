@@ -1,13 +1,19 @@
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+# `upgrade` pulls in pending Debian security updates (the base image
+# lags point releases; Trivy gates HIGH/CRITICAL in CI).
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY src/sidecar/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Refresh the build tooling baked into the base image: the bundled
+# setuptools/wheel carry known CVEs (vendored jaraco.context, wheel)
+# that the gating Trivy scan rejects.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt
 
 COPY src/sidecar/ ./sidecar/
 

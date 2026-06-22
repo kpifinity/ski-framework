@@ -11,6 +11,7 @@ Usage
   python quickstart.py          # guided walkthrough (4 cases)
   python quickstart.py --all    # run all 50 eval cases, then show summary
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,6 +31,7 @@ for _p in [str(HERE), str(_SRC)]:
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+
 # ---------------------------------------------------------------------------
 # Bootstrap rich (auto-install if missing)
 # ---------------------------------------------------------------------------
@@ -39,10 +41,12 @@ def _ensure_rich() -> None:
     except ImportError:
         print("One-time setup: installing display library (rich)...")
         import subprocess
+
         subprocess.run(
             [sys.executable, "-m", "pip", "install", "rich", "--quiet"],
             check=True,
         )
+
 
 _ensure_rich()
 
@@ -186,6 +190,7 @@ VERIFIER_DISPLAY: dict[str, tuple[str, str]] = {
 # Display helpers
 # ---------------------------------------------------------------------------
 
+
 def _pause(prompt: str = "Press [bold]Enter[/bold] to continue...") -> None:
     CONSOLE.print()
     Prompt.ask(f"  [dim]{prompt}[/dim]", default="", show_default=False)
@@ -206,9 +211,7 @@ def _show_measurement_table(case: dict[str, Any]) -> None:
 
 def _show_verdict(envelope: Any) -> None:
     raw = getattr(envelope.verdict, "value", str(envelope.verdict))
-    label, style, description = VERDICT_DISPLAY.get(
-        raw, (raw, "bold", "Unknown verdict.")
-    )
+    label, style, description = VERDICT_DISPLAY.get(raw, (raw, "bold", "Unknown verdict."))
     CONSOLE.print(
         Panel(
             f"[{style}]{label}[/{style}]\n\n[dim]{description}[/dim]",
@@ -219,13 +222,9 @@ def _show_verdict(envelope: Any) -> None:
     )
 
     # Verifier result
-    v_status = getattr(
-        envelope.verifier_result.status, "value", str(envelope.verifier_result.status)
-    )
+    v_status = getattr(envelope.verifier_result.status, "value", str(envelope.verifier_result.status))
     v_msg, v_color = VERIFIER_DISPLAY.get(v_status, (v_status, "white"))
-    CONSOLE.print(
-        f"  [dim]Symbolic Verifier:[/dim] [{v_color}]{v_msg}[/{v_color}]"
-    )
+    CONSOLE.print(f"  [dim]Symbolic Verifier:[/dim] [{v_color}]{v_msg}[/{v_color}]")
 
     # Show assertions if present
     assertions = envelope.formalizable_assertions
@@ -253,11 +252,11 @@ def _show_verdict(envelope: Any) -> None:
 # Core: load KG and evaluator
 # ---------------------------------------------------------------------------
 
+
 def _load_kg() -> KnowledgeGraph:
     if not EVAL_KG_PATH.exists():
         CONSOLE.print(
-            f"[red]Knowledge Graph not found at {EVAL_KG_PATH}[/red]\n"
-            "Run this script from the repo root."
+            f"[red]Knowledge Graph not found at {EVAL_KG_PATH}[/red]\nRun this script from the repo root."
         )
         sys.exit(1)
     raw = json.loads(EVAL_KG_PATH.read_text(encoding="utf-8"))
@@ -289,8 +288,8 @@ def _show_kg_overview(kg: KnowledgeGraph) -> None:
     rule_descriptions = {
         "energy.so2.cap": ("SO₂ emissions (sulfur dioxide)", "≤ 100 ppm"),
         "energy.nox.cap": ("NOₓ emissions (nitrogen oxides)", "≤ 75 ppm"),
-        "energy.ph.range": ("Wastewater pH (acidity/alkalinity)", "6.0 – 8.5"),
-        "energy.temp.range": ("Effluent temperature", "5 – 40 °C"),
+        "energy.ph.range": ("Wastewater pH (acidity/alkalinity)", "6.0 - 8.5"),
+        "energy.temp.range": ("Effluent temperature", "5 - 40 °C"),
         "energy.methane.cap": ("Methane emissions", "≤ 12 kg/h"),
         "energy.turbidity.cap": ("Water turbidity", "≤ 1.0 NTU"),
         "energy.flow.min": ("Cooling water flow rate", "≥ 10 m³/h"),
@@ -316,6 +315,7 @@ def _show_kg_overview(kg: KnowledgeGraph) -> None:
 # Run one demo case
 # ---------------------------------------------------------------------------
 
+
 async def _run_case(
     evaluator: V3Evaluator,
     kg: KnowledgeGraph,
@@ -335,6 +335,7 @@ async def _run_case(
 # ---------------------------------------------------------------------------
 # Main walkthrough
 # ---------------------------------------------------------------------------
+
 
 async def _walkthrough(kg: KnowledgeGraph, evaluator: V3Evaluator) -> None:
     correct = 0
@@ -356,8 +357,7 @@ async def _walkthrough(kg: KnowledgeGraph, evaluator: V3Evaluator) -> None:
         if verdict == expected:
             correct += 1
             CONSOLE.print(
-                f"\n  [green]Correct.[/green] "
-                f"Expected [bold]{expected}[/bold] -- got [bold]{verdict}[/bold]."
+                f"\n  [green]Correct.[/green] Expected [bold]{expected}[/bold] -- got [bold]{verdict}[/bold]."
             )
         else:
             CONSOLE.print(
@@ -397,8 +397,8 @@ async def _walkthrough(kg: KnowledgeGraph, evaluator: V3Evaluator) -> None:
 
 async def _run_all(kg: KnowledgeGraph, evaluator: V3Evaluator) -> None:
     """Run all 50 eval cases and show a summary table."""
+    from evals.metrics import CaseResult, compute_metrics
     from evals.runner import load_cases
-    from evals.metrics import compute_metrics, CaseResult
 
     cases_path = HERE / "evals" / "datasets" / "energy" / "cases.jsonl"
     cases = load_cases(cases_path)

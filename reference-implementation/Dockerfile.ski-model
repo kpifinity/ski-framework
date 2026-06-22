@@ -1,20 +1,30 @@
-FROM python:3.11-slim-bookworm
+FROM python:3.11-slim
 
 WORKDIR /app
 
 # System dependencies — curl is used by the container healthcheck only.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+# `upgrade` pulls in pending Debian security updates (the base image
+# lags point releases; Trivy gates HIGH/CRITICAL in CI).
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Python dependencies
-COPY src/ski_model/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# NOTE: build context is the REPO ROOT (the image carries the shared
+# ski-schemas package): docker build -f reference-implementation/Dockerfile.ski-model .
+COPY reference-implementation/src/ski_model/requirements.txt .
+# Refresh the build tooling baked into the base image: the bundled
+# setuptools/wheel carry known CVEs (vendored jaraco.context, wheel)
+# that the gating Trivy scan rejects.
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && pip install --no-cache-dir -r requirements.txt
 
 # SKI Model source code
-COPY src/ski_model/ ./ski_model/
-COPY src/symbolic_evaluator/ ./symbolic_evaluator/
-COPY src/tag_registry/ ./tag_registry/
+COPY reference-implementation/src/ski_model/ ./ski_model/
+COPY reference-implementation/src/symbolic_evaluator/ ./symbolic_evaluator/
+COPY reference-implementation/src/tag_registry/ ./tag_registry/
+# Shared wire models (RFC 0003 PR 1) — single source of truth.
+COPY tools/ski-schemas/src/ski_schemas/ ./ski_schemas/
 
 # Runtime data directory
 RUN mkdir -p /data /app/tls
