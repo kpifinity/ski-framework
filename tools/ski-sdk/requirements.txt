@@ -2,4 +2,4 @@
 # The published package declares ranges in pyproject.toml instead.
 httpx==0.28.1
 pydantic==2.13.4
-cryptography==46.0.7
+cryptography==48.0.1
