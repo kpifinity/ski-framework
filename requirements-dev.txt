@@ -24,7 +24,7 @@ fastapi==0.136.3
 uvicorn[standard]==0.48.0
 pydantic==2.13.4
 httpx==0.28.1
-cryptography==46.0.7
+cryptography==48.0.1
 prometheus-client==0.25.0
 sqlalchemy==2.0.27
 psycopg[binary]==3.1.18
