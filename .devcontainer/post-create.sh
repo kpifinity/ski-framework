@@ -20,7 +20,7 @@ echo "==> Installing docs requirements"
 pip install -r requirements-docs.txt
 
 echo "==> Installing reference CLIs in editable mode"
-for tool in tools/audit-ledger tools/kg-extractor tools/kg-validator tools/ski-model-deploy; do
+for tool in tools/audit-ledger tools/kg-extractor tools/kg-validator tools/ski-model-deploy tools/ski-schemas tools/ski-sdk; do
   if [[ -f "${tool}/pyproject.toml" ]]; then
     pip install -e "${tool}"
   fi
