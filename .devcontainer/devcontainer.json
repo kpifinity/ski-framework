@@ -15,12 +15,6 @@
     "ghcr.io/devcontainers/features/github-cli:1": {
       "version": "latest"
     },
-    // Docker-in-Docker so the reference-implementation integration
-    // tests that spin up Postgres in containers can run.
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {
-      "version": "latest",
-      "moby": true
-    },
     // Pre-commit, ruff, mypy live in requirements-dev.txt, but having
     // pipx here lets contributors install cosign/slsa-verifier without
     // polluting the project venv.
