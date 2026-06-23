@@ -15,6 +15,7 @@ Usage
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone
@@ -487,7 +488,11 @@ async def main() -> None:
     # Load KG
     with CONSOLE.status("  Loading Knowledge Graph...", spinner="dots"):
         kg = _load_kg()
-        evaluator = V3Evaluator(llm=FakeLLM(), kg_version_hash="quickstart", decoder_seed=42)
+        evaluator = V3Evaluator(
+            llm=FakeLLM(),
+            kg_version_hash="sha256:" + hashlib.sha256(EVAL_KG_PATH.read_bytes()).hexdigest(),
+            decoder_seed=42,
+        )
 
     CONSOLE.print("  [green]Knowledge Graph loaded.[/green]\n")
 
