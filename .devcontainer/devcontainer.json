@@ -21,6 +21,7 @@
   // PYTHONPATH points at the reference implementation. The CI uses
   // the same values.
   "containerEnv": {
+    "PYTHONPATH": "${containerWorkspaceFolder}/reference-implementation/src",
     "PIP_DISABLE_PIP_VERSION_CHECK": "1",
     "PIP_NO_CACHE_DIR": "0",
     "PYTHONDONTWRITEBYTECODE": "1",
