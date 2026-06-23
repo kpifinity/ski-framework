@@ -15,10 +15,6 @@
     "ghcr.io/devcontainers/features/github-cli:1": {
       "version": "latest"
     },
-    // Pre-commit, ruff, mypy live in requirements-dev.txt, but having
-    // pipx here lets contributors install cosign/slsa-verifier without
-    // polluting the project venv.
-    "ghcr.io/devcontainers-contrib/features/pipx-package:1": {}
   },
 
   // Set predictable env vars so pip uses the user-site cache and
