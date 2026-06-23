@@ -265,7 +265,7 @@ def _load_kg() -> KnowledgeGraph:
 
 def _show_kg_overview(kg: KnowledgeGraph) -> None:
     snapshot = kg.scope_to(jurisdiction=JURISDICTION, as_of=AS_OF)
-    obligations = snapshot.get("obligations", {})
+    obligations = snapshot.get("obligations", [])
 
     CONSOLE.print(Rule("[bold]The Knowledge Graph[/bold]", style="dim"))
     CONSOLE.print()
@@ -295,7 +295,8 @@ def _show_kg_overview(kg: KnowledgeGraph) -> None:
         "energy.flow.min": ("Cooling water flow rate", "≥ 10 m³/h"),
     }
 
-    for ob_id in obligations:
+    for ob in obligations:
+        ob_id = ob.get("id", "")
         desc, limit = rule_descriptions.get(ob_id, (ob_id, ""))
         t.add_row(ob_id, desc, limit)
 
