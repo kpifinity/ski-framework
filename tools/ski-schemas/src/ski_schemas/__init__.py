@@ -19,7 +19,7 @@ from .envelope import (
 from .measurement import MeasurementRecord
 from .transcript import LLMTranscript, hash_pair, signing_message
 
-__version__ = "0.1.0"
+__version__ = "3.1.0b1"
 
 __all__ = [
     "FormalizableAssertion",
