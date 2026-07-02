@@ -203,6 +203,7 @@ jobs:
 
   # --------------------------------------------------------------------
   # 5. Publish wheels + sdists to PyPI via trusted publishing (OIDC).
+  #    Runs for final (GA) releases only; pre-release tags skip it.
   #    One-time setup: each project on PyPI must have a trusted
   #    publisher configured for this repo + workflow + environment
   #    (see RELEASING.md). No API tokens are stored anywhere.
@@ -210,6 +211,11 @@ jobs:
   publish-pypi:
     name: Publish to PyPI (trusted publishing)
     needs: [build, provenance]
+    # GA only. Publish to PyPI for final releases, never for pre-releases.
+    # Pre-release tags carry a hyphenated identifier (v3.1.0-beta.1,
+    # v3.1.0-rc.1, ...); final tags do not (v3.1.0). Pre-release tags still
+    # build, sign, and cut a GitHub release -- they just skip PyPI.
+    if: ${{ !contains(github.ref_name, '-') }}
     runs-on: ubuntu-22.04
     environment:
       name: pypi
