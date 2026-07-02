@@ -133,13 +133,16 @@ The `.github/workflows/release.yml` job:
    as the release body.
 7. Publishes the wheels and sdists to PyPI via **trusted publishing**
    (OIDC; the `pypi` GitHub environment; no stored API tokens).
+   **This step runs for final (GA) releases only.** Pre-release tags
+   (`-alpha`/`-beta`/`-rc`) build, sign, and cut a GitHub release but
+   deliberately skip PyPI, so betas never land on the public index.
 
    *One-time setup per package:* on PyPI, add a "trusted publisher"
-   for each of `ski-sdk`, `ski-kg-extractor`, `ski-kg-validator`,
-   `ski-model-deploy`, `ski-audit-ledger` with owner `kpifinity`,
-   repository `ski-framework`, workflow `release.yml`, environment
-   `pypi`. New names can be pre-registered via PyPI's "pending
-   publisher" flow before the first release.
+   for each of `ski-schemas`, `ski-sdk`, `ski-kg-extractor`,
+   `ski-kg-validator`, `ski-model-deploy`, `ski-audit-ledger` with
+   owner `kpifinity`, repository `ski-framework`, workflow
+   `release.yml`, environment `pypi`. New names can be pre-registered
+   via PyPI's "pending publisher" flow before the first release.
 
 If any of these steps fails, do not delete the tag — fix forward in a
 patch release. Deleted tags break SLSA provenance verification for
