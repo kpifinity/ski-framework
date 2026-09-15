@@ -238,7 +238,7 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-      - run: pip install "cyclonedx-bom==4.4.3"
+      - run: pip install "cyclonedx-bom==7.4.0"
       - name: Generate SBOM per requirements file
         run: |
           set -e
