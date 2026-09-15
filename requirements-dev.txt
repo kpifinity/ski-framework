@@ -26,7 +26,7 @@ pydantic==2.13.4
 httpx==0.28.1
 cryptography==50.0.0
 prometheus-client==0.25.0
-sqlalchemy==2.0.27
-psycopg[binary]==3.1.18
+sqlalchemy==2.0.53
+psycopg[binary]==3.3.5
 pyyaml==6.0.1
 click==8.5.0

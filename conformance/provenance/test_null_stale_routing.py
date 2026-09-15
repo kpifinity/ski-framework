@@ -66,7 +66,7 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "measurement": {"x": 50},
     }
-    decision = asyncio.get_event_loop().run_until_complete(
+    decision = asyncio.run(
         SymbolicEvaluator().aevaluate(
             rule, telemetry, buffer=_EmptyBuffer(), as_of=datetime.now(timezone.utc)
         )
