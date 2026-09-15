@@ -61,7 +61,7 @@ Out of scope (please do not test):
 ## Hardening guidance
 
 Operator-facing hardening guidance is consolidated in
-[`reference-implementation/SECURITY_DEFAULTS.md`](./reference-implementation/SECURITY_DEFAULTS.md).
+[`reference-implementation/SECURITY_DEFAULTS.md`](../reference-implementation/SECURITY_DEFAULTS.md).
 The reference implementation is configured to refuse to start without
 operator-supplied secrets and with TLS enabled by default.
 
@@ -70,7 +70,7 @@ operator-supplied secrets and with TLS enabled by default.
 - KG signatures: **Ed25519** (RFC 8032).
 - Audit ledger hashes: **SHA-256** over the canonical serialization
   documented in
-  [`tools/audit-ledger/src/audit_ledger/canonical.py`](./tools/audit-ledger/src/audit_ledger/canonical.py).
+  [`tools/audit-ledger/src/audit_ledger/canonical.py`](../tools/audit-ledger/src/audit_ledger/canonical.py).
 - TLS: at least TLS 1.2, prefer TLS 1.3. Stack ships with self-signed certs
   for local use; replace with certs from your own CA for any non-local
   deployment.

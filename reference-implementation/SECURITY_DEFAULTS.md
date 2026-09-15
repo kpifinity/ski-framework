@@ -34,8 +34,8 @@ them before production.
 | Certificate authority | The setup script generates self-signed certs for local use. For production, replace `tls/` with certs from your own CA. Rotate at the cadence your CA mandates. |
 | Disk encryption at rest | Use the encryption facilities of the underlying volume / storage class. Not part of the docker-compose stack. |
 | Backup encryption | `audit-ledger` produces a `pg_dump` and a SHA-256 checksum. Encrypting the backup at rest is the operator's responsibility (e.g. `age`, KMS-wrapped key). |
-| Air-gapped operation | Set `networks.ski-internal.internal: true` in `docker-compose.yml` and pre-stage container images + Ollama model files on physical media. Documented in [`docs/AIR_GAPPED.md`](./docs/AIR_GAPPED.md). |
-| Hardware baseline | The Determinism Enforcement Controls (B3.4) require pinning hardware so an organisation can audit reproducibility. Document your CPU model, instruction-set extensions, OS kernel, container runtime, and Ollama version against the manifest in [`docs/HARDWARE_BASELINE.md`](./docs/HARDWARE_BASELINE.md). |
+| Air-gapped operation | Set `networks.ski-internal.internal: true` in `docker-compose.yml` and pre-stage container images + Ollama model files on physical media. Documented in [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md). |
+| Hardware baseline | The Determinism Enforcement Controls (B3.4) require pinning hardware so an organisation can audit reproducibility. Document your CPU model, instruction-set extensions, OS kernel, container runtime, and Ollama version against the manifest in [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md). |
 
 ## Outbound network calls
 
