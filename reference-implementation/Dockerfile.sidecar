@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 
@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     # out of those wheels and flags them even though they're never
     # extracted or importable — strip them so only the actually
     # installed (and upgraded) copies remain in the image.
-    && find /usr/local/lib/python3.11/ensurepip -name '*.whl' -delete
+    && find /usr/local/lib/python3.14/ensurepip -name '*.whl' -delete
 
 COPY src/sidecar/ ./sidecar/
 

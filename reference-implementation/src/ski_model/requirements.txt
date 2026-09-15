@@ -4,7 +4,7 @@ fastapi==0.136.3
 uvicorn[standard]==0.48.0
 pydantic==2.13.4
 python-dotenv==1.2.2
-psycopg[binary]==3.1.18
+psycopg[binary]==3.3.5
 sqlalchemy==2.0.27
 pyyaml==6.0.1
 prometheus-client==0.20.0

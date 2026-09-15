@@ -68,7 +68,7 @@ quote-style = "double"
 # mypy - strict on runtime packages, advisory on legacy CLI tools.
 # ---------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.14"
 ignore_missing_imports = true
 follow_imports = "silent"
 warn_redundant_casts = true
