@@ -213,6 +213,52 @@ class TestUnverifiable:
         )
         assert result.status == VerifierStatus.UNVERIFIABLE.value
 
+    @pytest.mark.parametrize(
+        ("predicate", "value", "observed"),
+        [
+            # Every stateless predicate's non-numeric / malformed-shape
+            # guard must fail closed (UNVERIFIABLE), never guess.
+            ("must_be_at_least", "five", 10),
+            ("must_be_within", [6.0, 8.5], "not-a-number"),  # observed not numeric
+            ("must_be_within", "6-8.5", 7.2),  # value not a [lo, hi] pair
+            ("must_be_within", [6.0], 7.2),  # value has only one bound
+            ("must_be_below", "ten", 5),
+            ("must_be_above", 5, "ten"),
+            ("must_be_one_of", "not-a-list", "a"),
+            ("must_be_one_of", [], "a"),  # empty candidate set
+            ("must_not_be_one_of", "not-a-list", "a"),
+            ("must_not_be_one_of", [], "a"),
+        ],
+    )
+    def test_every_predicate_guard_yields_unverifiable(
+        self, predicate: str, value: Any, observed: Any
+    ) -> None:
+        v = SymbolicVerifier()
+        result = v.verify(
+            [_assertion(predicate=predicate, value=value, observed=observed, satisfied=True)],
+            llm_verdict=V3Verdict.DISCRETIONARY,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+
+    @pytest.mark.asyncio
+    async def test_unknown_predicate_via_async_path_is_also_unverifiable(self) -> None:
+        """acheck_assertion (the async dispatch used by averify) must fail
+        closed on an unrecognised predicate exactly like the sync path."""
+        v = SymbolicVerifier()
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="requires_human_judgment",
+                    value=None,
+                    observed=None,
+                    satisfied=True,
+                )
+            ],
+            llm_verdict=V3Verdict.DISCRETIONARY,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+        assert any("not mechanically verifiable" in d for d in result.divergences)
+
 
 # ---- Predicate coverage -------------------------------------------------------
 

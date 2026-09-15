@@ -65,6 +65,14 @@ _SNAPSHOT = {"version": "v1", "obligations": [{"id": "ob.x", "metric": "so2_ppm"
 
 
 class TestProvenance:
+    def test_backend_protocol_properties(self, httpx_mock: HTTPXMock) -> None:
+        from ski_model.v3.evaluator import PROMPT_TEMPLATE_ID
+
+        b = _backend(httpx_mock)
+        assert b.prompt_template_id == PROMPT_TEMPLATE_ID
+        assert b.prompt_template_hash == PROMPT_TEMPLATE_HASH
+        assert b.structured_grammar_hash == STRUCTURED_GRAMMAR_HASH
+
     def test_operator_digest_is_the_anchor_when_supplied(self, httpx_mock: HTTPXMock) -> None:
         b = _backend(httpx_mock, sha="AB" * 32)
         assert b.model_weight_hash == "sha256:" + "ab" * 32

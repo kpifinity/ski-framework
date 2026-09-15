@@ -183,8 +183,12 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Gating floor (measured 72% at 2026-06-10). Ratchet upward only.
-fail_under = 70
+# Gating floor (measured 80.4% at 2026-09-15, v-next GA hardening item A1).
+# Ratchet upward only. The safety-critical module set (verifier, evaluator,
+# risk_tier policy, signing, kg_loader, ledger_client) is held to a
+# separate, stricter 95% floor — see the "Safety-critical module coverage"
+# step in .github/workflows/ci.yml.
+fail_under = 80
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",

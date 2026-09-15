@@ -27,7 +27,7 @@ from fastapi.testclient import TestClient
 
 from ski_model import server
 from ski_model.kg_loader import KnowledgeGraph
-from ski_model.v3 import FakeLLM, V3Evaluator, V3VerdictEnvelope
+from ski_model.v3 import AgreementMonitor, FakeLLM, V3Evaluator, V3VerdictEnvelope
 
 # ---- In-memory test doubles ---------------------------------------------------
 
@@ -215,6 +215,49 @@ def test_strict_governor_ignores_caller_risk_tier() -> None:
     assert envelope.verdict == "CLEAR"
 
 
+def test_evaluate_returns_5xx_and_no_verdict_when_ledger_append_fails() -> None:
+    """A verdict must never reach the caller unless it was durably recorded.
+
+    The endpoint has no try/except around ``ledger.append_v3`` — that is
+    deliberate fail-closed behaviour, not a gap: FastAPI's default
+    exception handling turns the unhandled error into a 500 with no
+    body matching ``V3VerdictEnvelope``, so a caller can never observe a
+    verdict that was computed but not persisted to the audit ledger.
+    """
+
+    @dataclass
+    class _RaisingLedger:
+        async def initialize(self) -> None:
+            return None
+
+        async def close(self) -> None:
+            return None
+
+        async def append_v3(self, **kwargs: Any) -> None:
+            raise RuntimeError("simulated ledger append failure (e.g. DB connection lost)")
+
+        async def list(self, *, limit: int, offset: int) -> List[Dict[str, Any]]:
+            return []
+
+    _install_test_state()
+    # raise_server_exceptions=False so we can assert on the actual HTTP
+    # response FastAPI sends a real caller, instead of TestClient
+    # re-raising the exception into the test itself.
+    client = TestClient(server.app, raise_server_exceptions=False)
+    _install_test_state()
+    server.state.ledger = _RaisingLedger()  # type: ignore[assignment]
+    resp = client.post("/api/evaluate", json=_measurement_payload(50))
+    assert resp.status_code >= 500, resp.text
+    # No partial / unpersisted verdict body — the response must NOT be a
+    # valid V3VerdictEnvelope (which always carries a "verdict" key).
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+    if isinstance(body, dict):
+        assert "verdict" not in body
+
+
 def test_evaluate_records_to_ledger() -> None:
     ledger = _install_test_state()
     with _client() as client:
@@ -225,3 +268,39 @@ def test_evaluate_records_to_ledger() -> None:
     assert entry["track"] == "v3-evaluator"
     assert entry["kg_version"] == "v3test-0001"
     assert entry["rule_id"] == "energy.so2.lte_100ppm"
+
+
+def test_list_verdicts_reads_through_to_ledger() -> None:
+    ledger = _install_test_state()
+    with _client() as client:
+        ledger = _install_test_state()
+        client.post("/api/evaluate", json=_measurement_payload(50))
+        resp = client.get("/api/verdicts")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["total"] == 1
+    assert len(body["verdicts"]) == 1
+    assert ledger.appended  # sanity: same entries the ledger actually holds
+
+
+def test_canary_reports_not_started_before_any_evaluation() -> None:
+    _install_test_state()
+    with _client() as client:
+        _install_test_state()
+        server.state.agreement_monitor = None
+        resp = client.get("/api/canary")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "not_started"
+
+
+def test_canary_reports_healthy_snapshot_after_agreed_evaluations() -> None:
+    _install_test_state()
+    with _client() as client:
+        _install_test_state()
+        server.state.agreement_monitor = AgreementMonitor(window_size=100, threshold=0.95)
+        client.post("/api/evaluate", json=_measurement_payload(50))  # AGREED verifier status
+        resp = client.get("/api/canary")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "healthy"
+    assert body["is_healthy"] is True

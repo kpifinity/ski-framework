@@ -172,6 +172,23 @@ class TestObligationGroundingUnit:
         assert str(r.status) == "LLM_CONTRADICTION"
         assert "fabricated obligation reference" in r.divergences[0]
 
+    def test_non_numeric_non_list_obligation_value_mismatch(self) -> None:
+        """String-valued obligations (e.g. a required status/category) hit
+        the plain equality branch, not the numeric or range coercion."""
+        obs = {"energy.status.cap": {"id": "energy.status.cap", "metric": "status", "value": "compliant"}}
+        a = _assertion(
+            predicate="must_equal",
+            metric="status",
+            value="exempt",  # fabricated — the obligation actually says "compliant"
+            observed="exempt",
+            obligation_id="energy.status.cap",
+        )
+        r = SymbolicVerifier().verify(
+            [a], llm_verdict=V3Verdict.CLEAR, measurement={"status": "exempt"}, obligations=obs
+        )
+        assert str(r.status) == "LLM_CONTRADICTION"
+        assert "fabricated obligation value" in r.divergences[0]
+
     def test_range_value_tolerates_int_float(self) -> None:
         obs = {"ph.range": {"id": "ph.range", "metric": "ph", "value": [6, 8.5]}}
         a = _assertion(

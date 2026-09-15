@@ -78,3 +78,24 @@ class TestSignVerify:
         signer_a = TranscriptSigner.auto_provision(tmp_path / "a.ed25519")
         signer_b = TranscriptSigner.auto_provision(tmp_path / "b.ed25519")
         assert signer_a.key_id != signer_b.key_id
+
+    def test_non_ed25519_public_key_is_rejected(self, tmp_path: Path) -> None:
+        """verify_signature must fail closed on a wrong key *type*, not just
+        a wrong key value -- a caller passing an RSA PEM must get a clear
+        error, never a silent False from a mismatched-type comparison."""
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
+
+        rsa_key = generate_private_key(public_exponent=65537, key_size=2048)
+        rsa_pem = (
+            rsa_key.public_key()
+            .public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo)
+            .decode("ascii")
+        )
+
+        signer = TranscriptSigner.auto_provision(tmp_path / "k.ed25519")
+        message = signing_message(request_hash="sha256:" + "a" * 64, response_hash="sha256:" + "b" * 64)
+        signature = signer.sign(message)
+
+        with pytest.raises(ValueError, match="not an ed25519 key"):
+            verify_signature(public_key_pem=rsa_pem, message=message, signature_hex=signature)

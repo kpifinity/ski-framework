@@ -186,6 +186,17 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pip install -e tools/ski-schemas -e tools/kg-extractor -e tools/kg-validator -e tools/ski-model-deploy -e tools/audit-ledger -e tools/ski-sdk
       - run: pytest -q --cov --cov-report=xml
+      # v-next GA hardening item A1: the safety-critical module set (the
+      # neuro-symbolic verifier, the LLM-grounded evaluator, the risk-tier
+      # policy, transcript signing, the signed-KG loader, and the audit
+      # ledger writer) is held to a separate, stricter 95% line-coverage
+      # floor on top of the repo-wide 80% gate. Reuses the .coverage data
+      # pytest-cov just wrote — no re-run of the suite.
+      - name: Safety-critical module coverage (>=95%)
+        run: |
+          coverage report \
+            --include="reference-implementation/src/ski_model/v3/verifier.py,reference-implementation/src/ski_model/v3/evaluator.py,reference-implementation/src/ski_model/v3/policies/risk_tier.py,reference-implementation/src/ski_model/v3/signing.py,reference-implementation/src/ski_model/kg_loader.py,reference-implementation/src/ski_model/ledger_client.py" \
+            --fail-under=95
       - uses: codecov/codecov-action@v4
         if: matrix.python == '3.14'
         with:

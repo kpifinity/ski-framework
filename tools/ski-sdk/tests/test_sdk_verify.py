@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 
+import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 from ski_sdk import verify_transcript
 
 
@@ -69,3 +71,17 @@ def test_wrong_key_fails() -> None:
     report = verify_transcript(t, _pem(Ed25519PrivateKey.generate()))
     assert not report.signature_valid
     assert not report.ok
+
+
+def test_non_ed25519_public_key_raises() -> None:
+    t = _build_signed_transcript(Ed25519PrivateKey.generate())
+    rsa_key = generate_private_key(public_exponent=65537, key_size=2048)
+    rsa_pem = (
+        rsa_key.public_key()
+        .public_bytes(
+            encoding=serialization.Encoding.PEM, format=serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        .decode("ascii")
+    )
+    with pytest.raises(ValueError, match="not an Ed25519 public key"):
+        verify_transcript(t, rsa_pem)
