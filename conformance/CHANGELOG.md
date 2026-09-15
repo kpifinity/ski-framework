@@ -2,6 +2,7 @@
 
 | Spec version | Suite revision | Notes |
 |---|---|---|
+| v3.0 | 0.6.0 | Sovereignty (L3): added `test_manipulation_resistant_verdict.py` — threat T9 (adversarial/injected telemetry), structural check that the verifier grounds assertions against the measurement and cited obligation, recomputes `satisfied` mechanically, and that risk-tier policy downgrades any disagreement. Functional proof in the runtime suite (`v3/tests/test_adversarial_telemetry.py`): a scripted FakeLLM simulates a successful injection and a real breach is never CLEARed. Seven checks now runnable. |
 | v3.0 | 0.5.0 | Sovereignty (L3): all six checks runnable. The ledger tamper-resistance rig seeds and attacks a throwaway Postgres (`SKI_L3_LEDGER_DSN`). The air-gapped boot rig runs runtime + ledger in one loopback-only `--network=none` namespace, replays a fixed workload, and verifies hash-chained ledger persistence from inside (Docker + `SKI_L3_AIRGAP=1`). |
 | v3.0 | 0.4.0 | Sovereignty (L3): four of six checks now runnable as black-box structural checks (single-worker, no-egress boundary, jurisdiction scope, signed transcript), plus a functional no-egress test in the runtime suite. Tamper-resistance and air-gapped boot remain pending their Postgres / container fixtures. |
 | v3.0 | 0.3.0 | Reorganised around verifiable provenance. Provenance (L1) and Durability (L2) tests runnable. Sovereignty (L3) scaffolded; harness pending. |
