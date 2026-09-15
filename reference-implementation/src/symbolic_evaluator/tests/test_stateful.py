@@ -97,7 +97,7 @@ class FakeBuffer:
 
 
 def _run(coro: Coroutine[Any, Any, Any]) -> Any:
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def _telemetry(subject: str, ts: datetime, measurement: dict[str, Any]) -> dict[str, Any]:
