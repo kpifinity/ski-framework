@@ -9,7 +9,7 @@ Thank you for your interest in contributing. SKI is an open-core project: the fr
 - **Report bugs** or suggest improvements via [GitHub Issues](https://github.com/kpifinity/ski-framework/issues). Use the issue templates so reports include the information we need.
 - **Improve the specification** under `docs/`. Spec changes go through a longer review than code changes — see [Specification changes](#specification-changes).
 - **Strengthen the reference implementation.** The Symbolic Evaluator, SKI Model wrapper, Tag Registry, and audit ledger all benefit from additional test coverage and adversarial scenarios.
-- **Add conformance tests.** New Level 1 / Level 2 / Level 3 tests are some of the highest-leverage contributions you can make. See [conformance/README.md](./conformance/README.md).
+- **Add conformance tests.** New Level 1 / Level 2 / Level 3 tests are some of the highest-leverage contributions you can make. See [conformance/README.md](../conformance/README.md).
 - **Build MCP connectors** or telemetry adapters for new data sources.
 
 ## Open / proprietary boundary
@@ -69,7 +69,7 @@ has no fresh sample. Closes #142.
 
 1. Fork and create a feature branch off `main`.
 2. Run `ruff check`, `mypy`, and `pytest` locally before opening the PR.
-3. Open the PR using the [template](./.github/PULL_REQUEST_TEMPLATE.md).
+3. Open the PR using the [template](../.github/PULL_REQUEST_TEMPLATE.md).
 4. CI must be green and the change must be reviewed by a CODEOWNER.
 5. Squash-merge is the default. Merge commits are reserved for spec-version bumps.
 
@@ -86,7 +86,7 @@ Edits to `docs/` are licensed under CC BY 4.0; edits to code are licensed under 
 
 ## Security
 
-Do **not** open public issues for security vulnerabilities. Follow the disclosure process in [SECURITY.md](./SECURITY.md). Security PRs go through a private branch.
+Do **not** open public issues for security vulnerabilities. Follow the disclosure process in [SECURITY.md](../SECURITY.md). Security PRs go through a private branch.
 
 ## Licensing of contributions
 
@@ -94,11 +94,11 @@ By submitting a contribution you agree to license it under:
 - **Apache License 2.0** for software (Python, Dockerfiles, shell scripts, SQL, YAML, the conformance suite).
 - **Creative Commons Attribution 4.0 International** for specification documents (`docs/`, framework PDF, diagrams).
 
-This is the same dual license already applied to the existing content of the repository. See [LICENSE](./LICENSE), [LICENSE-docs.md](./LICENSE-docs.md), and [NOTICE](./NOTICE).
+This is the same dual license already applied to the existing content of the repository. See [LICENSE](../LICENSE), [LICENSE-docs.md](../LICENSE-docs.md), and [NOTICE](../NOTICE).
 
 ## Code of conduct
 
-This project follows the Contributor Covenant 2.1. See [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md). Violations may be reported to <conduct@kpifinity.com>.
+This project follows the Contributor Covenant 2.1. See [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md). Violations may be reported to <conduct@kpifinity.com>.
 
 ## Getting help
 

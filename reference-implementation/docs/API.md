@@ -38,7 +38,7 @@ curl -k https://localhost:8000/api/health
 ## `POST /api/kg/load`
 
 Body: a Knowledge Graph object with the structure documented in
-[`docs/KNOWLEDGE_GRAPH.md`](../../docs/KNOWLEDGE_GRAPH.md), including a
+[`docs/knowledge-graph.md`](../../docs/knowledge-graph.md), including a
 `signature` block. Unsigned KGs are rejected with HTTP 400 (use
 `KG_REQUIRE_SIGNATURE=false` only for local demos).
 

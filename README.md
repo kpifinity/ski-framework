@@ -73,7 +73,7 @@ To run the stack: clone the repo, run `./scripts/setup.sh` to generate TLS certi
 
 ## Architecture
 
-**v2.1 (legacy).** Two phases. Phase 1 is compilation: regulatory documents are processed by `kg-extractor` (LLM-assisted) and then by `kg-validator` (human-reviewed) to produce a signed Knowledge Graph and a Tag Registry. Phase 2 is runtime: telemetry arrives at the SKI Model service, the Tag Registry dispatches a rule to either the Symbolic Evaluator (Track 1, deterministic) or the bounded local LLM (Track 2), and the verdict is hash-chained into the append-only audit ledger. The default for any rule is Track 1; Track 2 is the escape hatch for rules that resist formalization. This is described in full in [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+**v2.1 (legacy).** Two phases. Phase 1 is compilation: regulatory documents are processed by `kg-extractor` (LLM-assisted) and then by `kg-validator` (human-reviewed) to produce a signed Knowledge Graph and a Tag Registry. Phase 2 is runtime: telemetry arrives at the SKI Model service, the Tag Registry dispatches a rule to either the Symbolic Evaluator (Track 1, deterministic) or the bounded local LLM (Track 2), and the verdict is hash-chained into the append-only audit ledger. The default for any rule is Track 1; Track 2 is the escape hatch for rules that resist formalization. This is described in full in [docs/architecture.md](./docs/architecture.md).
 
 **v3.0 (current).** The Track 1 / Track 2 split dissolves. Every verdict takes the same path: telemetry arrives, the KG is queried for the typed semantic slice relevant to the rule, the local LLM evaluates against that slice with structured-generation constraints, the Symbolic Verifier independently checks the formalizable subset, and the ledger records the full provenance — signed LLM transcript, model weight hash, KG version hash, KG citations, verifier result. The audit story moves from "deterministic replay of a rule engine" to "verifiable provenance of a neuro-symbolic decision" — the stronger defensibility story for 2026. The full proposal, alternatives considered, threat-model deltas, and rollout plan are in [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md).
 
@@ -111,7 +111,7 @@ The Knowledge Graph libraries for specific industries (energy, finance, manufact
 | **Level 2 Managed** | Multi-domain, Tag Registry coverage, NULL_UNMAPPED handling | Adds: neuro-symbolic agreement rate threshold, jurisdictional resolution, v3 replay verification |
 | **Level 3 Assured** | Determinism canary, append-only enforcement, third-party verifiability | Adds: SLSA attestation endpoint, CommitLLM-style verifiable inference receipts, human attestation tokens for high-tier rules |
 
-See [docs/CONFORMANCE.md](./docs/CONFORMANCE.md) for the v2.1 methodology and [conformance/README.md](./conformance/README.md) for runnable tests. The v3 reorganization lands in PR 14 of the v3 stream.
+See [docs/conformance.md](./docs/conformance.md) for the v2.1 methodology and [conformance/README.md](./conformance/README.md) for runnable tests. The v3 reorganization lands in PR 14 of the v3 stream.
 
 ## Security
 
