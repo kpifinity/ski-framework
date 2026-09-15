@@ -13,6 +13,7 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from ski_model.v3 import PROMPT_TEMPLATE_HASH, STRUCTURED_GRAMMAR_HASH, OllamaV3Backend
+from ski_model.v3.evaluator import PROMPT_TEMPLATE_ID
 
 
 def _backend(base_url: str = "http://ollama-test:11434") -> OllamaV3Backend:
@@ -50,6 +51,28 @@ def _good_response_text() -> str:
 
 
 class TestProvenance:
+    def test_backend_protocol_properties(self, httpx_mock: HTTPXMock) -> None:
+        httpx_mock.add_response(
+            url="http://ollama-test:11434/api/show",
+            method="POST",
+            json={"details": {"digest": "sha256:zzz"}},
+        )
+        backend = _backend()
+        assert backend.prompt_template_id == PROMPT_TEMPLATE_ID
+        assert backend.prompt_template_hash == PROMPT_TEMPLATE_HASH
+        assert backend.structured_grammar_hash == STRUCTURED_GRAMMAR_HASH
+
+    def test_model_weight_hash_reads_top_level_digest_fallback(self, httpx_mock: HTTPXMock) -> None:
+        """Ollama's /api/show shape has shifted across versions; a bare
+        top-level "digest" (no nested "details") must still be found."""
+        httpx_mock.add_response(
+            url="http://ollama-test:11434/api/show",
+            method="POST",
+            json={"digest": "sha256:toplevel"},
+        )
+        backend = _backend()
+        assert backend.model_weight_hash == "sha256:toplevel"
+
     def test_model_weight_hash_uses_ollama_digest_when_available(self, httpx_mock: HTTPXMock) -> None:
         httpx_mock.add_response(
             url="http://ollama-test:11434/api/show",
@@ -175,6 +198,30 @@ class TestResponseParsing:
         assert result["verdict"] == "DISCRETIONARY"
         assert "not valid JSON" in result["reasoning"]
         assert result["formalizable_assertions"] == []
+
+    @pytest.mark.asyncio
+    async def test_non_object_json_yields_discretionary(self, httpx_mock: HTTPXMock) -> None:
+        """Valid JSON that isn't an object at the top level (e.g. a bare
+        array) must degrade, not crash trying to index into it as a dict."""
+        httpx_mock.add_response(
+            url="http://ollama-test:11434/api/show",
+            method="POST",
+            json={"details": {"digest": "sha256:zzz"}},
+        )
+        httpx_mock.add_response(
+            url="http://ollama-test:11434/api/generate",
+            method="POST",
+            json={"response": json.dumps(["not", "an", "object"])},
+        )
+
+        backend = _backend()
+        result = await backend.evaluate(
+            measurement={"so2_ppm": 50},
+            kg_snapshot={"version": "v1", "obligations": []},
+            seed=0,
+        )
+        assert result["verdict"] == "DISCRETIONARY"
+        assert "not an object" in result["reasoning"]
 
     @pytest.mark.asyncio
     async def test_missing_required_keys_yields_discretionary(self, httpx_mock: HTTPXMock) -> None:

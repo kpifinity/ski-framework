@@ -179,6 +179,27 @@ class TestMustAverageWithin:
         assert result.status == VerifierStatus.UNVERIFIABLE.value
 
     @pytest.mark.asyncio
+    async def test_unverifiable_with_malformed_value_shape(self) -> None:
+        """value must be a [lo, hi] pair -- a bare number is malformed."""
+        v = SymbolicVerifier()
+        buffer = FakeBuffer()
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="must_average_within",
+                    value=100,  # not a [lo, hi] list
+                    satisfied=True,
+                    window_seconds=300,
+                )
+            ],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=buffer,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+
+    @pytest.mark.asyncio
     async def test_unverifiable_with_empty_window(self) -> None:
         v = SymbolicVerifier()
         buffer = FakeBuffer(data={("emissions", "so2_ppm"): []})
@@ -259,11 +280,143 @@ class TestMustNotExceedInWindow:
         )
         assert result.status == VerifierStatus.LLM_CONTRADICTION.value
 
+    @pytest.mark.asyncio
+    async def test_unverifiable_without_buffer(self) -> None:
+        v = SymbolicVerifier()
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="must_not_exceed_in_window",
+                    value=100,
+                    satisfied=True,
+                    window_seconds=300,
+                )
+            ],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=None,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+        assert any("buffer" in d for d in result.divergences)
+
+    @pytest.mark.asyncio
+    async def test_unverifiable_without_window_seconds(self) -> None:
+        v = SymbolicVerifier()
+        buffer = FakeBuffer()
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="must_not_exceed_in_window",
+                    value=100,
+                    satisfied=True,
+                    window_seconds=None,
+                )
+            ],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=buffer,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+
+    @pytest.mark.asyncio
+    async def test_unverifiable_with_non_numeric_value(self) -> None:
+        v = SymbolicVerifier()
+        buffer = FakeBuffer()
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="must_not_exceed_in_window",
+                    value="one hundred",
+                    satisfied=True,
+                    window_seconds=300,
+                )
+            ],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=buffer,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+
+    @pytest.mark.asyncio
+    async def test_unverifiable_with_boolean_value(self) -> None:
+        """bool is an int subclass; must_not_exceed_in_window explicitly
+        rejects it rather than silently treating True/False as 1/0."""
+        v = SymbolicVerifier()
+        buffer = FakeBuffer()
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="must_not_exceed_in_window",
+                    value=True,
+                    satisfied=True,
+                    window_seconds=300,
+                )
+            ],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=buffer,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+
+    @pytest.mark.asyncio
+    async def test_unverifiable_with_empty_window(self) -> None:
+        v = SymbolicVerifier()
+        buffer = FakeBuffer(data={("emissions", "so2_ppm"): []})
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="must_not_exceed_in_window",
+                    value=100,
+                    satisfied=True,
+                    window_seconds=300,
+                )
+            ],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=buffer,
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+        assert any("No samples" in d for d in result.divergences)
+
 
 # ---- Buffer return-shape coercion --------------------------------------------
 
 
 class TestBufferShapes:
+    @pytest.mark.asyncio
+    async def test_boolean_samples_are_dropped_not_counted_as_zero_or_one(self) -> None:
+        """bool is an int subclass in Python; a buffer row of True/False must
+        not silently become 1/0 in the average -- it is dropped."""
+        v = SymbolicVerifier()
+
+        class BoolPollutedBuffer:
+            async def window_query(self, **kwargs: Any) -> Any:
+                # If the two bools were miscounted as 1 and 0, the average
+                # of [80, 90, 1, 0] = 42.75 would fall OUTSIDE [50, 100] and
+                # this test would fail — proving the values were dropped.
+                return [80.0, 90.0, True, False]
+
+        result = await v.averify(
+            [
+                _assertion(
+                    predicate="must_average_within",
+                    value=[50.0, 100.0],
+                    satisfied=True,
+                    window_seconds=300,
+                )
+            ],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=BoolPollutedBuffer(),
+        )
+        assert result.status == VerifierStatus.AGREED.value
+
     @pytest.mark.asyncio
     async def test_buffer_returning_dicts_with_value_key_works(self) -> None:
         v = SymbolicVerifier()

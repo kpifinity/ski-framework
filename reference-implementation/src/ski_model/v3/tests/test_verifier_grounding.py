@@ -58,6 +58,17 @@ class TestGroundingViolations:
         )
         assert str(result.status) == "AGREED"
 
+    def test_non_numeric_observation_mismatch_is_a_violation(self) -> None:
+        """String-valued metrics (e.g. a status/category reading) hit the
+        plain equality branch, not the numeric coercion."""
+        result = SymbolicVerifier().verify(
+            [_assertion(metric="status", value="ok", observed="degraded", satisfied=False)],
+            llm_verdict=V3Verdict.FLAG,
+            measurement={"status": "nominal"},  # the record says "nominal", not "degraded"
+        )
+        assert str(result.status) == "LLM_CONTRADICTION"
+        assert "fabricated observation" in result.divergences[0]
+
     def test_int_float_equivalence_is_not_a_violation(self) -> None:
         result = SymbolicVerifier().verify(
             [_assertion(observed=142.0)],

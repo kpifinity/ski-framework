@@ -85,6 +85,17 @@ class TestTier1:
         assert out.verdict == V3Verdict.DISCRETIONARY.value
         assert out.human_attestation is not None
 
+    def test_neuro_symbolic_divergence_also_forces_discretionary(self) -> None:
+        """tier-1 requires AGREED; ANY other status downgrades — this pins
+        the third non-AGREED status (LLM_CONTRADICTION and UNVERIFIABLE are
+        covered above), closing the "ANY" in the spec §5.4 requirement."""
+        env = _envelope(verifier_status=VerifierStatus.NEURO_SYMBOLIC_DIVERGENCE)
+        out = apply_risk_policy(env, risk_tier="tier-1")
+        assert out.verdict == V3Verdict.DISCRETIONARY.value
+        assert out.human_attestation is not None
+        assert out.human_attestation["required"] is True
+        assert any("tier-1" in n for n in out.notes)
+
 
 # ---- Tier-2: standard ---------------------------------------------------------
 
