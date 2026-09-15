@@ -78,6 +78,13 @@ updates:
         update-types: ["minor", "patch"]
 
   # ----- Container base images -----
+  # Docker image tags (e.g. "3.11-slim") have no third "patch" component,
+  # so Dependabot's semver classifier treats the leading number as major
+  # and the second as minor. A Python "3.11" -> "3.14" bump therefore
+  # reads as a same-major "minor" update even though it skips three
+  # feature releases and is exactly the kind of change that should get
+  # individual review, not silent grouping. Restrict this group to
+  # patch-only so any X.Y change comes through as its own ungrouped PR.
   - package-ecosystem: "docker"
     directory: "/reference-implementation"
     schedule:
@@ -87,6 +94,6 @@ updates:
     commit-message:
       prefix: "[chore]"
     groups:
-      docker-minor-patch:
+      docker-patch:
         applies-to: version-updates
-        update-types: ["minor", "patch"]
+        update-types: ["patch"]
