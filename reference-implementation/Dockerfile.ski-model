@@ -25,7 +25,15 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel \
     # out of those wheels and flags them even though they're never
     # extracted or importable — strip them so only the actually
     # installed (and upgraded) copies remain in the image.
-    && find /usr/local/lib/python3.11/ensurepip -name '*.whl' -delete
+    && find /usr/local/lib/python3.11/ensurepip -name '*.whl' -delete \
+    # pip vendors its own frozen copies of several dependencies under
+    # pip/_vendor (see pip/_vendor/vendor.txt) for its own internal use
+    # — e.g. msgpack==1.1.2 and setuptools==70.3.0 — independent of and
+    # unrelated to the app's actual dependencies. Trivy's package
+    # scanner flags these vendored copies too, even though nothing in
+    # this image imports or runs pip after build time. Uninstalling
+    # pip removes them along with pip itself.
+    && python -m pip uninstall -y pip
 
 # SKI Model source code
 COPY reference-implementation/src/ski_model/ ./ski_model/
