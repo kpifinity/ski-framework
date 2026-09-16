@@ -39,7 +39,8 @@ conformance/
     ├── test_tamper_resistance.py
     ├── test_single_worker.py
     ├── test_jurisdiction_scope_captured.py
-    └── test_signed_llm_transcript.py
+    ├── test_signed_llm_transcript.py
+    └── test_manipulation_resistant_verdict.py
 ```
 
 ## Quick start

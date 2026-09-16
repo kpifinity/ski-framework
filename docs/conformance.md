@@ -1,7 +1,7 @@
 # SKI conformance methodology
 
 > **License:** CC BY 4.0. See [LICENSE-docs.md](../LICENSE-docs.md).
-> **Status:** Provenance + Durability runnable today. Sovereignty: all six
+> **Status:** Provenance + Durability runnable today. Sovereignty: all seven
 > checks runnable — the tamper-resistance rig needs a throwaway Postgres
 > (`SKI_L3_LEDGER_DSN`), and the air-gapped boot rig needs Docker plus the
 > `SKI_L3_AIRGAP=1` opt-in. Both skip cleanly when their infrastructure
@@ -77,7 +77,7 @@ reproduce historical verdicts.
 ### Level 3 — Sovereignty
 
 The runtime is operable air-gapped, tamper-evident, and end-to-end
-signed. All six checks below are runnable. Four are black-box structural
+signed. All seven checks below are runnable. Five are black-box structural
 checks (with matching functional proofs in the runtime test suite); the
 remaining two carry their own infrastructure rigs: tamper-resistance
 seeds and attacks a throwaway Postgres (`SKI_L3_LEDGER_DSN`), and
@@ -92,6 +92,7 @@ air-gapped boot runs the full runtime + ledger in a loopback-only
 | Runtime refuses to start with `SKI_MODEL_WORKERS != 1` | Concurrency | `sovereignty/test_single_worker.py` | ✅ runnable |
 | Recorded transcript carries the snapshot's `scope` block | §3.6 + §6 | `sovereignty/test_jurisdiction_scope_captured.py` | ✅ runnable |
 | Recorded `LLMTranscript` ed25519 signature verifies | §4.7 | `sovereignty/test_signed_llm_transcript.py` (+ runtime `test_signing.py`, `test_transcript.py`) | ✅ runnable |
+| A "convinced" LLM cannot silently CLEAR a real breach (threat T9: adversarial/injected telemetry) | §5.3 + §4.1 + §5.4 | `sovereignty/test_manipulation_resistant_verdict.py` (+ runtime `test_adversarial_telemetry.py`) | ✅ runnable |
 
 ## Running the tests
 
@@ -99,7 +100,7 @@ air-gapped boot runs the full runtime + ledger in a loopback-only
 pip install -r requirements-dev.txt
 pytest conformance/ -m provenance
 pytest conformance/ -m durability
-pytest conformance/ -m sovereignty   # all 6 checks; the two rig-backed ones
+pytest conformance/ -m sovereignty   # all 7 checks; the two rig-backed ones
                                      # skip without their infrastructure:
                                      #   SKI_L3_LEDGER_DSN=...  tamper rig (throwaway Postgres)
                                      #   SKI_L3_AIRGAP=1        air-gap rig (Docker)
