@@ -240,6 +240,46 @@ graph TD
 The conformance test suite is the **executable specification**. See
 [Conformance](conformance.md).
 
+## Limitations & assumptions
+
+The Symbolic Verifier's guarantee is precise, and it is easy to overstate
+it by dropping the qualifier: SKI mechanically re-checks **formalizable**
+assertions — the subset of a rule's obligations expressible as one of the
+verifier's predicates (`must_not_exceed`, `must_be_within`,
+`window_avg`, …) against the telemetry and the KG. For that subset, a
+breach cannot silently read as compliant: the verifier's own arithmetic,
+not the LLM's claim, decides `satisfied`, and disagreement is recorded as
+`LLM_CONTRADICTION` / `NEURO_SYMBOLIC_DIVERGENCE`, never overridden or
+suppressed (see threat T9 in [RFC 0002's security implications](RFCs/0002-v3-neuro-symbolic-pivot.md#security-implications)
+and `v3/tests/test_adversarial_telemetry.py`).
+
+**For non-formalizable rules — qualitative obligations, "reasonable
+efforts" language, anything outside the predicate grammar — the LLM is
+the sole arbiter.** The verifier reports `UNVERIFIABLE` honestly (spec
+§4.5) rather than silently approving, but it has no independent way to
+mechanically check the LLM's judgment call the way it checks arithmetic.
+This is *not* a bug to be fixed by a cleverer predicate grammar; some
+regulatory language is genuinely not formalizable, and pretending
+otherwise would be worse than naming the limit.
+
+This is exactly why the fail-safe default in
+[`policies/risk_tier.py`](https://github.com/kpifinity/ski-framework/blob/main/reference-implementation/src/ski_model/v3/policies/risk_tier.py)
+matters beyond the "unknown tier" edge case it was written for: **tier-1
+is the only tier that does not let an `UNVERIFIABLE` result pass through
+unchanged.** At tier-2 and tier-3, `UNVERIFIABLE` is accepted with a note;
+at tier-1, it is forced to `DISCRETIONARY` with human attestation
+required. For obligations whose formalizable coverage is thin —
+including any obligation whose criticality is unknown or undeclared,
+which now defaults to tier-1 — this is the mechanism that stands in for
+the verifier's missing arithmetic check. **Recommendation: tier
+conservatively.** Declaring a genuinely qualitative, high-consequence
+obligation as tier-2/tier-3 to reduce DISCRETIONARY routing trades away
+the one control SKI has for exactly the cases it cannot mechanically
+verify.
+
+See also [Trust boundary & OT deployment assumptions](threat-model.md#trust-boundary--ot-deployment-assumptions)
+for the companion point about telemetry authenticity and timestamp trust.
+
 ## Threat model
 
 See [Threat model](threat-model.md) for the complete list of in-scope

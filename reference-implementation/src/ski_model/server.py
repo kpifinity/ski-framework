@@ -175,11 +175,10 @@ def _compute_kg_version_hash(kg: KnowledgeGraph) -> str:
 def _build_v3_llm_backend() -> V3LLMBackend:
     """Select the v3 LLM backend.
 
-    Delegates to :func:`ski_model.v3.build_backend`. ``SKI_V3_LLM_BACKEND``
-    controls the selection (``"fake"`` default, ``"ollama"`` for the
-    Ollama-v3 backend). PR 11.5 added the Ollama backend; future
-    additions (vLLM, etc.) extend the factory without touching the
-    server.
+    Delegates to :func:`ski_model.v3.backends.build_v3_backend`. ``SKI_V3_LLM_BACKEND``
+    controls the selection: ``"fake"`` (default), ``"ollama"``, or
+    ``"vllm"``. Additional backends extend the factory without touching
+    the server.
     """
     return build_v3_backend()
 
@@ -340,9 +339,13 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     """v3 evaluation: KG-grounded LLM → V3VerdictEnvelope.
 
     The evaluator validates citations against the KG snapshot before
-    returning; bogus citations are mapped to NULL_UNMAPPED. PR 10c will
-    wire the Symbolic Verifier so :attr:`VerifierResult` is populated with
-    real agreement data — until then the result reports ``UNVERIFIABLE``.
+    returning; bogus citations are mapped to NULL_UNMAPPED. The Symbolic
+    Verifier mechanically cross-checks every formalizable assertion the
+    LLM emits and populates :attr:`VerifierResult` with the real agreement
+    outcome (``AGREED`` / ``LLM_CONTRADICTION`` / ``NEURO_SYMBOLIC_DIVERGENCE``
+    / ``UNVERIFIABLE``); the risk-tier policy then decides whether a
+    disagreeing result may still pass through or must downgrade to
+    ``DISCRETIONARY``.
     """
     if state.knowledge_graph is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No KG loaded.")
@@ -351,9 +354,10 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     _eval_started = datetime.now(timezone.utc)
     metrics.LAST_TELEMETRY_TS.set(_eval_started.timestamp())
 
-    # Write to the telemetry buffer BEFORE evaluation so stateful predicates
-    # in PR 10c can see the current event via subsequent queries. Same
-    # ordering rationale as v2.1: write-before-evaluate guarantees replay
+    # Write to the telemetry buffer BEFORE evaluation so the verifier's
+    # stateful predicates (must_average_within, must_not_exceed_in_window)
+    # can see the current event via subsequent queries. Same ordering
+    # rationale as v2.1: write-before-evaluate guarantees replay
     # determinism for any rule that references "the current event".
     if state.telemetry_buffer is not None:
         try:

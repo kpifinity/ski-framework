@@ -95,6 +95,17 @@ pre-route.
 enabled. Update `monitoring/kafka_jaas.conf` with strong credentials
 before any non-local use.
 
+### Trust boundary: telemetry integrity is your responsibility
+
+Whichever source you use, SKI trusts each record's own `timestamp` field
+and does not itself authenticate the producer beyond the transport-level
+protections above. For any deployment against live OT/ICS telemetry,
+read
+[Trust boundary & OT deployment assumptions](../../docs/threat-model.md#trust-boundary--ot-deployment-assumptions)
+before going further — it recommends signed/authenticated telemetry, a
+trusted time source, and conservative (`tier-1`) tiering wherever a
+spoofed reading could mask a real breach.
+
 ## Monitoring
 
 | Surface | URL | Notes |
@@ -169,3 +180,7 @@ test scope and how to publish a result badge.
 - [ ] Decide retention policy for the audit ledger and document it.
 - [ ] Wire `audit-ledger backup` into a scheduled job.
 - [ ] Run the conformance suite as part of every deployment promotion.
+- [ ] Use signed/authenticated telemetry and a trusted time source; tier
+      obligations conservatively where a spoofed reading could mask a
+      real breach — see
+      [Trust boundary & OT deployment assumptions](../../docs/threat-model.md#trust-boundary--ot-deployment-assumptions).

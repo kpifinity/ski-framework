@@ -58,6 +58,18 @@ Out of scope (please do not test):
 - Third-party services referenced from documentation
 - Denial-of-service against demo or community deployments
 
+## Trust boundary for telemetry (OT deployments)
+
+SKI authenticates and signs the Knowledge Graph, but it assumes telemetry
+integrity and authenticity are enforced **upstream** of the sidecar, and
+trusts each record's own `timestamp` field for freshness and effective-date
+scoping. A compromised sensor can therefore spoof freshness. This is not a
+vulnerability report — it is a documented trust boundary. See
+[Trust boundary & OT deployment assumptions](threat-model.md#trust-boundary--ot-deployment-assumptions)
+for the full assumptions and the recommended mitigations (signed telemetry,
+a trusted time source, conservative tiering) before deploying against live
+OT/ICS telemetry.
+
 ## Hardening guidance
 
 Operator-facing hardening guidance is consolidated in

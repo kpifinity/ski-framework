@@ -5,6 +5,11 @@ full rendered version with cross-references lives at
 [`docs/threat-model.md`](./docs/threat-model.md) and on the published
 docs site at <https://kpifinity.github.io/ski-framework/threat-model/>.
 
+> **Before deploying against live OT/ICS telemetry**, read
+> [Trust boundary & OT deployment assumptions](./docs/threat-model.md#trust-boundary--ot-deployment-assumptions) —
+> SKI assumes telemetry integrity/authenticity is enforced upstream of the
+> sidecar and trusts each record's own timestamp for freshness.
+
 ## Quick reference
 
 | Threat                                | Defence                                                                   | Re-verification recipe                                                                 |

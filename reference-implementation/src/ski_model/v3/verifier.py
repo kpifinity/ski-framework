@@ -18,7 +18,7 @@ Outcomes (:class:`VerifierStatus`):
   cannot mechanically evaluate (e.g. predicates that require qualified
   human judgment). The envelope is forwarded as-is for human attestation.
 
-Stateless predicates handled in PR 10c:
+Stateless predicates:
 
 * ``must_not_exceed`` — ``observed <= value``
 * ``must_be_at_least`` — ``observed >= value``
@@ -26,8 +26,13 @@ Stateless predicates handled in PR 10c:
 * ``must_equal`` — ``observed == value``
 * ``must_not_equal`` — ``observed != value``
 
-Stateful predicates (window queries, time-bounded checks) require the
-telemetry buffer and a database fixture; deferred to a follow-up PR.
+Stateful predicates (window queries backed by the telemetry buffer):
+
+* ``must_average_within`` — the windowed average falls within a range
+* ``must_not_exceed_in_window`` — no windowed sample exceeds a cap
+
+Stateful predicates are evaluated via the async ``acheck_assertion`` /
+``averify`` methods against a :class:`BufferLike` telemetry buffer.
 """
 
 from __future__ import annotations
@@ -436,12 +441,14 @@ def _grounding_violation(assertion: FormalizableAssertion, measurement: Mapping[
 class SymbolicVerifier:
     """Mechanically cross-checks :class:`FormalizableAssertion` instances.
 
-    Stateless: instances can be reused across requests. No I/O.
-
-    Stateful predicates (window queries, time-bounded checks) require the
-    telemetry buffer and will be added in a follow-up. Until then, an
-    assertion that uses an unknown or stateful predicate yields
-    ``UNVERIFIABLE`` for the whole envelope.
+    Instances are stateless and can be reused across requests. The
+    stateless predicates (``check_assertion``/``verify``) do no I/O.
+    Stateful predicates (``must_average_within``,
+    ``must_not_exceed_in_window``) query the telemetry buffer via the
+    async ``acheck_assertion``/``averify`` methods; they require
+    ``subject``, ``as_of``, and ``buffer`` to be supplied, and yield
+    ``UNVERIFIABLE`` when any of those is missing or the predicate is
+    otherwise unknown.
     """
 
     def check_assertion(self, assertion: FormalizableAssertion) -> _CheckOutcome:
