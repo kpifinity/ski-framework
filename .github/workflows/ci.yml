@@ -227,7 +227,7 @@ jobs:
       # surface (telemetry ingress); the KG tools parse operator-supplied
       # input. Unlike the scan above, this one does NOT blanket-skip
       # B603/B607 (subprocess) -- this surface gets the full check.
-      - name: Bandit (network-facing surface: sidecar, telemetry buffer, KG tools)
+      - name: "Bandit (network-facing surface: sidecar, telemetry buffer, KG tools)"
         run: |
           bandit -r reference-implementation/src/sidecar \
                     reference-implementation/src/telemetry_buffer \
