@@ -9,10 +9,11 @@ returned: citing a node that is not in the snapshot forces verdict to
 NULL_UNMAPPED with verifier status UNVERIFIABLE. This is the anti-
 hallucination floor of the architecture — the LLM cannot invent obligations.
 
-PR 10b ships the evaluator and a deterministic FakeLLM backend. PR 10c
-wires the Symbolic Verifier so VerifierResult is populated with real
-agreement / divergence data. Until then the evaluator stamps
-``VerifierResult(status=UNVERIFIABLE, checked_assertions=0)``.
+The Symbolic Verifier is wired in: every formalizable assertion the LLM
+emits is mechanically re-checked, and ``VerifierResult`` is populated with
+the real agreement / divergence outcome (``AGREED`` / ``LLM_CONTRADICTION``
+/ ``NEURO_SYMBOLIC_DIVERGENCE`` / ``UNVERIFIABLE``) before the envelope is
+returned.
 """
 
 from __future__ import annotations
@@ -195,9 +196,12 @@ RESPONSE_GRAMMAR: Dict[str, Any] = {
 class V3LLMBackend(Protocol):
     """Every v3 LLM backend implements this protocol.
 
-    PR 10b ships only :class:`FakeLLM`. Real backends (Ollama, vLLM, etc.)
-    land in a follow-up PR with their own secret-handling and rate-limit
-    stories.
+    :class:`FakeLLM` (below) is the deterministic backend used by tests
+    and CI. Real backends — :class:`~ski_model.v3.backends.ollama.OllamaV3Backend`
+    and :class:`~ski_model.v3.backends.vllm.VLLMV3Backend` — implement the
+    same protocol with their own secret-handling and rate-limit concerns;
+    ``SKI_V3_LLM_BACKEND`` selects among all three (see
+    :func:`ski_model.v3.backends.build_v3_backend`).
     """
 
     name: str
@@ -377,8 +381,8 @@ class V3Evaluator:
     Parameters
     ----------
     llm:
-        A :class:`V3LLMBackend` implementation. PR 10b ships only
-        :class:`FakeLLM`; real backends land in a follow-up PR.
+        A :class:`V3LLMBackend` implementation: :class:`FakeLLM` for
+        tests/CI, or a real backend (Ollama, vLLM) for production.
     kg_version_hash:
         sha256-prefixed hash of the KG snapshot version this evaluator is
         bound to. Recorded in :class:`ModelProvenance` for replay.
@@ -408,7 +412,7 @@ class V3Evaluator:
         measurement: Dict[str, Any],
         kg_snapshot: Dict[str, Any],
         transcript_ref: Optional[str] = None,
-        risk_tier: str = "standard",
+        risk_tier: Optional[str] = "standard",
         subject: Optional[str] = None,
         as_of: Optional[datetime] = None,
         buffer: Optional[BufferLike] = None,
@@ -438,7 +442,7 @@ class V3Evaluator:
         measurement: Dict[str, Any],
         kg_snapshot: Dict[str, Any],
         transcript_ref: Optional[str] = None,
-        risk_tier: str = "standard",
+        risk_tier: Optional[str] = "standard",
         subject: Optional[str] = None,
         as_of: Optional[datetime] = None,
         buffer: Optional[BufferLike] = None,

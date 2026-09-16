@@ -10,10 +10,10 @@ from pydantic import BaseModel, Field
 class MeasurementRecord(BaseModel):
     """Measurement input for /api/evaluate.
 
-    The v3 evaluator consumes the full measurement; the LLM scopes the KG
-    snapshot to the measurement's jurisdiction and effective date. PR 10b
-    passes the full KG as the snapshot. Jurisdiction-scoped snapshots are a
-    follow-up.
+    The v3 evaluator consumes the full measurement. Before evaluation, the
+    server scopes the KG to this record's ``jurisdiction`` and effective
+    date (:meth:`~ski_model.kg_loader.KnowledgeGraph.scope_to`) and sends
+    the LLM only that scoped snapshot, not the full graph.
     """
 
     measurement_id: str = Field(..., description="Stable id for replay correlation.")

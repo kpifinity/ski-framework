@@ -19,12 +19,22 @@ Risk-tier definitions (spec §5.4):
   * tier-3 (low-risk):       only ``LLM_CONTRADICTION`` (verifier mechanically
     disagrees) forces downgrade; ``UNVERIFIABLE`` / ``NEURO_SYMBOLIC_DIVERGENCE``
     are accepted with a note recorded.
+
+Audit finding A4 (fail-safe default tiering): a measurement that declares
+no tier, or an unrecognised one, has unknown criticality — treating that
+as tier-2/tier-3 would silently apply a *more permissive* policy to the
+one case where the framework knows the least. :func:`_normalise_tier`
+therefore resolves an absent or unrecognised tier to ``tier-1`` (the most
+conservative) rather than raising or falling back to a lower tier. The
+coercion is always recorded in the envelope's ``notes`` so it is
+auditable, even when the verifier result is ``AGREED`` (the one case that
+would otherwise return the envelope untouched).
 """
 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ..envelope import V3Verdict, V3VerdictEnvelope, VerifierStatus
 
@@ -53,20 +63,41 @@ _ALIAS_MAP = {
 }
 
 
-def _normalise_tier(tier: str) -> RiskTier:
+def _normalise_tier(tier: Optional[str]) -> Tuple[RiskTier, Optional[str]]:
+    """Resolve a caller-declared risk tier, failing safe on the unknown.
+
+    Returns ``(resolved_tier, coercion_note)``. ``coercion_note`` is
+    ``None`` when ``tier`` was a recognised, explicitly-declared value
+    (behaviour unchanged); otherwise it explains why the fail-safe
+    ``tier-1`` default was applied, for the caller to record in the
+    envelope's audit trail.
+    """
+    if tier is None or not tier.strip():
+        return RiskTier.TIER_1, (
+            "risk_tier not declared; defaulting to tier-1 (fail-safe: unknown criticality "
+            "is never assumed low-risk)."
+        )
     key = tier.strip().lower()
-    if key in _ALIAS_MAP:
-        return _ALIAS_MAP[key]
-    raise ValueError(f"Unknown risk tier {tier!r}. Expected one of: {sorted(_ALIAS_MAP)}.")
+    resolved = _ALIAS_MAP.get(key)
+    if resolved is None:
+        return RiskTier.TIER_1, (
+            f"risk_tier {tier!r} not recognised (expected one of: {sorted(_ALIAS_MAP)}); "
+            "defaulting to tier-1 (fail-safe: unknown criticality is never assumed low-risk)."
+        )
+    return resolved, None
 
 
-def apply_risk_policy(envelope: V3VerdictEnvelope, risk_tier: str) -> V3VerdictEnvelope:
+def apply_risk_policy(envelope: V3VerdictEnvelope, risk_tier: Optional[str]) -> V3VerdictEnvelope:
     """Apply the spec §5.4 policy for ``risk_tier`` to ``envelope``."""
-    tier = _normalise_tier(risk_tier)
+    tier, coercion_note = _normalise_tier(risk_tier)
     status = envelope.verifier_result.status
     notes: List[str] = list(envelope.notes)
+    if coercion_note is not None:
+        notes.append(coercion_note)
 
     if status == VerifierStatus.AGREED:
+        if coercion_note is not None:
+            return envelope.model_copy(update={"notes": notes})
         return envelope
 
     has_attestation = envelope.human_attestation is not None

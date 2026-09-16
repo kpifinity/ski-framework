@@ -22,8 +22,10 @@ from typing import Any, Callable, Optional, Protocol
 # ``V3Verdict`` is imported under its native name so mypy treats it as an
 # explicit re-export (PEP 484, --no-implicit-reexport). The module-level
 # ``Verdict = V3Verdict`` alias below is a true module attribute that
-# ``__init__.py`` can re-export. The rewrite to v3 naming throughout the
-# symbolic_evaluator package happens in PR 10c.
+# ``__init__.py`` can re-export. v3 naming landed in PR 10c; the
+# ImportError fallback below stays so symbolic_evaluator (the legacy
+# Track 1 evaluator) remains importable standalone, without the rest of
+# the ski_model package, e.g. in isolated unit tests.
 try:
     from ski_model.v3.envelope import V3Verdict as V3Verdict
 except ImportError:  # pragma: no cover

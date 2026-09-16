@@ -166,10 +166,34 @@ class TestTierResolution:
         out = apply_risk_policy(env, risk_tier=alias)
         assert out.verdict == V3Verdict.CLEAR.value
 
-    def test_unknown_tier_raises(self) -> None:
-        env = _envelope()
-        with pytest.raises(ValueError, match="Unknown risk tier"):
-            apply_risk_policy(env, risk_tier="ultra-mega-critical")
+    def test_absent_tier_behaves_as_tier1(self) -> None:
+        """Audit finding A4: no declared tier is unknown criticality, which
+        must fail safe to the most conservative tier -- never a lower one,
+        never a crash."""
+        env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
+        out = apply_risk_policy(env, risk_tier=None)
+        assert out.verdict == V3Verdict.DISCRETIONARY.value
+        assert out.human_attestation is not None
+        assert out.human_attestation["required"] is True
+        assert any("risk_tier not declared" in n and "tier-1" in n for n in out.notes)
+
+    def test_absent_tier_coercion_is_recorded_even_when_agreed(self) -> None:
+        """The coercion must be auditable even in the one case
+        (AGREED) that would otherwise return the envelope untouched."""
+        env = _envelope(verifier_status=VerifierStatus.AGREED)
+        out = apply_risk_policy(env, risk_tier=None)
+        assert out.verdict == V3Verdict.CLEAR.value
+        assert any("risk_tier not declared" in n for n in out.notes)
+
+    def test_unrecognised_tier_behaves_as_tier1_with_a_note(self) -> None:
+        """An unrecognised tier string must never raise or silently fall
+        back to a lower tier -- it fails safe to tier-1, same as absent."""
+        env = _envelope(verifier_status=VerifierStatus.LLM_CONTRADICTION)
+        out = apply_risk_policy(env, risk_tier="ultra-mega-critical")
+        assert out.verdict == V3Verdict.DISCRETIONARY.value
+        assert out.human_attestation is not None
+        assert out.human_attestation["required"] is True
+        assert any("ultra-mega-critical" in n and "not recognised" in n and "tier-1" in n for n in out.notes)
 
 
 # ---- RiskTier enum coverage ---------------------------------------------------

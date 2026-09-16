@@ -24,6 +24,84 @@ the operator's perspective.
 
 ---
 
+## Trust boundary & OT deployment assumptions
+
+**This section is load-bearing for OT/ICS deployments — read it before you
+deploy.** It makes explicit a narrower, easy-to-miss trust boundary implied
+by, but not spelled out in, the "Telemetry source" row above.
+
+SKI's guarantees are stated **relative to the telemetry it receives**. The
+framework enforces its Ed25519-signed Knowledge Graph, its independent
+Symbolic Verifier, and its append-only audit ledger — but it does **not**,
+by itself, authenticate the telemetry producer or cryptographically verify
+a measurement's timestamp. Per the trust model above, the telemetry source
+(SCADA, sensors, ETL) is trusted to produce well-formed records; it is
+explicitly not trusted to decide which rule applies. What follows makes
+the remaining trust explicit.
+
+**Assumption 1 — telemetry integrity and authenticity are enforced
+upstream of the sidecar.** SKI assumes the transport delivering telemetry
+to the sidecar (mTLS, a private/segmented OT network, a signed producer,
+a historian with its own access control) already establishes that a
+record genuinely came from the sensor/PLC/historian it claims to. The
+sidecar (`reference-implementation/src/sidecar`) does passive, read-only
+intake and forwards normalised records to the SKI Model service over
+mTLS; it does not itself authenticate the original producer, and nothing
+downstream re-derives that authentication.
+
+**Assumption 2 — the telemetry timestamp is authoritative.** Per the
+architecture's "Authoritative clock" invariant (see
+[Architecture](architecture.md)), a telemetry record's own `timestamp`
+field — never wall-clock-at-arrival — is the "now" used for stateful
+predicates (window queries, freshness gates) and effective-date /
+jurisdiction scoping. The runtime does not cross-check that field against
+any independent clock. A per-tenant `max_clock_skew_seconds` column exists
+in the telemetry-buffer schema (default 60s; see
+[RFC 0001](RFCs/0001-stateful-evaluation.md)) reserved for bounding
+acceptable drift — but as of this writing **no runtime code path reads or
+enforces it**. Until it is wired in, the practical tolerance for a forged
+timestamp is bounded only by whatever `requires_recent_within_seconds`
+window an individual KG rule happens to declare, not by any
+centrally-enforced skew limit.
+
+**Residual risk this creates.** A producer that can forge its own
+`timestamp` field can make stale or fabricated data appear current,
+defeating `NULL_STALE` routing and freshness-gated predicates
+(`has_fresh_sample`, `requires_recent_within_seconds`) — see
+[`conformance/provenance/test_null_stale_routing.py`](../conformance/provenance/test_null_stale_routing.py)
+for the mechanism this affects. This is a real gap SKI does not close on
+its own: the framework's fail-closed guarantees are about the KG, the
+verifier, and the ledger, not about the sensor's honesty about *when* a
+reading was taken.
+
+**Recommendation for OT deployments.** For essentially any live OT/ICS
+deployment, where this residual risk matters:
+
+- Use **signed or otherwise authenticated telemetry** at the source
+  (device-signed payloads, a historian that itself enforces provenance,
+  or an ingestion gateway that attaches a verified capture timestamp)
+  rather than trusting the record's own `timestamp` field at face value.
+- Use a **trusted time source** (NTP/PTP with monitoring, or a hardware
+  time source) on the systems that stamp telemetry, so the
+  authoritative-clock assumption above is actually sound upstream.
+- Treat `max_clock_skew_seconds` as an assumption to enforce
+  *operationally* (at the signing/ingestion layer) until the runtime
+  itself consults it.
+- **Tier obligations conservatively** (`tier-1`) wherever a spoofed
+  reading could mask a real breach. Per spec §5.4, an undeclared or
+  unrecognised risk tier already fails safe to `tier-1` (see
+  [`policies/risk_tier.py`](https://github.com/kpifinity/ski-framework/blob/main/reference-implementation/src/ski_model/v3/policies/risk_tier.py)),
+  which forces any non-`AGREED` verifier result to `DISCRETIONARY` with
+  human attestation required — the strongest posture SKI's policy layer
+  can offer against a telemetry-side compromise it cannot itself detect.
+
+See also [Limitations & assumptions](architecture.md#limitations--assumptions)
+for the companion point about non-formalizable rules, and
+[docs/security.md](security.md) for how this fits the project's broader
+security posture.
+
+---
+
 ## In-scope threats
 
 ### T-1: Tampering with recorded verdicts
