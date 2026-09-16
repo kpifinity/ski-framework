@@ -222,6 +222,18 @@ jobs:
                     tools/ski-model-deploy/src \
                     conformance \
                     -ll --skip B101,B404,B603,B607
+      # Audit finding A2: bandit previously skipped the network-facing
+      # components entirely. The sidecar is the primary remote attack
+      # surface (telemetry ingress); the KG tools parse operator-supplied
+      # input. Unlike the scan above, this one does NOT blanket-skip
+      # B603/B607 (subprocess) -- this surface gets the full check.
+      - name: Bandit (network-facing surface: sidecar, telemetry buffer, KG tools)
+        run: |
+          bandit -r reference-implementation/src/sidecar \
+                    reference-implementation/src/telemetry_buffer \
+                    tools/kg-extractor/src \
+                    tools/kg-validator/src \
+                    -ll --skip B101,B404
       - name: pip-audit (best-effort across requirements files)
         run: |
           set +e
