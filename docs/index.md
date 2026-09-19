@@ -12,7 +12,7 @@ hide:
 [![Release](https://img.shields.io/github/v/release/kpifinity/ski-framework?label=Release&color=blue)](https://github.com/kpifinity/ski-framework/releases)
 [![Spec](https://img.shields.io/badge/Spec-v3.0-blue.svg)](https://skiframework.org)
 
-!!! success "Status — spec v3.0; implementation on the v3.1.0-alpha line"
+!!! success "Status — spec v3.0; implementation at v3.1.0 (GA)"
     A KG-grounded sovereign LLM is the primary reasoner on every verdict.
     The Symbolic Evaluator is repositioned as an independent verifier of
     the LLM's formalizable assertions. The Knowledge Graph is a typed

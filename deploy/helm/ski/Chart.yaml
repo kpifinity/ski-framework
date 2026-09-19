@@ -6,8 +6,8 @@ description: >-
   append-only audit ledger, and optionally a bundled Ollama runtime,
   inside a NetworkPolicy-enforced sovereign boundary.
 type: application
-version: 0.1.0
-appVersion: "3.1.0-beta.1"
+version: 0.2.0
+appVersion: "3.1.0"
 kubeVersion: ">=1.25.0-0"
 home: https://skiframework.org
 sources:

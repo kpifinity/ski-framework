@@ -4,7 +4,7 @@ from .extractor import Extractor
 from .models import ComplianceRule, ExtractionQuality, ExtractionResult
 from .v3_emitter import emit_v3_kg
 
-__version__ = "3.1.0b1"
+__version__ = "3.1.0"
 __author__ = "KpiFinity"
 
 __all__ = [

@@ -24,7 +24,7 @@ from .models import (
 )
 from .verify import VerificationReport, verify_transcript
 
-__version__ = "3.1.0b1"
+__version__ = "3.1.0"
 
 __all__ = [
     "AsyncSKIClient",

@@ -1,7 +1,7 @@
 # SKI Framework — tools
 
-> **STATUS:** the four CLI tools track the framework version (currently
-> the v3.1.0-alpha line); `ski-sdk` is versioned independently (RFC 0003).
+> **STATUS:** all six packages (the four CLI tools, `ski-schemas`, and
+> `ski-sdk`) share the framework version — currently v3.1.0.
 > All are installable from PyPI — see the root `README.md`.
 
 Open-source tooling for implementing the SKI Framework. All tools

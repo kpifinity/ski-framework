@@ -9,6 +9,60 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+## [3.1.0] -- 2026-09-19
+
+First general-availability release of the v3.1 line. **No wire-format,
+envelope, or public-API changes from v3.1.0-beta.1** — this release is the
+OT-safety hardening gate that lets SKI drop "beta": every fail-closed path
+is now tested and gated in CI, the highest-consequence OT threat has a
+conformance test, and the telemetry trust boundary is documented with a
+fail-safe default.
+
+### Security
+- **Fail-safe risk tiering.** An absent, empty, or unrecognized
+  `risk_tier` on an incoming measurement now defaults to **tier-1** (the
+  most conservative tier: any non-agreement is forced to DISCRETIONARY +
+  human attestation) instead of being trusted as lower-risk, and the
+  coercion is recorded for the auditor. The *effective* tier is derived
+  from the signed KG snapshot, not the caller-declared value, so a
+  mis-declared or malicious tier cannot downgrade independent oversight.
+- **Adversarial-telemetry (T9) conformance test.** The
+  prompt-injection-via-telemetry threat is now exercised by a dedicated
+  conformance test: a compromised telemetry source that tries to steer
+  the reasoner into a fabricated CLEAR for a genuine breach must not
+  silently CLEAR. It asserts the structural guard rails the mitigation
+  depends on (independent grounding of the LLM's claims against the
+  measurement and the cited obligation, mechanical recomputation of
+  `satisfied` rather than trusting the model, and the risk-tier
+  downgrade) and pairs with a functional FakeLLM injection proof.
+- **Static analysis extended to the network-facing surface.** Bandit now
+  scans the sidecar (telemetry ingress), the telemetry buffer, and the KG
+  tools in addition to the core packages.
+
+### Added
+- **Per-module coverage gates on the safety-critical set.** Beyond the
+  global floor, the verifier, the evaluator's degrade paths, the
+  `kg_loader` signature verification, the ledger client, and the
+  risk-tier policy carry independent coverage assertions, and there is an
+  explicit negative test for **every** fail-closed branch (backend error,
+  malformed model output, bad KG signature, unknown citation,
+  ledger-write failure). Proof point: every fail-safe path is tested and
+  gated, not merely present.
+
+### Changed
+- **Unified versioning at GA.** `ski-sdk` and `ski-schemas`, versioned
+  independently during the alpha/beta line (RFC 0003), are aligned to the
+  framework version at GA. All six packages now share `3.1.0`. RFC 0003
+  and RELEASING.md are updated to reflect this.
+
+### Fixed
+- **Docstring/hazard hygiene in the evaluate handler.** Removed the stale
+  "PR 10c will wire the Symbolic Verifier … until then UNVERIFIABLE"
+  docstrings in `server.py`; the verifier has been wired since
+  v3.1.0-beta.1, and the docstrings now describe the shipped behavior. In
+  audited safety code, a docstring claiming a live safety control is
+  inactive is itself a review hazard.
+
 ## [3.1.0-beta.1] -- 2026-06-13
 
 ### Fixed
