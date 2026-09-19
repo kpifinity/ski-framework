@@ -151,7 +151,7 @@ supportive role unambiguous.
   [benchmarks](../benchmarks.md), [threat model](../threat-model.md),
   [governance](../governance.md).
 
-*Prepared June 2026 against reference implementation v3.1.0-alpha.2.
+*Prepared against reference implementation v3.1.0.
 This document will be revised as delegated acts, harmonised standards
 (CEN-CENELEC JTC 21), and Commission guidance are published. Corrections
 welcome via GitHub issues.*

@@ -2,14 +2,14 @@
 
 > **Sovereign Knowledge Intelligence** — an open neuro-symbolic architecture for AI compliance in regulated industries.
 
-> **STATUS.** Beta. SKI implements the **v3.0 specification** — a Knowledge-Graph-grounded sovereign LLM as the primary reasoner, with the Symbolic Evaluator as an independent verifier and a verifiable-provenance audit trail (the neuro-symbolic architecture from [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)). Current release: **v3.1.0-beta.1**. See [CHANGELOG.md](./CHANGELOG.md) for release history.
+> **STATUS.** GA. SKI implements the **v3.0 specification** — a Knowledge-Graph-grounded sovereign LLM as the primary reasoner, with the Symbolic Evaluator as an independent verifier and a verifiable-provenance audit trail (the neuro-symbolic architecture from [RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)). Current release: **v3.1.0**. See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/kpifinity/ski-framework?quickstart=1)
 
 [![License: Apache-2.0 (code)](https://img.shields.io/badge/License%20(code)-Apache%202.0-blue.svg)](./LICENSE)
 [![License: CC BY 4.0 (spec)](https://img.shields.io/badge/License%20(spec)-CC%20BY%204.0-lightgrey.svg)](./LICENSE-docs.md)
 [![Spec](https://img.shields.io/badge/Spec-v3.0-blue.svg)](https://skiframework.org)
-[![Release](https://img.shields.io/badge/Release-v3.1.0--beta.1-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v3.1.0-beta.1)
+[![Release](https://img.shields.io/badge/Release-v3.1.0-blue.svg)](https://github.com/kpifinity/ski-framework/releases/tag/v3.1.0)
 [![Docs](https://img.shields.io/badge/Docs-MkDocs%20Material-blue.svg)](https://kpifinity.github.io/ski-framework/)
 
 ## Try it in your browser -- no install needed
@@ -145,11 +145,10 @@ The reference implementation's major version tracks the specification's: the **0
 - **v0.2.0** (spec v2.1) — stateful evaluation: Postgres-backed telemetry buffer, stateful predicate operators (`window_count`, `window_sum`, `window_avg`, `since_last`, `debounce`), `NULL_STALE` end-to-end, deterministic replay, conformance Level 2, Alembic schema migrations.
 - **v0.2.1** — patch: Symbolic Evaluator exports `Verdict`; kg-validator detects contradictory limits.
 - **v3.0.0 – v3.0.3** (spec v3.0) — the neuro-symbolic pivot ([RFC 0002](./docs/RFCs/0002-v3-neuro-symbolic-pivot.md)): KG-grounded sovereign LLM as primary reasoner, Symbolic Evaluator repositioned as an independent verifier, the Knowledge Graph elevated from routing table to typed semantic substrate, and a verifiable-provenance audit trail (signed LLM transcript, model-weight and KG hashes, KG citations, verifier result).
-- **v3.1.0-beta.1** (current) — wire-contract package (`ski-schemas`), typed Python client (`ski-sdk`), production vLLM backend, Helm chart, `/metrics` contract, SKI Evals verdict-accuracy suite, Level 3 conformance rigs (DB-backed and air-gapped), performance benchmarks, and signed releases (Sigstore/cosign with SLSA Level 3 provenance).
+- **v3.1.0** (current, GA) — wire-contract package (`ski-schemas`), typed Python client (`ski-sdk`), production vLLM backend, Helm chart, `/metrics` contract, SKI Evals verdict-accuracy suite, Level 3 conformance rigs (DB-backed and air-gapped), performance benchmarks, and signed releases (Sigstore/cosign with SLSA Level 3 provenance).
 
 **Planned**
 
-- **v3.1.0 (GA)** — promote the beta to the first general-availability v3 release.
 - **Later v3.x** — horizontal scaling (shard router, ledger partitioning), a Kubernetes operator + CRDs (`SkiModelDeployment`), and additional LLM backends behind the uniform interface (llama.cpp, Bedrock, Vertex).
 - **Conformance-mark program** — a long-term-supported reference implementation and conformance-mark issuance via KpiFinity.
 
@@ -157,7 +156,7 @@ The reference implementation's major version tracks the specification's: the **0
 
 A machine-readable citation file is provided in [CITATION.cff](./CITATION.cff). Human-readable form:
 
-> KpiFinity Inc. (2026). *SKI Framework: Sovereign Knowledge Intelligence for Regulated Industries — neuro-symbolic compliance with verifiable provenance.* v3.1.0-beta.1 (specification v3.0). Retrieved from <https://skiframework.org>. Specification under CC BY 4.0; reference implementation under Apache 2.0.
+> KpiFinity Inc. (2026). *SKI Framework: Sovereign Knowledge Intelligence for Regulated Industries — neuro-symbolic compliance with verifiable provenance.* v3.1.0 (specification v3.0). Retrieved from <https://skiframework.org>. Specification under CC BY 4.0; reference implementation under Apache 2.0.
 
 ## About
 

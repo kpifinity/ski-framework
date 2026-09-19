@@ -1,7 +1,7 @@
 # SKI Framework reference implementation
 
 > **STATUS:** pre-production reference for the **v3** architecture
-> (current release line: v3.1.0-alpha). It demonstrates the full
+> (current release: v3.1.0). It demonstrates the full
 > neuro-symbolic path — KG-grounded local LLM, independent Symbolic
 > Verifier, signed transcripts, append-only ledger — and runs entirely
 > on-premise with no outbound calls during evaluation. Treat it as the

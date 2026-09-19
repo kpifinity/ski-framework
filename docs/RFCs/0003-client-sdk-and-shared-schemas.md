@@ -75,6 +75,12 @@ wire contract, not the runtime), starting at 0.1.0. The four CLI tools
 continue to share the framework version. A compatibility table is
 maintained in the SDK README.
 
+**GA update (v3.1.0).** At the v3.1.0 GA release, `ski-sdk` and
+`ski-schemas` are aligned to the framework version: all six packages
+(the four CLI tools, `ski-schemas`, and `ski-sdk`) now share `3.1.0`.
+The independent 0.x versioning above applied during the alpha/beta line
+only.
+
 ## Security considerations
 
 - Transcript verification is offline: the SDK receives the runtime's

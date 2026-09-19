@@ -5,9 +5,9 @@
 Typed Python client for the [SKI Framework](https://github.com/kpifinity/ski-framework)
 SKI Model, with one-call verification of a verdict's signed provenance.
 
-> **Status: early alpha.** This wraps an alpha HTTP API; pin your versions. The
-> SDK is versioned independently of the framework — see the compatibility note
-> in the docs.
+> **Status: GA (v3.1.0).** As of the v3.1.0 GA release the SDK is versioned
+> together with the framework (see [RFC 0003](../../docs/RFCs/0003-client-sdk-and-shared-schemas.md));
+> the earlier independent alpha/beta versioning no longer applies.
 
 ```python
 from ski_sdk import SKIClient
