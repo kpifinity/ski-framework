@@ -30,7 +30,6 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install "cyclonedx-bom==4.4.3" build
 
       - name: Build sdists/wheels for tools
         run: |
