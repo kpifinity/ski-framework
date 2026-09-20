@@ -32,6 +32,8 @@ from typing import Dict, List, Set, Tuple
 from .loader import KnowledgeGraphV3
 from .models import (
     EdgeType,
+    ObligationType,
+    RiskTier,
     V3IssueType,
     V3ValidationIssue,
     V3ValidationResult,
@@ -50,12 +52,47 @@ _EDGE_TARGET_TYPE: Dict[EdgeType, str] = {
     EdgeType.CITED_BY: "Citation",
 }
 
+# Obligation types the Symbolic Verifier can mechanically check -- mirrors
+# the check-function registries in
+# reference-implementation/src/ski_model/v3/verifier.py
+# (_STATELESS_CHECKS' keys plus _STATEFUL_PREDICATES). Deliberately the
+# verifier's *actual* implemented set, not spec §3.3's full enumeration:
+# `must_be_recorded_within` is spec-defined but not yet wired to a check
+# function, so it is treated as non-formalizable (qualitative) here until
+# it is. Anything not in this set -- `must`, `must_not`,
+# `must_be_recorded_within`, `should`, `discretionary` -- cannot be
+# mechanically verified; the runtime's RiskTierGovernor can only backstop
+# that with a strict enough risk_tier, which this check exists to flag.
+_MECHANICALLY_CHECKABLE_OBLIGATION_TYPES: Set[str] = {
+    ObligationType.MUST_NOT_EXCEED.value,
+    ObligationType.MUST_BE_AT_LEAST.value,
+    ObligationType.MUST_BE_BELOW.value,
+    ObligationType.MUST_BE_ABOVE.value,
+    ObligationType.MUST_BE_WITHIN.value,
+    ObligationType.MUST_BE_ONE_OF.value,
+    ObligationType.MUST_NOT_BE_ONE_OF.value,
+    ObligationType.MUST_EQUAL.value,
+    ObligationType.MUST_NOT_EQUAL.value,
+    ObligationType.MUST_AVERAGE_WITHIN.value,
+    ObligationType.MUST_NOT_EXCEED_IN_WINDOW.value,
+}
+
 
 class V3Validator:
-    """Run the §3.6 validation passes against a loaded v3 KG."""
+    """Run the §3.6 validation passes against a loaded v3 KG.
 
-    def __init__(self, kg: KnowledgeGraphV3) -> None:
+    ``strict``: when ``True``, findings that are normally advisory
+    warnings (currently just
+    :attr:`~kg_validator.models.V3IssueType.UNDER_TIERED_QUALITATIVE_OBLIGATION`)
+    are raised to ``HIGH`` severity, which fails
+    :attr:`~kg_validator.models.V3ValidationResult.is_clean` and the CLI's
+    exit code. Default ``False`` preserves prior behaviour for existing
+    callers.
+    """
+
+    def __init__(self, kg: KnowledgeGraphV3, *, strict: bool = False) -> None:
         self._kg = kg
+        self._strict = strict
         self._issues: List[V3ValidationIssue] = []
 
     def run(self) -> V3ValidationResult:
@@ -65,6 +102,7 @@ class V3Validator:
         node_types = self._kg.all_node_ids()
         self._check_dangling_edges(node_types)
         self._check_edge_target_types(node_types)
+        self._check_under_tiered_qualitative_obligations()
         self._check_rule_obligation_coverage()
 
         total_nodes = sum(
@@ -222,6 +260,59 @@ class V3Validator:
                     suggested_action=("Either add a consists_of edge from a Rule, or remove the obligation."),
                 )
             )
+
+    def _check_under_tiered_qualitative_obligations(self) -> None:
+        """Flag a Rule whose obligation(s) can't be mechanically verified
+        but is tiered ``medium``/``low`` (declared or defaulted).
+
+        The runtime's ``RiskTierGovernor`` derives the *effective* tier
+        from this KG's ``risk_tier`` fields (strictest obligation wins) --
+        a caller cannot override it (see
+        ``tag_registry.registry.RiskTierGovernor``). That makes KG
+        authoring the one place an under-tiered qualitative obligation can
+        still slip through: a non-formalizable obligation returns
+        ``UNVERIFIABLE`` from the verifier, and at tier-2/tier-3 the risk
+        policy accepts ``UNVERIFIABLE`` with only a note (no forced human
+        review), unlike tier-1 where anything but ``AGREED`` is forced to
+        ``DISCRETIONARY``. This is advisory (``MEDIUM``) by default, and a
+        hard error (``HIGH``) under ``strict=True``.
+        """
+        obligations_by_id = {o.id: o for o in self._kg.nodes.obligations}
+        consists_of: List[Tuple[str, str]] = [
+            (e.from_id, e.to_id) for e in self._kg.edges if e.type == EdgeType.CONSISTS_OF.value
+        ]
+        severity = "HIGH" if self._strict else "MEDIUM"
+
+        for rule in self._kg.nodes.rules:
+            if rule.risk_tier == RiskTier.HIGH.value:
+                continue
+            for _src, obligation_id in (pair for pair in consists_of if pair[0] == rule.id):
+                obligation = obligations_by_id.get(obligation_id)
+                if obligation is None:
+                    continue  # dangling edge -- already flagged by _check_dangling_edges
+                if obligation.obligation_type in _MECHANICALLY_CHECKABLE_OBLIGATION_TYPES:
+                    continue
+                self._issues.append(
+                    V3ValidationIssue(
+                        issue_type=V3IssueType.UNDER_TIERED_QUALITATIVE_OBLIGATION,
+                        severity=severity,
+                        node_id=rule.id,
+                        message=(
+                            f"Rule '{rule.id}' has risk_tier={rule.risk_tier!r} but its "
+                            f"obligation '{obligation.id}' (obligation_type="
+                            f"{obligation.obligation_type!r}) is not mechanically checkable "
+                            "by the Symbolic Verifier. The runtime governor derives the "
+                            "effective tier from this field, strictest-wins, so an "
+                            "under-tiered qualitative obligation is the one gap the runtime "
+                            "cannot backstop on its own."
+                        ),
+                        suggested_action=(
+                            "Set this Rule's risk_tier to 'high' so any non-AGREED verifier "
+                            "result (including UNVERIFIABLE) forces DISCRETIONARY with human "
+                            "attestation, since nothing here can be mechanically verified."
+                        ),
+                    )
+                )
 
     # ------------------------------------------------------------------ #
     # Convenience accessors                                              #

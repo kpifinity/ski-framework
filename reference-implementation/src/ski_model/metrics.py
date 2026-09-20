@@ -81,6 +81,17 @@ TELEMETRY_CLOCK_SKEW = Counter(
     "fresh.",
     registry=REGISTRY,
 )
+UNVERIFIABLE_BY_TIER = Counter(
+    "ski_unverifiable",
+    "Verdicts whose VerifierResult.status was UNVERIFIABLE, by the "
+    "effective risk tier the RiskTierGovernor derived from the signed KG. "
+    "At tier-2/tier-3, UNVERIFIABLE is accepted with a note rather than "
+    "forced to DISCRETIONARY (spec §5.4) -- operators should alert on "
+    "sustained volume here, since it means obligations are going "
+    "unverified without triggering human review.",
+    ["tier"],
+    registry=REGISTRY,
+)
 
 
 def render() -> tuple[bytes, str]:
@@ -97,6 +108,7 @@ __all__ = [
     "REGISTRY",
     "RUNTIME_INFO",
     "TELEMETRY_CLOCK_SKEW",
+    "UNVERIFIABLE_BY_TIER",
     "VERDICTS",
     "render",
 ]

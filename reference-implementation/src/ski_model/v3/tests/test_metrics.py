@@ -61,6 +61,14 @@ def test_ledger_gap_counter_present_and_monotonic() -> None:
     assert m and float(m.group(1)) == before + 1
 
 
+def test_unverifiable_by_tier_counter_present_and_labelled() -> None:
+    before = metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-2")._value.get()
+    metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-2").inc()
+    text = _scrape()
+    m = re.search(r'ski_unverifiable_total\{tier="tier-2"\} (\d+)', text)
+    assert m and float(m.group(1)) == before + 1
+
+
 def test_clock_skew_counter_present_and_monotonic() -> None:
     before = metrics.TELEMETRY_CLOCK_SKEW._value.get()
     metrics.TELEMETRY_CLOCK_SKEW.inc()

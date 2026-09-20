@@ -222,6 +222,81 @@ class TestValidatorCoverage:
         )
 
 
+class TestValidatorUnderTieredQualitativeObligation:
+    """A Rule whose obligation the Symbolic Verifier can't mechanically
+    check, but which isn't tiered `high`, is the one gap the runtime
+    governor can't backstop on its own (it only reads what the KG
+    declares)."""
+
+    def test_qualitative_obligation_at_medium_tier_is_flagged(self) -> None:
+        payload = _minimal_kg_payload()
+        payload["nodes"]["rules"][0]["risk_tier"] = "medium"
+        payload["nodes"]["obligations"][0]["obligation_type"] = "must"
+        del payload["nodes"]["obligations"][0]["value"]
+        kg = KnowledgeGraphV3.model_validate(payload)
+        result = V3Validator(kg).run()
+        matches = [
+            i for i in result.issues if i.issue_type == V3IssueType.UNDER_TIERED_QUALITATIVE_OBLIGATION.value
+        ]
+        assert len(matches) == 1
+        assert matches[0].node_id == "rule.x"
+        assert matches[0].severity == "MEDIUM"
+
+    def test_qualitative_obligation_at_low_tier_is_flagged(self) -> None:
+        payload = _minimal_kg_payload()
+        payload["nodes"]["rules"][0]["risk_tier"] = "low"
+        payload["nodes"]["obligations"][0]["obligation_type"] = "should"
+        del payload["nodes"]["obligations"][0]["value"]
+        kg = KnowledgeGraphV3.model_validate(payload)
+        result = V3Validator(kg).run()
+        assert any(
+            i.issue_type == V3IssueType.UNDER_TIERED_QUALITATIVE_OBLIGATION.value for i in result.issues
+        )
+
+    def test_qualitative_obligation_at_high_tier_is_not_flagged(self) -> None:
+        """A high tier already gets the runtime's strongest posture
+        (any non-AGREED forces DISCRETIONARY) -- nothing to warn about."""
+        payload = _minimal_kg_payload()
+        payload["nodes"]["rules"][0]["risk_tier"] = "high"
+        payload["nodes"]["obligations"][0]["obligation_type"] = "must"
+        del payload["nodes"]["obligations"][0]["value"]
+        kg = KnowledgeGraphV3.model_validate(payload)
+        result = V3Validator(kg).run()
+        assert not any(
+            i.issue_type == V3IssueType.UNDER_TIERED_QUALITATIVE_OBLIGATION.value for i in result.issues
+        )
+
+    def test_formalizable_obligation_at_medium_tier_is_not_flagged(self) -> None:
+        """must_not_exceed is mechanically checkable -- the demo KG and the
+        minimal fixture both rely on this staying clean (see
+        TestValidatorClean)."""
+        kg = KnowledgeGraphV3.model_validate(_minimal_kg_payload())
+        result = V3Validator(kg).run()
+        assert not any(
+            i.issue_type == V3IssueType.UNDER_TIERED_QUALITATIVE_OBLIGATION.value for i in result.issues
+        )
+
+    def test_qualitative_obligation_is_a_warning_by_default(self) -> None:
+        payload = _minimal_kg_payload()
+        payload["nodes"]["obligations"][0]["obligation_type"] = "must"
+        del payload["nodes"]["obligations"][0]["value"]
+        kg = KnowledgeGraphV3.model_validate(payload)
+        result = V3Validator(kg, strict=False).run()
+        assert result.is_clean is True
+
+    def test_qualitative_obligation_is_a_hard_error_in_strict_mode(self) -> None:
+        payload = _minimal_kg_payload()
+        payload["nodes"]["obligations"][0]["obligation_type"] = "must"
+        del payload["nodes"]["obligations"][0]["value"]
+        kg = KnowledgeGraphV3.model_validate(payload)
+        result = V3Validator(kg, strict=True).run()
+        assert result.is_clean is False
+        matches = [
+            i for i in result.issues if i.issue_type == V3IssueType.UNDER_TIERED_QUALITATIVE_OBLIGATION.value
+        ]
+        assert matches and matches[0].severity == "HIGH"
+
+
 class TestValidatorDuplicateIds:
     def test_duplicate_within_same_array_is_flagged(self) -> None:
         payload = _minimal_kg_payload()
