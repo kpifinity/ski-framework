@@ -25,7 +25,7 @@ from typing import Any, Dict, Iterator, List
 
 from fastapi.testclient import TestClient
 
-from ski_model import server
+from ski_model import metrics, server
 from ski_model.kg_loader import KnowledgeGraph
 from ski_model.v3 import AgreementMonitor, FakeLLM, V3Evaluator, V3VerdictEnvelope
 
@@ -187,6 +187,29 @@ def test_evaluate_returns_null_unmapped_for_unknown_metric() -> None:
     assert resp.status_code == 200, resp.text
     envelope = V3VerdictEnvelope.model_validate(resp.json())
     assert envelope.verdict == "NULL_UNMAPPED"
+
+
+def test_unverifiable_increments_the_by_tier_metric() -> None:
+    """A5 observability: NULL_UNMAPPED with zero assertions is UNVERIFIABLE
+    (see test_evaluate_returns_null_unmapped_for_unknown_metric); the KG
+    rule declares no risk_tier, so the governor's default tier-2 is what
+    the metric should be labelled with."""
+    before = metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-2")._value.get()
+    _install_test_state()
+    with _client() as client:
+        _install_test_state()
+        resp = client.post(
+            "/api/evaluate",
+            json={
+                "measurement_id": "meas-metric",
+                "timestamp": "2026-01-15T12:00:00Z",
+                "subject": "unknown",
+                "measurement": {"unrelated_metric": 1},
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    after = metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-2")._value.get()
+    assert after == before + 1
 
 
 def test_strict_governor_ignores_caller_risk_tier() -> None:

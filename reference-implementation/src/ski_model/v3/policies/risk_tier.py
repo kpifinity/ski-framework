@@ -1,9 +1,15 @@
 """Risk-tier policy — post-processing of a V3VerdictEnvelope per spec v3.0 §5.4.
 
-A tenant declares the risk tier of the obligation when submitting a
-measurement (``MeasurementRecord.risk_tier``). The evaluator runs the LLM
-and the :class:`SymbolicVerifier`, then this module decides whether the
-envelope can be returned as-is or must be downgraded / annotated.
+The *effective* risk tier is derived from the signed Knowledge Graph, not
+declared by the caller: ``MeasurementRecord`` carries no ``risk_tier``
+field, and the server computes ``risk_tier`` for :func:`apply_risk_policy`
+via ``RiskTierGovernor.tier_for_snapshot(kg_snapshot)`` (strictest tier
+across the scoped snapshot's obligations). A caller cannot send
+``risk_tier=tier-3`` to evade the policy of a KG rule that is actually
+tier-1 -- see ``tag_registry.registry.RiskTierGovernor`` for the strict-
+governor design this depends on. The evaluator runs the LLM and the
+:class:`SymbolicVerifier`, then this module decides whether the envelope
+can be returned as-is or must be downgraded / annotated.
 
 The three tiers are deliberately mechanical — no LLM is consulted at
 policy-application time. Verdict shifts are recorded in the envelope's
@@ -33,6 +39,7 @@ would otherwise return the envelope untouched).
 
 from __future__ import annotations
 
+import os
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -88,7 +95,16 @@ def _normalise_tier(tier: Optional[str]) -> Tuple[RiskTier, Optional[str]]:
 
 
 def apply_risk_policy(envelope: V3VerdictEnvelope, risk_tier: Optional[str]) -> V3VerdictEnvelope:
-    """Apply the spec §5.4 policy for ``risk_tier`` to ``envelope``."""
+    """Apply the spec §5.4 policy for ``risk_tier`` to ``envelope``.
+
+    ``SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE`` (default ``false``): when
+    ``true``, any ``UNVERIFIABLE`` verifier status forces ``DISCRETIONARY``
+    regardless of tier. Spec §5.4 already gives tier-1 this behaviour;
+    this flag extends it to tier-2/tier-3 for operators who would rather
+    over-flag qualitative obligations than rely solely on KG authoring
+    (see kg-validator's ``UNDER_TIERED_QUALITATIVE_OBLIGATION`` check) to
+    catch an under-tiered one.
+    """
     tier, coercion_note = _normalise_tier(risk_tier)
     status = envelope.verifier_result.status
     notes: List[str] = list(envelope.notes)
@@ -99,6 +115,16 @@ def apply_risk_policy(envelope: V3VerdictEnvelope, risk_tier: Optional[str]) -> 
         if coercion_note is not None:
             return envelope.model_copy(update={"notes": notes})
         return envelope
+
+    if (
+        status == VerifierStatus.UNVERIFIABLE
+        and os.getenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", "false").strip().lower() == "true"
+    ):
+        notes.append(
+            "SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE=true: UNVERIFIABLE forces "
+            "DISCRETIONARY regardless of risk tier."
+        )
+        return _downgrade_to_discretionary(envelope, notes=notes, human_attestation_required=True)
 
     has_attestation = envelope.human_attestation is not None
 

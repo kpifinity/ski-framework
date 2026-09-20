@@ -498,15 +498,23 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     # (rolling averages, window peaks) can be verified against the
     # telemetry buffer. If the buffer is None, stateful predicates degrade
     # to UNVERIFIABLE — operability problem, not a correctness one.
+    effective_tier = RiskTierGovernor.tier_for_snapshot(snapshot)
     result = await state.evaluator.aevaluate_with_transcript(
         measurement=measurement.measurement,
         kg_snapshot=snapshot,
-        risk_tier=RiskTierGovernor.tier_for_snapshot(snapshot),
+        risk_tier=effective_tier,
         subject=measurement.subject,
         as_of=measurement_ts,
         buffer=state.telemetry_buffer,
     )
     envelope = result.envelope
+
+    # A5 observability: UNVERIFIABLE volume by the *effective* (KG-derived)
+    # tier. At tier-2/tier-3 the risk policy accepts UNVERIFIABLE with only
+    # a note (spec §5.4) -- this is the series operators alert on to catch
+    # sustained under-verification that isn't triggering human review.
+    if envelope.verifier_result.status == VerifierStatus.UNVERIFIABLE:
+        metrics.UNVERIFIABLE_BY_TIER.labels(tier=effective_tier).inc()
 
     await state.ledger.append_v3(
         envelope=envelope,

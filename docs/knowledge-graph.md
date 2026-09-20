@@ -79,6 +79,31 @@ effective-date scoping: the runtime evaluates each measurement against
 the obligations in force **at the measurement's timestamp**, not at
 arrival time.
 
+### Do not under-tier qualitative obligations
+
+A `Rule`'s `risk_tier` is what the Risk-Tier Governor uses at runtime
+(strictest tier across a snapshot's obligations wins; a caller cannot
+self-declare a lower one — see [architecture.md](architecture.md)). At
+`tier-1`, any verifier status other than `AGREED` is forced to
+`DISCRETIONARY` with human attestation required. At `tier-2`/`tier-3`,
+an `UNVERIFIABLE` result — which is exactly what a qualitative
+obligation (`must`, `must_not`, `should`, `discretionary`,
+`must_be_recorded_within`) always produces, since the Symbolic Verifier
+has nothing numeric to check — is accepted with only a note recorded,
+**not** forced to human review.
+
+This is the one gap the runtime governor cannot close on its own: it
+faithfully applies whatever tier the KG declares, so a qualitative
+obligation left at the default `medium` tier ships without the review
+its non-verifiability arguably warrants. The control here is
+governance, not code — human KG validation and signing before the
+runtime ever sees the document — and `kg-validator validate` backstops
+it mechanically: a `Rule` combining a non-formalizable obligation with
+`risk_tier` below `high` surfaces as
+`UNDER_TIERED_QUALITATIVE_OBLIGATION` (a warning by default, a hard
+error under `--strict`). Tier qualitative obligations `high` unless you
+have a specific reason not to.
+
 ## Edges
 
 ```json

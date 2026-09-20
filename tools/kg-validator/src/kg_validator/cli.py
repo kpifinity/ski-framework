@@ -37,7 +37,16 @@ def main() -> None:
     default=None,
     help="Output JSON file with validation results. If omitted, results are printed to stdout when issues are found.",
 )
-def validate(input: str, output: Optional[str]) -> None:
+@click.option(
+    "--strict",
+    is_flag=True,
+    default=False,
+    help=(
+        "Treat KG-authoring warnings (currently: an under-tiered qualitative "
+        "obligation) as hard errors, failing the exit code."
+    ),
+)
+def validate(input: str, output: Optional[str], strict: bool) -> None:
     """Validate a v3 KG against spec §3 schema and §3.6 cross-cutting passes."""
     try:
         click.echo(f"Loading v3 KG from: {input}")
@@ -54,7 +63,7 @@ def validate(input: str, output: Optional[str]) -> None:
         f"Loaded {len(kg.nodes.rules)} rules, {len(kg.nodes.obligations)} obligations, {len(kg.edges)} edges"
     )
 
-    result = V3Validator(kg).run()
+    result = V3Validator(kg, strict=strict).run()
 
     click.echo("\nValidation complete:")
     click.echo(f"  Nodes: {result.total_nodes}")
@@ -94,7 +103,10 @@ kg-validator examples (v3):
 2. Validate and save the issue report:
    kg-validator validate --input kg-energy-v3.json --output report.json
 
-3. Compile-extract-validate flow:
+3. Validate strictly (KG-authoring warnings become hard errors):
+   kg-validator validate --input kg-energy-v3.json --strict
+
+4. Compile-extract-validate flow:
    kg-extractor extract --file regulation.txt --output kg-extracted.json --jurisdiction us.federal
    kg-validator validate --input kg-extracted.json --output validation-report.json
 """

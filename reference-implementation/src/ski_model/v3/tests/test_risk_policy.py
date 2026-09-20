@@ -150,6 +150,63 @@ class TestTier3:
         assert any("UNVERIFIABLE" in n for n in out.notes)
 
 
+# ---- SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE -----------------------------------
+
+
+class TestForceDiscretionaryOnUnverifiable:
+    def test_default_false_preserves_tier2_passthrough(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", raising=False)
+        env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
+        out = apply_risk_policy(env, risk_tier="tier-2")
+        assert out.verdict == V3Verdict.CLEAR.value
+
+    def test_default_false_preserves_tier3_passthrough(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", raising=False)
+        env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
+        out = apply_risk_policy(env, risk_tier="tier-3")
+        assert out.verdict == V3Verdict.CLEAR.value
+
+    def test_true_forces_discretionary_at_tier2(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", "true")
+        env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
+        out = apply_risk_policy(env, risk_tier="tier-2")
+        assert out.verdict == V3Verdict.DISCRETIONARY.value
+        assert out.human_attestation is not None
+        assert out.human_attestation["required"] is True
+        assert any("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE" in n for n in out.notes)
+
+    def test_true_forces_discretionary_at_tier3(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", "true")
+        env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
+        out = apply_risk_policy(env, risk_tier="tier-3")
+        assert out.verdict == V3Verdict.DISCRETIONARY.value
+
+    def test_true_is_a_no_op_at_tier1_already_forcing_discretionary(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", "true")
+        env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
+        out = apply_risk_policy(env, risk_tier="tier-1")
+        assert out.verdict == V3Verdict.DISCRETIONARY.value
+
+    def test_true_does_not_affect_agreed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", "true")
+        env = _envelope(verifier_status=VerifierStatus.AGREED)
+        out = apply_risk_policy(env, risk_tier="tier-3")
+        assert out.verdict == V3Verdict.CLEAR.value
+
+    def test_true_does_not_affect_llm_contradiction(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The flag is scoped to UNVERIFIABLE only -- LLM_CONTRADICTION at
+        tier-2 with attestation must keep behaving as documented."""
+        monkeypatch.setenv("SKI_FORCE_DISCRETIONARY_ON_UNVERIFIABLE", "true")
+        env = _envelope(
+            verifier_status=VerifierStatus.LLM_CONTRADICTION,
+            human_attestation={"reviewer": "rk@ski.example", "fulfilled": True},
+        )
+        out = apply_risk_policy(env, risk_tier="tier-2")
+        assert out.verdict == V3Verdict.CLEAR.value
+
+
 # ---- Aliases + errors ---------------------------------------------------------
 
 
