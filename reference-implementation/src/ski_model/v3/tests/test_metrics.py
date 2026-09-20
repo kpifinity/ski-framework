@@ -61,6 +61,14 @@ def test_ledger_gap_counter_present_and_monotonic() -> None:
     assert m and float(m.group(1)) == before + 1
 
 
+def test_clock_skew_counter_present_and_monotonic() -> None:
+    before = metrics.TELEMETRY_CLOCK_SKEW._value.get()
+    metrics.TELEMETRY_CLOCK_SKEW.inc()
+    text = _scrape()
+    m = re.search(r"ski_telemetry_clock_skew_total (\d+)", text)
+    assert m and float(m.group(1)) == before + 1
+
+
 def test_metrics_endpoint_requires_no_auth() -> None:
     """Scrape endpoints can't carry API keys; the route must be open."""
     client = TestClient(server.app)

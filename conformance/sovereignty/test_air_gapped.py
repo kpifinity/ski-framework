@@ -371,6 +371,14 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
             "SKI_V3_LLM_BACKEND=fake",
             "-e",
             "TLS_ENABLED=false",
+            # The fixed workload below is pinned to a fixed 2026-06-15
+            # timestamp for reproducibility, not "now" -- exactly the
+            # legitimate-backfill case the clock-skew guard must not
+            # break. Disabled here; guard behaviour itself is covered by
+            # test_clock_skew_guard.py and
+            # conformance/provenance/test_clock_skew_enforced.py.
+            "-e",
+            "SKI_MAX_CLOCK_SKEW_SECONDS=0",
             image,
         ]
     )

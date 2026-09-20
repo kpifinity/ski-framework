@@ -29,11 +29,13 @@ import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List, Optional
+from typing import Any, AsyncIterator, Dict, Final, List, Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 # Allow execution as `python -m ski_model.server` (package mode) OR as a
 # raw script via the container CMD when WORKDIR is /app.
@@ -53,10 +55,14 @@ from .ledger_client import LedgerClient
 from .ledger_migrations import ensure_v3_ledger_schema
 from .v3 import (
     AgreementMonitor,
+    ModelProvenance,
     TranscriptSigner,
     V3Evaluator,
     V3LLMBackend,
+    V3Verdict,
     V3VerdictEnvelope,
+    VerifierResult,
+    VerifierStatus,
 )
 from .v3 import (
     build_backend as build_v3_backend,
@@ -71,6 +77,10 @@ logger = logging.getLogger("ski_model.server")
 
 
 _VERSION = "3.1.0"
+
+# Safe default when no tenant row and no SKI_MAX_CLOCK_SKEW_SECONDS override
+# are available; matches the telemetry_buffer.sql `tenants` column default.
+_DEFAULT_MAX_CLOCK_SKEW_SECONDS: Final[int] = 60
 
 
 # ============================================================================
@@ -88,6 +98,7 @@ class _State:
     telemetry_buffer: Optional[Any] = None
     tenant_id: str = "default"
     verdicts_produced: int = 0
+    max_clock_skew_seconds: int = _DEFAULT_MAX_CLOCK_SKEW_SECONDS
 
     # v3 evaluator state
     llm_backend: Optional[V3LLMBackend] = None
@@ -172,6 +183,48 @@ def _compute_kg_version_hash(kg: KnowledgeGraph) -> str:
     return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
+async def _resolve_max_clock_skew_seconds(engine: Optional[AsyncEngine], tenant_id: str) -> int:
+    """Resolve the acceptable telemetry clock-skew bound for ``tenant_id``.
+
+    Precedence: the ``tenants.max_clock_skew_seconds`` row (the schema's
+    intended source of truth — see ``reference-implementation/src/ledger/
+    telemetry_buffer.sql``), then ``SKI_MAX_CLOCK_SKEW_SECONDS``, then
+    :data:`_DEFAULT_MAX_CLOCK_SKEW_SECONDS`. A resolved value of ``0``
+    disables the guard entirely (documented operator opt-out).
+    """
+    if engine is not None:
+        try:
+            async with engine.connect() as conn:
+                row = (
+                    await conn.execute(
+                        text("SELECT max_clock_skew_seconds FROM tenants WHERE tenant_id = :tenant_id"),
+                        {"tenant_id": tenant_id},
+                    )
+                ).first()
+            if row is not None:
+                return int(row[0])
+        except Exception as exc:  # pragma: no cover — DB best-effort, same posture as buffer init
+            logger.warning(
+                "Could not resolve tenants.max_clock_skew_seconds for tenant=%s (%r); "
+                "falling back to SKI_MAX_CLOCK_SKEW_SECONDS / default.",
+                tenant_id,
+                exc,
+            )
+
+    env_value = os.getenv("SKI_MAX_CLOCK_SKEW_SECONDS")
+    if env_value is not None:
+        try:
+            return int(env_value)
+        except ValueError:
+            logger.warning(
+                "Invalid SKI_MAX_CLOCK_SKEW_SECONDS=%r; using default %ds.",
+                env_value,
+                _DEFAULT_MAX_CLOCK_SKEW_SECONDS,
+            )
+
+    return _DEFAULT_MAX_CLOCK_SKEW_SECONDS
+
+
 def _build_v3_llm_backend() -> V3LLMBackend:
     """Select the v3 LLM backend.
 
@@ -241,6 +294,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await ensure_v3_ledger_schema(state.ledger._engine)
 
     state.tenant_id = os.getenv("SKI_TENANT_ID", "default")
+    state.max_clock_skew_seconds = await _resolve_max_clock_skew_seconds(
+        state.ledger._engine if state.ledger is not None else None,
+        state.tenant_id,
+    )
+    logger.info(
+        "Telemetry clock-skew guard: max_clock_skew_seconds=%d (0 disables), mode=%s.",
+        state.max_clock_skew_seconds,
+        _clock_skew_mode(),
+    )
     try:
         from telemetry_buffer import TelemetryBuffer
 
@@ -353,6 +415,55 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Service not initialised.")
     _eval_started = datetime.now(timezone.utc)
     metrics.LAST_TELEMETRY_TS.set(_eval_started.timestamp())
+    telemetry_ts = _parse_telemetry_ts(measurement.timestamp)
+
+    # Clock-skew guard (docs/threat-model.md "Assumption 2"). The telemetry
+    # timestamp is authoritative for stateful predicates and freshness
+    # gates — but that only holds if it is honest. A forged or badly
+    # drifted timestamp can make stale/fabricated data appear current,
+    # defeating NULL_STALE routing, requires_recent_within_seconds, and
+    # window predicates. Checked before the buffer write and KG scoping so
+    # a rejected record is never treated as fresh or persisted as such.
+    skew_seconds = _clock_skew_delta_seconds(telemetry_ts, _eval_started)
+    if state.max_clock_skew_seconds > 0 and skew_seconds > state.max_clock_skew_seconds:
+        metrics.TELEMETRY_CLOCK_SKEW.inc()
+        skew_note = (
+            f"clock_skew: telemetry Δ{skew_seconds:.1f}s exceeds "
+            f"max_clock_skew_seconds={state.max_clock_skew_seconds}"
+        )
+        logger.warning(
+            "Clock skew guard triggered for %s (subject=%s): %s",
+            measurement.measurement_id,
+            measurement.subject,
+            skew_note,
+        )
+        if _clock_skew_mode() == "reject":
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, skew_note)
+
+        # Fail-closed + auditable: never silently drop. The record is
+        # routed to DISCRETIONARY and ledgered, but is NOT written into
+        # the telemetry buffer as a fresh sample, and never reaches the
+        # evaluator/LLM.
+        state.verdicts_produced += 1
+        skew_envelope = _build_clock_skew_envelope(
+            skew_note=skew_note,
+            kg_version_hash=state.kg_version_hash,
+        )
+        await state.ledger.append_v3(
+            envelope=skew_envelope,
+            transcript=None,
+            telemetry_id=measurement.measurement_id,
+            telemetry_hash=_hash_measurement(measurement),
+            rule_id=None,
+            kg_version=state.knowledge_graph.version,
+            ski_model_version=_VERSION,
+            track="v3-clock-skew-guard",
+        )
+        metrics.VERDICTS.labels(
+            verdict=getattr(skew_envelope.verdict, "value", str(skew_envelope.verdict))
+        ).inc()
+        metrics.EVALUATION_SECONDS.observe((datetime.now(timezone.utc) - _eval_started).total_seconds())
+        return skew_envelope
 
     # Write to the telemetry buffer BEFORE evaluation so the verifier's
     # stateful predicates (must_average_within, must_not_exceed_in_window)
@@ -364,7 +475,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
             await state.telemetry_buffer.append(
                 subject=measurement.subject,
                 telemetry_id=measurement.measurement_id,
-                telemetry_ts=_parse_telemetry_ts(measurement.timestamp),
+                telemetry_ts=telemetry_ts,
                 measurement=measurement.measurement,
             )
         except Exception as exc:
@@ -376,7 +487,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     # before sending it to the LLM. This prevents the prompt from blowing the
     # model's context window on real-sized KGs, and records the scope in the
     # snapshot's ``scope`` field so the transcript captures *what was sent*.
-    measurement_ts = _parse_telemetry_ts(measurement.timestamp)
+    measurement_ts = telemetry_ts
     snapshot = state.knowledge_graph.scope_to(
         jurisdiction=measurement.jurisdiction,
         as_of=measurement_ts,
@@ -478,6 +589,59 @@ def _parse_telemetry_ts(value: str) -> datetime:
     except (TypeError, ValueError):
         logger.warning("Malformed telemetry timestamp %r; falling back to wall clock.", value)
         return datetime.now(timezone.utc)
+
+
+def _clock_skew_mode() -> str:
+    """``SKI_CLOCK_SKEW_MODE``: ``"discretionary"`` (default) or ``"reject"``.
+
+    Read live rather than cached on :class:`_State` — it is a cheap,
+    operator-facing toggle, not per-tenant configuration.
+    """
+    return os.getenv("SKI_CLOCK_SKEW_MODE", "discretionary").strip().lower()
+
+
+def _clock_skew_delta_seconds(telemetry_ts: datetime, arrival_ts: datetime) -> float:
+    """Absolute distance in seconds between the telemetry and arrival clocks."""
+    return abs((arrival_ts - telemetry_ts).total_seconds())
+
+
+def _build_clock_skew_envelope(*, skew_note: str, kg_version_hash: str) -> V3VerdictEnvelope:
+    """Build the short-circuit DISCRETIONARY envelope for an over-skew record.
+
+    No LLM ran and no formalizable assertions were checked — the record
+    never reached the evaluator — so ``model_provenance`` carries the same
+    all-zero sentinel hash :class:`_State` uses before any KG is loaded,
+    and ``verifier_result`` is honestly ``UNVERIFIABLE`` rather than
+    implying a check that never happened.
+    """
+    sentinel_hash = "sha256:" + "0" * 64
+    return V3VerdictEnvelope(
+        verdict=V3Verdict.DISCRETIONARY,
+        reasoning=(
+            "Telemetry timestamp deviates from arrival wall-clock by more than the "
+            "configured max_clock_skew_seconds bound (docs/threat-model.md "
+            "'Assumption 2'). The record was not evaluated as fresh and is routed "
+            "to human review."
+        ),
+        kg_citations=[],
+        formalizable_assertions=[],
+        verifier_result=VerifierResult(
+            status=VerifierStatus.UNVERIFIABLE,
+            checked_assertions=0,
+            divergences=[skew_note],
+        ),
+        model_provenance=ModelProvenance(
+            model_weight_hash=sentinel_hash,
+            kg_version_hash=kg_version_hash,
+            prompt_template_id="ski.v3.clock-skew-guard",
+            prompt_template_hash=sentinel_hash,
+            decoder_seed=0,
+            structured_grammar_hash=sentinel_hash,
+        ),
+        transcript_ref="transcript:none-clock-skew-guard",
+        human_attestation={"required": True, "fulfilled": False},
+        notes=[skew_note],
+    )
 
 
 def _hash_measurement(measurement: MeasurementRecord) -> str:

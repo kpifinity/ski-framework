@@ -49,30 +49,38 @@ intake and forwards normalised records to the SKI Model service over
 mTLS; it does not itself authenticate the original producer, and nothing
 downstream re-derives that authentication.
 
-**Assumption 2 — the telemetry timestamp is authoritative.** Per the
-architecture's "Authoritative clock" invariant (see
-[Architecture](architecture.md)), a telemetry record's own `timestamp`
-field — never wall-clock-at-arrival — is the "now" used for stateful
-predicates (window queries, freshness gates) and effective-date /
-jurisdiction scoping. The runtime does not cross-check that field against
-any independent clock. A per-tenant `max_clock_skew_seconds` column exists
-in the telemetry-buffer schema (default 60s; see
-[RFC 0001](RFCs/0001-stateful-evaluation.md)) reserved for bounding
-acceptable drift — but as of this writing **no runtime code path reads or
-enforces it**. Until it is wired in, the practical tolerance for a forged
-timestamp is bounded only by whatever `requires_recent_within_seconds`
-window an individual KG rule happens to declare, not by any
-centrally-enforced skew limit.
+**Assumption 2 — the telemetry timestamp is authoritative, within a
+bounded, enforced skew.** Per the architecture's "Authoritative clock"
+invariant (see [Architecture](architecture.md)), a telemetry record's own
+`timestamp` field — never wall-clock-at-arrival — is the "now" used for
+stateful predicates (window queries, freshness gates) and effective-date /
+jurisdiction scoping. The runtime now cross-checks that field against
+arrival wall-clock for exactly one purpose: bounding acceptable drift. The
+per-tenant `max_clock_skew_seconds` column in the telemetry-buffer schema
+(default 60s; see [RFC 0001](RFCs/0001-stateful-evaluation.md)) is read at
+startup — `SKI_MAX_CLOCK_SKEW_SECONDS` overrides it when no tenant row is
+configured — and `/api/evaluate` checks every record against it before the
+buffer write or KG scoping. A record outside the bound is never treated as
+fresh: by default it is routed to `DISCRETIONARY`, ledgered (never
+silently dropped), and excluded from the buffer; `SKI_CLOCK_SKEW_MODE=reject`
+rejects it outright with `422` for operators who prefer that posture. Every
+violation increments `ski_telemetry_clock_skew_total`. Setting
+`max_clock_skew_seconds=0` disables the guard (a documented opt-out, not a
+silent one).
 
-**Residual risk this creates.** A producer that can forge its own
-`timestamp` field can make stale or fabricated data appear current,
-defeating `NULL_STALE` routing and freshness-gated predicates
-(`has_fresh_sample`, `requires_recent_within_seconds`) — see
+**Residual risk this narrows but does not close.** The guard bounds
+*drift* — it cannot detect a well-resourced producer that forges a
+`timestamp` close to real time. A producer that can forge its own clock
+convincingly can still make fabricated data appear current, defeating
+`NULL_STALE` routing and freshness-gated predicates (`has_fresh_sample`,
+`requires_recent_within_seconds`) — see
 [`conformance/provenance/test_null_stale_routing.py`](../conformance/provenance/test_null_stale_routing.py)
 for the mechanism this affects. This is a real gap SKI does not close on
 its own: the framework's fail-closed guarantees are about the KG, the
 verifier, and the ledger, not about the sensor's honesty about *when* a
-reading was taken.
+reading was taken. The skew guard closes the *gross* case (a stale or
+badly-drifted record cannot silently masquerade as current); it is not a
+substitute for authenticated telemetry.
 
 **Recommendation for OT deployments.** For essentially any live OT/ICS
 deployment, where this residual risk matters:
@@ -80,13 +88,15 @@ deployment, where this residual risk matters:
 - Use **signed or otherwise authenticated telemetry** at the source
   (device-signed payloads, a historian that itself enforces provenance,
   or an ingestion gateway that attaches a verified capture timestamp)
-  rather than trusting the record's own `timestamp` field at face value.
+  rather than trusting the record's own `timestamp` field at face value —
+  the skew guard bounds drift, it does not authenticate the clock.
 - Use a **trusted time source** (NTP/PTP with monitoring, or a hardware
   time source) on the systems that stamp telemetry, so the
   authoritative-clock assumption above is actually sound upstream.
-- Treat `max_clock_skew_seconds` as an assumption to enforce
-  *operationally* (at the signing/ingestion layer) until the runtime
-  itself consults it.
+- Set `max_clock_skew_seconds` (per tenant) or `SKI_MAX_CLOCK_SKEW_SECONDS`
+  to the tightest bound your ingestion topology tolerates — legitimate
+  historical replay/backfill needs a wider bound than live streaming
+  telemetry does.
 - **Tier obligations conservatively** (`tier-1`) wherever a spoofed
   reading could mask a real breach. Per spec §5.4, an undeclared or
   unrecognised risk tier already fails safe to `tier-1` (see
