@@ -20,7 +20,6 @@ comparison is correct.
 
 from __future__ import annotations
 
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -29,18 +28,15 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _import_server() -> object:
-    src = REPO_ROOT / "reference-implementation" / "src"
+@pytest.mark.provenance
+def test_clock_skew_delta_is_correct(repo_root: Path) -> None:
+    import sys
+
+    src = repo_root / "reference-implementation" / "src"
     if str(src) not in sys.path:
         sys.path.insert(0, str(src))
     from ski_model import server
 
-    return server
-
-
-@pytest.mark.provenance
-def test_clock_skew_delta_is_correct() -> None:
-    server = _import_server()
     t0 = datetime(2026, 6, 1, 12, 0, 0, tzinfo=timezone.utc)
     within = t0 + timedelta(seconds=30)
     over = t0 + timedelta(seconds=90)
@@ -49,10 +45,16 @@ def test_clock_skew_delta_is_correct() -> None:
 
 
 @pytest.mark.provenance
-def test_over_skew_envelope_is_discretionary_and_ledgerable() -> None:
+def test_over_skew_envelope_is_discretionary_and_ledgerable(repo_root: Path) -> None:
     """The short-circuit envelope must be a non-CLEAR, auditable verdict --
     never a silent drop of the suspicious record."""
-    server = _import_server()
+    import sys
+
+    src = repo_root / "reference-implementation" / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    from ski_model import server
+
     envelope = server._build_clock_skew_envelope(
         skew_note="clock_skew: telemetry Δ3600.0s exceeds max_clock_skew_seconds=60",
         kg_version_hash="sha256:" + "b" * 64,
@@ -65,15 +67,27 @@ def test_over_skew_envelope_is_discretionary_and_ledgerable() -> None:
 
 
 @pytest.mark.provenance
-def test_max_clock_skew_seconds_has_a_safe_default() -> None:
-    server = _import_server()
+def test_max_clock_skew_seconds_has_a_safe_default(repo_root: Path) -> None:
+    import sys
+
+    src = repo_root / "reference-implementation" / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    from ski_model import server
+
     assert server._DEFAULT_MAX_CLOCK_SKEW_SECONDS == 60
 
 
 @pytest.mark.provenance
-def test_clock_skew_metric_is_registered() -> None:
-    server = _import_server()
-    assert server.metrics.TELEMETRY_CLOCK_SKEW is not None
+def test_clock_skew_metric_is_registered(repo_root: Path) -> None:
+    import sys
+
+    src = repo_root / "reference-implementation" / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    from ski_model import metrics
+
+    assert metrics.TELEMETRY_CLOCK_SKEW is not None
 
 
 @pytest.mark.provenance
