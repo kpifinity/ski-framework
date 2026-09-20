@@ -72,6 +72,15 @@ RUNTIME_INFO = Gauge(
     ["version", "backend"],
     registry=REGISTRY,
 )
+TELEMETRY_CLOCK_SKEW = Counter(
+    "ski_telemetry_clock_skew",
+    "Telemetry records whose own timestamp deviated from arrival wall-clock "
+    "by more than max_clock_skew_seconds (docs/threat-model.md 'Assumption "
+    "2'). Each increment is a record routed to DISCRETIONARY (or rejected "
+    "with 422 in SKI_CLOCK_SKEW_MODE=reject) instead of being evaluated as "
+    "fresh.",
+    registry=REGISTRY,
+)
 
 
 def render() -> tuple[bytes, str]:
@@ -87,6 +96,7 @@ __all__ = [
     "LEDGER_SEQUENCE_GAPS",
     "REGISTRY",
     "RUNTIME_INFO",
+    "TELEMETRY_CLOCK_SKEW",
     "VERDICTS",
     "render",
 ]

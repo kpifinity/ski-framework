@@ -58,8 +58,17 @@ choice has three consequences:
    order. A late record correctly takes its temporal position.
 3. **Clock-skew attacks are still possible at the producer.** This is
    inherent: if the producer lies about the timestamp, downstream
-   evaluation is wrong. We document this as an operator responsibility
-   and provide a `--max-clock-skew-seconds` rejection knob.
+   evaluation is wrong. The runtime bounds *drift* — `/api/evaluate`
+   checks every record's `timestamp` against arrival wall-clock, using
+   the tenant's `max_clock_skew_seconds` (this table) or
+   `SKI_MAX_CLOCK_SKEW_SECONDS` as the bound (default 60s; `0` disables
+   the check). A record outside the bound is routed to `DISCRETIONARY`
+   and ledgered by default, or rejected with `422` when
+   `SKI_CLOCK_SKEW_MODE=reject`. This closes the gross case (stale data
+   cannot silently masquerade as current); a producer that forges a
+   timestamp close to real time is a separate, still-open problem —
+   see docs/threat-model.md "Assumption 2" for the full residual-risk
+   discussion and the recommendation to use authenticated telemetry.
 
 ### Buffer storage
 

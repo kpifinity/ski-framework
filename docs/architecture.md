@@ -163,9 +163,17 @@ Key invariants:
 - **Buffer-before-evaluate.** The current record is written to the
   buffer **before** evaluation, so self-referential window queries see
   the record they're being asked about.
-- **Authoritative clock.** The telemetry's `timestamp` is the "now"
-  for stateful predicates and effective-date scoping. Wall-clock at
-  arrival is never consulted.
+- **Authoritative clock, bounded by an enforced skew guard.** The
+  telemetry's `timestamp` is the "now" for stateful predicates and
+  effective-date scoping — wall-clock at arrival is never used as that
+  "now". Arrival wall-clock IS consulted for one purpose: bounding how
+  far the telemetry timestamp may drift from it (`max_clock_skew_seconds`,
+  tenant-configured or `SKI_MAX_CLOCK_SKEW_SECONDS`, default 60s). A
+  record outside that bound is never evaluated as fresh — it is routed to
+  `DISCRETIONARY` and ledgered (or rejected with `422` in
+  `SKI_CLOCK_SKEW_MODE=reject`) before either the buffer write or KG
+  scoping. See [threat-model.md, Trust boundary & OT deployment
+  assumptions](threat-model.md#trust-boundary--ot-deployment-assumptions).
 - **Disagreement is a signal, not an error.** A verifier status other
   than `AGREED` is recorded in the envelope and feeds the agreement
   monitor; it never silently overrides or is overridden.

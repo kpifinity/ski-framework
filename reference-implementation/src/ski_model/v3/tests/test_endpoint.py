@@ -88,6 +88,11 @@ def _install_test_state() -> _FakeLedger:
     server.state.kg_version_hash = evaluator.kg_version_hash
     # PR 12: agreement monitor; the /api/health handler tolerates None.
     server.state.agreement_monitor = None
+    # These tests exercise evaluator/governor/ledger behaviour with a fixed
+    # measurement timestamp, not clock-skew enforcement (see
+    # test_clock_skew_guard.py for that) -- disable the guard so a fixture
+    # timestamp aging past the skew bound doesn't produce a false failure.
+    server.state.max_clock_skew_seconds = 0
     return ledger
 
 
