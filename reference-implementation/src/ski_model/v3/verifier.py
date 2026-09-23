@@ -317,6 +317,7 @@ async def _query_window(
     *,
     subject: str,
     as_of: datetime,
+    window_seconds: int,
     buffer: BufferLike,
 ) -> Union[_WindowSummary, _CheckOutcome]:
     """Run the window query; any failure becomes an UNVERIFIABLE outcome.
@@ -329,7 +330,7 @@ async def _query_window(
         data = await buffer.window_query(
             subject=subject,
             as_of=as_of,
-            window_seconds=assertion.window_seconds,
+            window_seconds=window_seconds,
             metric_path=assertion.metric,
         )
     except Exception as exc:
@@ -379,7 +380,12 @@ async def _check_must_average_within(
         )
 
     summary = await _query_window(
-        "must_average_within", assertion, subject=subject, as_of=as_of, buffer=buffer
+        "must_average_within",
+        assertion,
+        subject=subject,
+        as_of=as_of,
+        window_seconds=assertion.window_seconds,
+        buffer=buffer,
     )
     if isinstance(summary, _CheckOutcome):
         return summary
@@ -424,7 +430,12 @@ async def _check_must_not_exceed_in_window(
         )
 
     summary = await _query_window(
-        "must_not_exceed_in_window", assertion, subject=subject, as_of=as_of, buffer=buffer
+        "must_not_exceed_in_window",
+        assertion,
+        subject=subject,
+        as_of=as_of,
+        window_seconds=assertion.window_seconds,
+        buffer=buffer,
     )
     if isinstance(summary, _CheckOutcome):
         return summary
