@@ -49,7 +49,7 @@ monitor is mounted.
 | Five-verdict taxonomy in schema + V3Verdict enum | §4.1 | `provenance/test_verdict_taxonomy.py` |
 | No `confidence_level` column anywhere | Axiom 2 | `provenance/test_no_confidence.py` |
 | Agreement monitor is mounted and exposes the snapshot keys | §7.2 | `provenance/test_agreement_monitor.py` |
-| `NULL_STALE` is produced when the freshness gate fails | §4.1 | `provenance/test_null_stale_routing.py` |
+| `NULL_STALE` is produced when the freshness gate fails — v2 Symbolic Evaluator and the v3 `V3Evaluator` path (no buffer / subject / `as_of` fails safe to `DISCRETIONARY`, never `CLEAR`) | §4.1 | `provenance/test_null_stale_routing.py` (+ runtime `v3/tests/test_freshness_gate.py`) |
 | Window predicates (count / sum / avg) produce correct verdicts | §5.3 | `provenance/test_window_predicates.py` |
 
 ### Level 2 — Durability

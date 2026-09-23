@@ -24,6 +24,11 @@ from .v3.transcript import LLMTranscript
 logger = logging.getLogger(__name__)
 
 
+def _enum_value(value: Any) -> str:
+    """Return an enum member's ``.value``, or a plain string unchanged."""
+    return str(getattr(value, "value", value))
+
+
 def canonical_entry_payload(
     *,
     sequence_number: int,
@@ -195,6 +200,13 @@ class LedgerClient:
         """
         assert self._session_factory is not None
 
+        # ``use_enum_values`` only applies on validation; an envelope built via
+        # ``model_copy(update=...)`` can still hold enum members, and ``str()``
+        # on a ``(str, Enum)`` member is ``'V3Verdict.X'`` on Python 3.11+ --
+        # which would break the verdict CHECK constraint and the entry hash.
+        verdict = _enum_value(envelope.verdict)
+        verifier_status = _enum_value(envelope.verifier_result.status)
+
         envelope_json = envelope.model_dump(mode="json")
         envelope_canonical = json.dumps(
             envelope_json, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -226,7 +238,7 @@ class LedgerClient:
                 sequence_number=sequence_number,
                 previous_hash=previous_hash,
                 timestamp_iso=timestamp_iso,
-                verdict=str(envelope.verdict),
+                verdict=verdict,
                 telemetry_id=telemetry_id,
                 telemetry_hash=telemetry_hash,
                 rule_id=rule_id,
@@ -264,7 +276,7 @@ class LedgerClient:
                     "prev": previous_hash,
                     "hash": entry_hash,
                     "ts": timestamp_iso,
-                    "verdict": str(envelope.verdict),
+                    "verdict": verdict,
                     "tid": telemetry_id,
                     "thash": telemetry_hash,
                     "rule_id": rule_id,
@@ -281,7 +293,7 @@ class LedgerClient:
                     ),
                     "transcript_signature": transcript_signature,
                     "signing_key_id": signing_key_id,
-                    "verifier_status": str(envelope.verifier_result.status),
+                    "verifier_status": verifier_status,
                 },
             )
 

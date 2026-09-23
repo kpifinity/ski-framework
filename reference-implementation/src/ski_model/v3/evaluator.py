@@ -14,16 +14,22 @@ emits is mechanically re-checked, and ``VerifierResult`` is populated with
 the real agreement / divergence outcome (``AGREED`` / ``LLM_CONTRADICTION``
 / ``NEURO_SYMBOLIC_DIVERGENCE`` / ``UNVERIFIABLE``) before the envelope is
 returned.
+
+The ``requires_recent_within_seconds`` freshness gate is enforced
+deterministically against the telemetry buffer: a mapped obligation with
+no fresh sample forces ``NULL_STALE`` whatever the LLM said, and an
+undecidable gate fails safe to ``DISCRETIONARY`` (never CLEAR).
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -190,6 +196,71 @@ RESPONSE_GRAMMAR: Dict[str, Any] = {
 """JSON schema fragment that real LLM backends pass to their structured-output guards."""
 
 
+# ---- Missing-telemetry detection ------------------------------------------------
+
+_NUMERIC_PREDICATES = frozenset(
+    {"must_not_exceed", "must_be_at_least", "must_be_below", "must_be_above", "must_be_within"}
+)
+_STATEFUL_PREDICATES = frozenset({"must_average_within", "must_not_exceed_in_window"})
+
+
+def _is_missing_reading(reading: Any, predicate: Optional[str]) -> bool:
+    """True when ``reading`` is not a usable sample for ``predicate``.
+
+    ``None`` is a silent sensor for every predicate. For numeric predicates
+    a non-numeric reading (a string, a bool) or NaN is equally unusable:
+    nothing about the obligation can be established from it.
+    """
+    if reading is None:
+        return True
+    if predicate in _NUMERIC_PREDICATES:
+        if isinstance(reading, bool) or not isinstance(reading, (int, float)):
+            return True
+        return isinstance(reading, float) and math.isnan(reading)
+    return False
+
+
+def _missing_telemetry(
+    *,
+    measurement: Dict[str, Any],
+    kg_snapshot: Dict[str, Any],
+    assertions: Sequence[FormalizableAssertion] = (),
+) -> List[str]:
+    """Describe every mapped obligation whose current reading is missing.
+
+    Grounded in the framework's own view — the measurement record and the
+    scoped snapshot — not in the LLM's output, so a model that skips the
+    silent metric or invents a reading for it is still caught. The LLM's
+    asserted ``observed`` is checked too. Stateful (windowed) obligations
+    are grounded against the telemetry buffer, not the current reading,
+    and are skipped here.
+    """
+    found: Dict[str, str] = {}
+    for ob in kg_snapshot.get("obligations", []):
+        if not isinstance(ob, dict):
+            continue
+        metric = ob.get("metric")
+        predicate = ob.get("predicate")
+        if predicate in _STATEFUL_PREDICATES or ob.get("window_seconds") is not None:
+            continue
+        if metric in measurement and _is_missing_reading(measurement[metric], predicate):
+            found.setdefault(
+                str(ob.get("id")),
+                f"[{ob.get('id')}] mapped metric {metric!r} has no usable reading "
+                f"({measurement[metric]!r}) for {predicate}.",
+            )
+    for a in assertions:
+        if a.window_seconds is not None or a.predicate in _STATEFUL_PREDICATES:
+            continue
+        if _is_missing_reading(a.observed, a.predicate):
+            found.setdefault(
+                a.obligation_id,
+                f"[{a.obligation_id}] assertion on {a.metric!r} carries no usable "
+                f"observed reading ({a.observed!r}) for {a.predicate}.",
+            )
+    return list(found.values())
+
+
 # ---- LLM backend protocol -----------------------------------------------------
 
 
@@ -234,7 +305,9 @@ class FakeLLM:
 
     Pattern-matches the measurement against the KG snapshot's obligations.
     No network. No secrets. Useful as a CI default so the evaluator's
-    plumbing can be exercised end-to-end without a real model.
+    plumbing can be exercised end-to-end without a real model. A mapped
+    metric with a missing reading yields ``NULL_STALE``, so CI exercises
+    the stale-telemetry path.
 
     The fake honours the same provenance contract as a real backend:
     callers receive valid sha256-prefixed hashes for every provenance
@@ -284,6 +357,42 @@ class FakeLLM:
                 "reasoning": "No applicable obligation in the provided KG snapshot.",
                 "kg_citations": [],
                 "formalizable_assertions": [],
+            }
+
+        # Silent sensor: any mapped obligation without a usable reading makes
+        # the whole record NULL_STALE — nothing can be established from it.
+        stale = [
+            ob
+            for ob in obligations
+            if ob.get("metric") in measurement
+            and ob.get("predicate") not in _STATEFUL_PREDICATES
+            and _is_missing_reading(measurement[ob["metric"]], ob.get("predicate", "must_not_exceed"))
+        ]
+        if stale:
+            return {
+                "verdict": "NULL_STALE",
+                "reasoning": "Missing telemetry for mapped obligation(s) "
+                + ", ".join(f"{ob['id']} ({ob['metric']}={measurement[ob['metric']]!r})" for ob in stale)
+                + ". Nothing can be evaluated from a silent sensor.",
+                "kg_citations": [
+                    {
+                        "node_id": ob["id"],
+                        "version": kg_snapshot.get("version", "unknown"),
+                        "role": "obligation",
+                    }
+                    for ob in stale
+                ],
+                "formalizable_assertions": [
+                    {
+                        "predicate": ob.get("predicate", "must_not_exceed"),
+                        "metric": ob["metric"],
+                        "value": ob.get("value"),
+                        "observed": measurement[ob["metric"]],
+                        "satisfied": False,
+                        "obligation_id": ob["id"],
+                    }
+                    for ob in stale
+                ],
             }
 
         # Pick the first obligation whose metric is present in the measurement.
@@ -351,6 +460,138 @@ class FakeLLM:
                 }
             ],
         }
+
+
+# ---- Freshness gate (NULL_STALE) ----------------------------------------------
+
+
+@dataclass(frozen=True)
+class _FreshnessOutcome:
+    """A freshness-gate decision that overrides the LLM's verdict.
+
+    ``verdict`` is ``NULL_STALE`` (a mapped obligation has no fresh sample)
+    or ``DISCRETIONARY`` (freshness could not be established).
+    """
+
+    verdict: V3Verdict
+    note: str
+
+
+def _window_has_sample(data: Any) -> bool:
+    """Interpret a ``BufferLike.window_query`` result as "any sample?".
+
+    Accepts the production ``WindowQueryResult`` (``count`` attribute) and
+    the list-of-samples shape the verifier's fakes return. Anything else is
+    an unrecognised shape and raises, which the gate treats as undecidable.
+    """
+    if data is None:
+        return False
+    if isinstance(data, (list, tuple)):
+        return len(data) > 0
+    count = getattr(data, "count", None)
+    if isinstance(count, int) and not isinstance(count, bool):
+        return count > 0
+    raise TypeError(f"unrecognised window_query result {type(data).__name__}")
+
+
+async def _freshness_gate(
+    *,
+    measurement: Dict[str, Any],
+    kg_snapshot: Dict[str, Any],
+    subject: Optional[str],
+    as_of: Optional[datetime],
+    buffer: Optional[BufferLike],
+) -> Optional[_FreshnessOutcome]:
+    """Apply ``requires_recent_within_seconds`` for every mapped obligation.
+
+    Returns ``None`` when no mapped obligation carries the property or every
+    one has a fresh sample; otherwise the overriding outcome. Freshness is
+    per *subject* (any sample on the subject inside the window), matching
+    the v2 evaluator and ``TelemetryBuffer.has_fresh_sample``. A buffer that
+    exposes ``has_fresh_sample`` is asked directly (exact v2 boundary
+    semantics); otherwise the ``BufferLike`` protocol's ``window_query`` is
+    used. A stale obligation wins over an undecidable one.
+    """
+    gated = [
+        ob
+        for ob in kg_snapshot.get("obligations", [])
+        if isinstance(ob, dict)
+        and ob.get("requires_recent_within_seconds") is not None
+        and isinstance(ob.get("metric"), str)
+        and ob["metric"] in measurement
+    ]
+    if not gated:
+        return None
+
+    stale: List[str] = []
+    undecidable: List[str] = []
+    for ob in gated:
+        ob_id = ob.get("id", "<unknown>")
+        window = ob["requires_recent_within_seconds"]
+        if isinstance(window, bool) or not isinstance(window, int) or window <= 0:
+            undecidable.append(f"{ob_id} (invalid requires_recent_within_seconds={window!r})")
+            continue
+        if buffer is None or subject is None or as_of is None:
+            missing = [
+                n for n, v in (("buffer", buffer), ("subject", subject), ("as_of", as_of)) if v is None
+            ]
+            undecidable.append(f"{ob_id} (no {'/'.join(missing)} supplied)")
+            continue
+        try:
+            has_fresh_sample = getattr(buffer, "has_fresh_sample", None)
+            if callable(has_fresh_sample):
+                fresh = bool(await has_fresh_sample(subject=subject, as_of=as_of, within_seconds=window))
+            else:
+                data = await buffer.window_query(subject=subject, as_of=as_of, window_seconds=window)
+                fresh = _window_has_sample(data)
+        except Exception as exc:
+            undecidable.append(f"{ob_id} (buffer freshness check failed: {exc!r})")
+            continue
+        if not fresh:
+            stale.append(f"{ob_id} ({window}s)")
+
+    when = as_of.isoformat() if as_of is not None else "<no as_of>"
+    if stale:
+        return _FreshnessOutcome(
+            V3Verdict.NULL_STALE,
+            f"no telemetry for subject {subject!r} within the freshness window of "
+            f"{when} for {', '.join(stale)}",
+        )
+    if undecidable:
+        return _FreshnessOutcome(
+            V3Verdict.DISCRETIONARY,
+            f"freshness could not be established for {', '.join(undecidable)}; "
+            "fail-safe routes to human review, never CLEAR",
+        )
+    return None
+
+
+def _apply_freshness(
+    envelope: V3VerdictEnvelope, freshness: Optional[_FreshnessOutcome]
+) -> V3VerdictEnvelope:
+    """Override ``envelope``'s verdict with a freshness-gate outcome, if any."""
+    if freshness is None:
+        return envelope
+    # use_enum_values=True: a validated envelope holds the verdict as a str.
+    prior = getattr(envelope.verdict, "value", envelope.verdict)
+    if freshness.verdict == V3Verdict.DISCRETIONARY and prior == V3Verdict.NULL_STALE.value:
+        # Staleness is already established (e.g. the missing-telemetry
+        # guard); an undecidable gate must not soften it to DISCRETIONARY.
+        note = (
+            f"taxonomy_guard: freshness gate (requires_recent_within_seconds): {freshness.note}; "
+            "verdict already NULL_STALE, kept."
+        )
+        logger.warning(note)
+        return envelope.model_copy(update={"notes": [*envelope.notes, note]})
+    note = (
+        f"taxonomy_guard: freshness gate (requires_recent_within_seconds): {freshness.note}; "
+        f"verdict {prior} remapped to {freshness.verdict.value} per spec §4.1."
+    )
+    logger.warning(note)
+    update: Dict[str, Any] = {"verdict": freshness.verdict, "notes": [*envelope.notes, note]}
+    if freshness.verdict == V3Verdict.DISCRETIONARY and envelope.human_attestation is None:
+        update["human_attestation"] = {"required": True, "fulfilled": False}
+    return envelope.model_copy(update=update)
 
 
 # ---- Evaluator ----------------------------------------------------------------
@@ -461,6 +702,18 @@ class V3Evaluator:
           5. Apply the risk-tier policy per spec §5.4.
           6. If a signer is configured, sign the (canonical prompt,
              canonical response) pair and emit an :class:`LLMTranscript`.
+
+        Freshness gate (spec §4.1): every scoped obligation that maps to
+        the measurement (its ``metric`` is a measurement key) and carries
+        ``requires_recent_within_seconds`` is checked against ``buffer``
+        for a sample on ``subject`` within that window of ``as_of``. If
+        any has none, the verdict is ``NULL_STALE``. If freshness cannot
+        be established -- no ``buffer`` / ``subject`` / ``as_of``, a
+        malformed window, or a buffer error -- the verdict is
+        ``DISCRETIONARY`` with human attestation required (fail safe:
+        never CLEAR; mirrors the v2 Symbolic Evaluator). Either outcome
+        overrides the LLM's verdict on every path, bypasses the risk-tier
+        policy, and is recorded as a ``taxonomy_guard`` note.
         """
         started_at = datetime.now(timezone.utc)
         canonical_prompt = self._render_canonical_prompt(measurement, kg_snapshot)
@@ -484,6 +737,19 @@ class V3Evaluator:
             else f"transcript:{transcript.transcript_id}"
             if transcript is not None
             else "transcript:unsigned"
+        )
+
+        # Freshness gate (spec §4.1, v2 parity with symbolic_evaluator's
+        # ``requires_recent_within_seconds``). Decided from the KG snapshot,
+        # the measurement keys and the buffer alone -- never from the LLM --
+        # and applied to every envelope this call returns, so no LLM output
+        # (valid or not) can talk its way past stale telemetry.
+        freshness = await _freshness_gate(
+            measurement=measurement,
+            kg_snapshot=kg_snapshot,
+            subject=subject,
+            as_of=as_of,
+            buffer=buffer,
         )
 
         # Citation enforcement: every cited node MUST exist in the snapshot.
@@ -520,7 +786,7 @@ class V3Evaluator:
                 model_provenance=self._build_provenance(),
                 transcript_ref=effective_transcript_ref,
             )
-            return EvaluationResult(envelope=envelope, transcript=transcript)
+            return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Build envelope from LLM output, then have the Symbolic Verifier
         # mechanically cross-check the formalizable assertions and stamp the
@@ -565,7 +831,7 @@ class V3Evaluator:
                 model_provenance=self._build_provenance(),
                 transcript_ref=effective_transcript_ref,
             )
-            return EvaluationResult(envelope=envelope, transcript=transcript)
+            return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Taxonomy guard (spec §4.1): CLEAR asserts *verified* satisfaction.
         # A CLEAR with zero formalizable assertions is an unverifiable
@@ -577,7 +843,30 @@ class V3Evaluator:
         #     applies: NULL_UNMAPPED (coverage gap, never silent green).
         #   - citations but no assertions -> something applies but nothing
         #     is checkable: DISCRETIONARY (human review).
+        #
+        # Missing-telemetry guard (spec §4.1 NULL_STALE): CLEAR on a silent
+        # sensor is the same "trust me" verdict. A mapped obligation whose
+        # reading is None (or non-numeric / NaN for a numeric predicate)
+        # cannot be satisfied — it cannot be evaluated at all. The verifier
+        # would record UNVERIFIABLE, which tier-2/3 accept with only a note,
+        # so the CLEAR would ship. Checked against the measurement and the
+        # scoped snapshot, not only the LLM's assertions, so a model that
+        # skips or fabricates the silent reading is caught too. Runs before
+        # the zero-assertion remap: a silent *mapped* sensor is stale
+        # telemetry, not a coverage gap.
         taxonomy_notes: List[str] = []
+        if llm_verdict == V3Verdict.CLEAR:
+            stale = _missing_telemetry(
+                measurement=measurement, kg_snapshot=kg_snapshot, assertions=assertions
+            )
+            if stale:
+                taxonomy_notes.append(
+                    "taxonomy_guard: LLM verdict CLEAR rests on missing telemetry; remapped to "
+                    "NULL_STALE per spec §4.1 — a silent sensor is never compliance. " + " ".join(stale)
+                )
+                logger.warning(taxonomy_notes[-1])
+                llm_verdict = V3Verdict.NULL_STALE
+
         if llm_verdict == V3Verdict.CLEAR and not assertions:
             remapped = V3Verdict.NULL_UNMAPPED if not parsed_citations else V3Verdict.DISCRETIONARY
             taxonomy_notes.append(
@@ -631,6 +920,13 @@ class V3Evaluator:
             transcript_ref=effective_transcript_ref,
             notes=all_notes,
         )
+
+        # A failed or undecidable freshness gate is final: the LLM's verdict
+        # is not being accepted, so there is nothing for the risk-tier policy
+        # to gate. The verifier result above still records how the LLM's
+        # assertions fared, for the auditor.
+        if freshness is not None:
+            return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Risk-tier policy may downgrade verdict to DISCRETIONARY and / or
         # flag human attestation as required, per spec §5.4.

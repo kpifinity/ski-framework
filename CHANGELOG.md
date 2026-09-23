@@ -22,6 +22,34 @@ referenced from each release entry.
   result, a missing peak, or a non-finite aggregate now degrades the
   assertion to UNVERIFIABLE instead of crashing or guessing.
 
+### Security
+- **Freshness gate (`NULL_STALE`) enforced on the v3 path.**
+  `V3Evaluator` now applies `requires_recent_within_seconds`: for every
+  scoped obligation that maps to the measurement and carries the
+  property, the telemetry buffer is queried for a sample on the subject
+  inside the window; if none exists the verdict is `NULL_STALE`,
+  overriding the LLM on every return path (including rejected LLM
+  output) and bypassing the risk-tier policy. When freshness cannot be
+  established — no buffer / subject / `as_of`, a buffer error, or a
+  malformed window — the verdict fails safe to `DISCRETIONARY` with human
+  attestation required, matching the v2 Symbolic Evaluator, unless the
+  verdict is already `NULL_STALE` (e.g. from the missing-telemetry guard
+  below), which is kept. Both outcomes are recorded as a `taxonomy_guard`
+  note. Previously the v3 path never checked the buffer, so a sensor gone
+  quiet past its freshness window could ship as `CLEAR`.
+- **No silent CLEAR on a silent sensor.** A CLEAR whose mapped obligation
+  has a null reading (or a non-numeric / NaN reading for a numeric
+  predicate) is now remapped by the v3 evaluator's taxonomy guard to
+  `NULL_STALE`, with a `taxonomy_guard` note naming the obligation. The
+  check is grounded in the measurement and the scoped KG snapshot, so a
+  model that skips or fabricates the missing reading is caught too.
+  Previously `{"so2_ppm": null}` came back CLEAR with verifier status
+  UNVERIFIABLE, which tier-2 accepted with only a note.
+- `FakeLLM` now emits `NULL_STALE` for a missing mapped reading, so CI
+  exercises the stale path; the energy eval dataset gains 5 `NULL_STALE`
+  cases and the eval report gains *Silent sensors CLEARed* (must be 0)
+  and *NULL_STALE recall*.
+
 ## [3.1.0] -- 2026-09-19
 
 First general-availability release of the v3.1 line. **No wire-format,

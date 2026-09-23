@@ -45,18 +45,19 @@ def fake_run():
 
 
 def test_dataset_shape(fake_run) -> None:
-    assert fake_run.metrics.n_cases == 50
-    expected = {"CLEAR": 20, "FLAG": 18, "NULL_UNMAPPED": 12}
+    assert fake_run.metrics.n_cases == 55
+    expected = {"CLEAR": 20, "FLAG": 18, "NULL_UNMAPPED": 12, "NULL_STALE": 5}
     totals = {k: sum(v.values()) for k, v in fake_run.metrics.confusion.items()}
     assert totals == expected
 
 
 def test_fakellm_pinned_baseline(fake_run) -> None:
     m = fake_run.metrics
-    assert m.verdict_accuracy == pytest.approx(48 / 50)
+    assert m.verdict_accuracy == pytest.approx(53 / 55, abs=1e-4)
     assert m.flag_recall == pytest.approx(16 / 18, abs=1e-4)
     assert m.flag_precision == 1.0
     assert m.unmapped_recall == 1.0
+    assert m.stale_recall == 1.0
     assert m.assertion_accuracy == 1.0
     assert m.verifier_agreement_rate == pytest.approx(36 / 38, abs=1e-4)
 
@@ -64,6 +65,15 @@ def test_fakellm_pinned_baseline(fake_run) -> None:
 def test_no_breach_is_silently_cleared(fake_run) -> None:
     """The catastrophic failure mode must not occur even with a flawed model."""
     assert fake_run.metrics.breaches_silently_cleared == 0
+
+
+def test_no_silent_sensor_is_cleared(fake_run) -> None:
+    """A null / unusable reading on a mapped metric is NULL_STALE, never CLEAR."""
+    assert fake_run.metrics.silent_sensors_cleared == 0
+    by_id = {r.case_id: r for r in fake_run.results}
+    for case_id in by_id:
+        if case_id.startswith("stale-"):
+            assert by_id[case_id].predicted_verdict == "NULL_STALE", case_id
 
 
 def test_verifier_catches_the_blind_spots(fake_run) -> None:
@@ -86,4 +96,5 @@ def test_report_renders(fake_run) -> None:
     md = render_markdown(fake_run)
     assert "FLAG recall" in md
     assert "Breaches silently CLEARed | **0**" in md
+    assert "Silent sensors CLEARed | **0**" in md
     assert "sha256:" in md

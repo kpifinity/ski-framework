@@ -52,6 +52,8 @@ class EvalMetrics:
     flag_precision: Optional[float] = None
     breaches_silently_cleared: int = 0
     unmapped_recall: Optional[float] = None
+    stale_recall: Optional[float] = None
+    silent_sensors_cleared: int = 0
     assertion_accuracy: Optional[float] = None
     verifier_agreement_rate: Optional[float] = None
     confusion: Dict[str, Dict[str, int]] = field(default_factory=dict)
@@ -66,6 +68,8 @@ class EvalMetrics:
             "flag_precision": self.flag_precision,
             "breaches_silently_cleared": self.breaches_silently_cleared,
             "unmapped_recall": self.unmapped_recall,
+            "stale_recall": self.stale_recall,
+            "silent_sensors_cleared": self.silent_sensors_cleared,
             "assertion_accuracy": self.assertion_accuracy,
             "verifier_agreement_rate": self.verifier_agreement_rate,
             "confusion": self.confusion,
@@ -101,6 +105,13 @@ def compute_metrics(results: List[CaseResult]) -> EvalMetrics:
     expected_unmapped = [r for r in results if r.expected_verdict == "NULL_UNMAPPED"]
     got_unmapped = [r for r in expected_unmapped if r.predicted_verdict == "NULL_UNMAPPED"]
     m.unmapped_recall = _safe_div(len(got_unmapped), len(expected_unmapped))
+
+    # The same catastrophe on the telemetry side: a silent sensor (null or
+    # unusable reading on a mapped metric) waved through as CLEAR.
+    expected_stale = [r for r in results if r.expected_verdict == "NULL_STALE"]
+    got_stale = [r for r in expected_stale if r.predicted_verdict == "NULL_STALE"]
+    m.stale_recall = _safe_div(len(got_stale), len(expected_stale))
+    m.silent_sensors_cleared = len([r for r in expected_stale if r.predicted_verdict == "CLEAR"])
 
     with_assertions = [r for r in results if r.assertions_correct is not None]
     m.assertion_accuracy = _safe_div(

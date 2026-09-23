@@ -129,7 +129,14 @@ the v3 *verifiable provenance* contract.
 
 One of the five verdicts. A rule matched, but its
 `requires_recent_within_seconds` freshness gate found no telemetry
-sample in the buffer for that subject within the window.
+sample in the buffer for that subject within the window. Enforced
+deterministically on both the v2 Symbolic Evaluator and the v3
+evaluator path, overriding whatever verdict the LLM emitted. When
+freshness cannot be established (no buffer, subject or timestamp; a
+buffer error; a malformed window) the verdict is `DISCRETIONARY`, never
+`CLEAR`. The v3 evaluator also emits `NULL_STALE` when a mapped metric's
+current reading is missing — `null`, or non-numeric / NaN for a numeric
+predicate (a silent sensor). A silent sensor is never CLEAR.
 
 ## NULL_UNMAPPED
 
