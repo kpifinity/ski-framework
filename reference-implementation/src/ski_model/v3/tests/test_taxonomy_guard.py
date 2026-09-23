@@ -17,7 +17,7 @@ a silent CLEAR on a silent sensor. It must be NULL_STALE.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar, Dict
+from typing import Any, ClassVar, Dict, List
 
 import pytest
 
@@ -259,7 +259,8 @@ async def test_healthy_reading_clear_is_untouched_by_stale_guard() -> None:
 async def test_fakellm_emits_null_stale_for_silent_sensor() -> None:
     """CI's deterministic backend exercises the stale path end-to-end."""
     ev = V3Evaluator(llm=FakeLLM(), kg_version_hash="sha256:" + "0" * 64)
-    for measurement in ({"so2_ppm": None}, {"ph": None}, {"so2_ppm": 50, "ph": None}):
+    measurements: List[Dict[str, Any]] = [{"so2_ppm": None}, {"ph": None}, {"so2_ppm": 50, "ph": None}]
+    for measurement in measurements:
         envelope = await ev.aevaluate(measurement=measurement, kg_snapshot=STALE_SNAPSHOT)
         assert _verdict(envelope) == "NULL_STALE", measurement
         assert not _stale_note(envelope), "FakeLLM gets it right; the guard should not fire"
