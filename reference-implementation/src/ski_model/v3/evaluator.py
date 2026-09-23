@@ -25,10 +25,11 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -195,6 +196,71 @@ RESPONSE_GRAMMAR: Dict[str, Any] = {
 """JSON schema fragment that real LLM backends pass to their structured-output guards."""
 
 
+# ---- Missing-telemetry detection ------------------------------------------------
+
+_NUMERIC_PREDICATES = frozenset(
+    {"must_not_exceed", "must_be_at_least", "must_be_below", "must_be_above", "must_be_within"}
+)
+_STATEFUL_PREDICATES = frozenset({"must_average_within", "must_not_exceed_in_window"})
+
+
+def _is_missing_reading(reading: Any, predicate: Optional[str]) -> bool:
+    """True when ``reading`` is not a usable sample for ``predicate``.
+
+    ``None`` is a silent sensor for every predicate. For numeric predicates
+    a non-numeric reading (a string, a bool) or NaN is equally unusable:
+    nothing about the obligation can be established from it.
+    """
+    if reading is None:
+        return True
+    if predicate in _NUMERIC_PREDICATES:
+        if isinstance(reading, bool) or not isinstance(reading, (int, float)):
+            return True
+        return isinstance(reading, float) and math.isnan(reading)
+    return False
+
+
+def _missing_telemetry(
+    *,
+    measurement: Dict[str, Any],
+    kg_snapshot: Dict[str, Any],
+    assertions: Sequence[FormalizableAssertion] = (),
+) -> List[str]:
+    """Describe every mapped obligation whose current reading is missing.
+
+    Grounded in the framework's own view — the measurement record and the
+    scoped snapshot — not in the LLM's output, so a model that skips the
+    silent metric or invents a reading for it is still caught. The LLM's
+    asserted ``observed`` is checked too. Stateful (windowed) obligations
+    are grounded against the telemetry buffer, not the current reading,
+    and are skipped here.
+    """
+    found: Dict[str, str] = {}
+    for ob in kg_snapshot.get("obligations", []):
+        if not isinstance(ob, dict):
+            continue
+        metric = ob.get("metric")
+        predicate = ob.get("predicate")
+        if predicate in _STATEFUL_PREDICATES or ob.get("window_seconds") is not None:
+            continue
+        if metric in measurement and _is_missing_reading(measurement[metric], predicate):
+            found.setdefault(
+                str(ob.get("id")),
+                f"[{ob.get('id')}] mapped metric {metric!r} has no usable reading "
+                f"({measurement[metric]!r}) for {predicate}.",
+            )
+    for a in assertions:
+        if a.window_seconds is not None or a.predicate in _STATEFUL_PREDICATES:
+            continue
+        if _is_missing_reading(a.observed, a.predicate):
+            found.setdefault(
+                a.obligation_id,
+                f"[{a.obligation_id}] assertion on {a.metric!r} carries no usable "
+                f"observed reading ({a.observed!r}) for {a.predicate}.",
+            )
+    return list(found.values())
+
+
 # ---- LLM backend protocol -----------------------------------------------------
 
 
@@ -239,7 +305,9 @@ class FakeLLM:
 
     Pattern-matches the measurement against the KG snapshot's obligations.
     No network. No secrets. Useful as a CI default so the evaluator's
-    plumbing can be exercised end-to-end without a real model.
+    plumbing can be exercised end-to-end without a real model. A mapped
+    metric with a missing reading yields ``NULL_STALE``, so CI exercises
+    the stale-telemetry path.
 
     The fake honours the same provenance contract as a real backend:
     callers receive valid sha256-prefixed hashes for every provenance
@@ -289,6 +357,42 @@ class FakeLLM:
                 "reasoning": "No applicable obligation in the provided KG snapshot.",
                 "kg_citations": [],
                 "formalizable_assertions": [],
+            }
+
+        # Silent sensor: any mapped obligation without a usable reading makes
+        # the whole record NULL_STALE — nothing can be established from it.
+        stale = [
+            ob
+            for ob in obligations
+            if ob.get("metric") in measurement
+            and ob.get("predicate") not in _STATEFUL_PREDICATES
+            and _is_missing_reading(measurement[ob["metric"]], ob.get("predicate", "must_not_exceed"))
+        ]
+        if stale:
+            return {
+                "verdict": "NULL_STALE",
+                "reasoning": "Missing telemetry for mapped obligation(s) "
+                + ", ".join(f"{ob['id']} ({ob['metric']}={measurement[ob['metric']]!r})" for ob in stale)
+                + ". Nothing can be evaluated from a silent sensor.",
+                "kg_citations": [
+                    {
+                        "node_id": ob["id"],
+                        "version": kg_snapshot.get("version", "unknown"),
+                        "role": "obligation",
+                    }
+                    for ob in stale
+                ],
+                "formalizable_assertions": [
+                    {
+                        "predicate": ob.get("predicate", "must_not_exceed"),
+                        "metric": ob["metric"],
+                        "value": ob.get("value"),
+                        "observed": measurement[ob["metric"]],
+                        "satisfied": False,
+                        "obligation_id": ob["id"],
+                    }
+                    for ob in stale
+                ],
             }
 
         # Pick the first obligation whose metric is present in the measurement.
@@ -470,6 +574,15 @@ def _apply_freshness(
         return envelope
     # use_enum_values=True: a validated envelope holds the verdict as a str.
     prior = getattr(envelope.verdict, "value", envelope.verdict)
+    if freshness.verdict == V3Verdict.DISCRETIONARY and prior == V3Verdict.NULL_STALE.value:
+        # Staleness is already established (e.g. the missing-telemetry
+        # guard); an undecidable gate must not soften it to DISCRETIONARY.
+        note = (
+            f"taxonomy_guard: freshness gate (requires_recent_within_seconds): {freshness.note}; "
+            "verdict already NULL_STALE, kept."
+        )
+        logger.warning(note)
+        return envelope.model_copy(update={"notes": [*envelope.notes, note]})
     note = (
         f"taxonomy_guard: freshness gate (requires_recent_within_seconds): {freshness.note}; "
         f"verdict {prior} remapped to {freshness.verdict.value} per spec §4.1."
@@ -730,7 +843,30 @@ class V3Evaluator:
         #     applies: NULL_UNMAPPED (coverage gap, never silent green).
         #   - citations but no assertions -> something applies but nothing
         #     is checkable: DISCRETIONARY (human review).
+        #
+        # Missing-telemetry guard (spec §4.1 NULL_STALE): CLEAR on a silent
+        # sensor is the same "trust me" verdict. A mapped obligation whose
+        # reading is None (or non-numeric / NaN for a numeric predicate)
+        # cannot be satisfied — it cannot be evaluated at all. The verifier
+        # would record UNVERIFIABLE, which tier-2/3 accept with only a note,
+        # so the CLEAR would ship. Checked against the measurement and the
+        # scoped snapshot, not only the LLM's assertions, so a model that
+        # skips or fabricates the silent reading is caught too. Runs before
+        # the zero-assertion remap: a silent *mapped* sensor is stale
+        # telemetry, not a coverage gap.
         taxonomy_notes: List[str] = []
+        if llm_verdict == V3Verdict.CLEAR:
+            stale = _missing_telemetry(
+                measurement=measurement, kg_snapshot=kg_snapshot, assertions=assertions
+            )
+            if stale:
+                taxonomy_notes.append(
+                    "taxonomy_guard: LLM verdict CLEAR rests on missing telemetry; remapped to "
+                    "NULL_STALE per spec §4.1 — a silent sensor is never compliance. " + " ".join(stale)
+                )
+                logger.warning(taxonomy_notes[-1])
+                llm_verdict = V3Verdict.NULL_STALE
+
         if llm_verdict == V3Verdict.CLEAR and not assertions:
             remapped = V3Verdict.NULL_UNMAPPED if not parsed_citations else V3Verdict.DISCRETIONARY
             taxonomy_notes.append(

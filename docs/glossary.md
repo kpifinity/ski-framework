@@ -134,7 +134,9 @@ deterministically on both the v2 Symbolic Evaluator and the v3
 evaluator path, overriding whatever verdict the LLM emitted. When
 freshness cannot be established (no buffer, subject or timestamp; a
 buffer error; a malformed window) the verdict is `DISCRETIONARY`, never
-`CLEAR`.
+`CLEAR`. The v3 evaluator also emits `NULL_STALE` when a mapped metric's
+current reading is missing — `null`, or non-numeric / NaN for a numeric
+predicate (a silent sensor). A silent sensor is never CLEAR.
 
 ## NULL_UNMAPPED
 

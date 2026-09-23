@@ -38,14 +38,18 @@ dataset hash — the same discipline as a verdict envelope.
 | **FLAG recall** | Of all true breaches, how many were flagged? *The regulator's number.* |
 | **FLAG precision** | Of everything flagged, how much was a real breach? (False-alarm control.) |
 | **Breaches silently CLEARed** | The catastrophic failure mode: a true breach waved through as CLEAR. Must be **0**. A breach routed to DISCRETIONARY is safe-but-costly; a breach CLEARed is a compliance miss. |
+| **Silent sensors CLEARed** | The same catastrophe on the telemetry side: a mapped metric with a null or unusable reading waved through as CLEAR. Must be **0**. |
+| **NULL_STALE recall** | Is a silent sensor honestly reported as stale telemetry? |
 | **NULL_UNMAPPED recall** | Are out-of-scope subjects honestly reported as unmapped (vs. guessed at)? Exercises jurisdiction and effective-date scoping. |
 | **Assertion correctness** | Do the LLM's formalizable assertions cite the right obligation with the right satisfied flag? |
 | **LLM-verifier agreement rate** | How often does the independent Symbolic Verifier agree with the LLM? |
 
 ## The energy dataset (v1)
 
-50 cases against a 10-rule evaluation KG: 20 CLEAR, 18 FLAG, 12
-NULL_UNMAPPED, deliberately including boundary values (at-limit is
+55 cases against a 10-rule evaluation KG: 20 CLEAR, 18 FLAG, 12
+NULL_UNMAPPED, 5 NULL_STALE (null or non-numeric readings on mapped
+metrics, including one record where a healthy reading sits beside a
+silent sensor), deliberately including boundary values (at-limit is
 CLEAR; `must_not_exceed` is inclusive), jurisdiction-scoping cases
 (an Alberta-only rule must not bind a US-federal tenant and vice
 versa), and effective-date cases (a future rule and a sunset rule must
@@ -61,10 +65,12 @@ architecture promises happens next:
 
 | Metric | FakeLLM pinned baseline |
 |---|---|
-| Verdict accuracy | 96.0% (48/50) |
+| Verdict accuracy | 96.4% (53/55) |
 | FLAG recall | 88.9% (16/18) |
 | FLAG precision | 100% |
 | **Breaches silently CLEARed** | **0** |
+| **Silent sensors CLEARed** | **0** |
+| NULL_STALE recall | 100% (5/5) |
 | Assertion correctness | **100%** (38/38) |
 | LLM-verifier agreement | 94.7% (36/38) |
 

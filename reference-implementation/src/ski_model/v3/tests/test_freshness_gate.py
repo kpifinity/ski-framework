@@ -272,6 +272,14 @@ async def test_missing_context_is_discretionary_never_clear(kwargs: Dict[str, An
 
 
 @pytest.mark.asyncio
+async def test_undecidable_gate_keeps_established_null_stale() -> None:
+    """A silent sensor (missing-telemetry guard) stays NULL_STALE without a buffer."""
+    envelope = await _evaluate(buffer=None, measurement={"so2_ppm": None})
+    assert _verdict(envelope) == "NULL_STALE"
+    assert "verdict already NULL_STALE, kept" in _freshness_notes(envelope)[0]
+
+
+@pytest.mark.asyncio
 async def test_buffer_error_is_discretionary() -> None:
     envelope = await _evaluate(buffer=_BrokenBuffer())
     assert _verdict(envelope) == "DISCRETIONARY"
