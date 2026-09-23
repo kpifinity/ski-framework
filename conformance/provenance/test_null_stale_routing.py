@@ -75,6 +75,54 @@ def test_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> N
 
 
 @pytest.mark.provenance
+def test_v3_evaluator_returns_null_stale_when_no_fresh_sample(repo_root: Path) -> None:
+    """The v3 path gates too: a mapped obligation with an empty freshness
+    window is NULL_STALE even when the LLM (here FakeLLM) says CLEAR, and
+    without a buffer it fails safe to DISCRETIONARY — never CLEAR."""
+    import sys
+
+    src = repo_root / "reference-implementation" / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+
+    from ski_model.v3.evaluator import FakeLLM, V3Evaluator
+
+    class _EmptyBuffer:
+        async def window_query(self, **_: object) -> list[Any]:
+            return []
+
+    snapshot = {
+        "version": "v1",
+        "obligations": [
+            {
+                "id": "test.fresh",
+                "metric": "x",
+                "predicate": "must_not_exceed",
+                "value": 100,
+                "requires_recent_within_seconds": 60,
+            }
+        ],
+        "definitions": [],
+    }
+    evaluator = V3Evaluator(llm=FakeLLM(), kg_version_hash="sha256:" + "0" * 64)
+
+    def _run(buffer: Any) -> str:
+        envelope = asyncio.run(
+            evaluator.aevaluate(
+                measurement={"x": 50},
+                kg_snapshot=snapshot,
+                subject="test.subj",
+                as_of=datetime.now(timezone.utc),
+                buffer=buffer,
+            )
+        )
+        return str(getattr(envelope.verdict, "value", envelope.verdict))
+
+    assert _run(_EmptyBuffer()) == "NULL_STALE"
+    assert _run(None) == "DISCRETIONARY"
+
+
+@pytest.mark.provenance
 def test_schema_has_telemetry_buffer_with_append_only(repo_root: Path) -> None:
     """B5.2 extension — the buffer must be append-only at the DB layer."""
     sql = (repo_root / "reference-implementation" / "src" / "ledger" / "telemetry_buffer.sql").read_text()
