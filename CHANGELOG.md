@@ -10,6 +10,20 @@ referenced from each release entry.
 ## [Unreleased]
 
 ### Security
+- **Freshness gate (`NULL_STALE`) enforced on the v3 path.**
+  `V3Evaluator` now applies `requires_recent_within_seconds`: for every
+  scoped obligation that maps to the measurement and carries the
+  property, the telemetry buffer is queried for a sample on the subject
+  inside the window; if none exists the verdict is `NULL_STALE`,
+  overriding the LLM on every return path (including rejected LLM
+  output) and bypassing the risk-tier policy. When freshness cannot be
+  established — no buffer / subject / `as_of`, a buffer error, or a
+  malformed window — the verdict fails safe to `DISCRETIONARY` with human
+  attestation required, matching the v2 Symbolic Evaluator, unless the
+  verdict is already `NULL_STALE` (e.g. from the missing-telemetry guard
+  below), which is kept. Both outcomes are recorded as a `taxonomy_guard`
+  note. Previously the v3 path never checked the buffer, so a sensor gone
+  quiet past its freshness window could ship as `CLEAR`.
 - **No silent CLEAR on a silent sensor.** A CLEAR whose mapped obligation
   has a null reading (or a non-numeric / NaN reading for a numeric
   predicate) is now remapped by the v3 evaluator's taxonomy guard to

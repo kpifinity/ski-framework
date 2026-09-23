@@ -14,6 +14,11 @@ emits is mechanically re-checked, and ``VerifierResult`` is populated with
 the real agreement / divergence outcome (``AGREED`` / ``LLM_CONTRADICTION``
 / ``NEURO_SYMBOLIC_DIVERGENCE`` / ``UNVERIFIABLE``) before the envelope is
 returned.
+
+The ``requires_recent_within_seconds`` freshness gate is enforced
+deterministically against the telemetry buffer: a mapped obligation with
+no fresh sample forces ``NULL_STALE`` whatever the LLM said, and an
+undecidable gate fails safe to ``DISCRETIONARY`` (never CLEAR).
 """
 
 from __future__ import annotations
@@ -457,6 +462,138 @@ class FakeLLM:
         }
 
 
+# ---- Freshness gate (NULL_STALE) ----------------------------------------------
+
+
+@dataclass(frozen=True)
+class _FreshnessOutcome:
+    """A freshness-gate decision that overrides the LLM's verdict.
+
+    ``verdict`` is ``NULL_STALE`` (a mapped obligation has no fresh sample)
+    or ``DISCRETIONARY`` (freshness could not be established).
+    """
+
+    verdict: V3Verdict
+    note: str
+
+
+def _window_has_sample(data: Any) -> bool:
+    """Interpret a ``BufferLike.window_query`` result as "any sample?".
+
+    Accepts the production ``WindowQueryResult`` (``count`` attribute) and
+    the list-of-samples shape the verifier's fakes return. Anything else is
+    an unrecognised shape and raises, which the gate treats as undecidable.
+    """
+    if data is None:
+        return False
+    if isinstance(data, (list, tuple)):
+        return len(data) > 0
+    count = getattr(data, "count", None)
+    if isinstance(count, int) and not isinstance(count, bool):
+        return count > 0
+    raise TypeError(f"unrecognised window_query result {type(data).__name__}")
+
+
+async def _freshness_gate(
+    *,
+    measurement: Dict[str, Any],
+    kg_snapshot: Dict[str, Any],
+    subject: Optional[str],
+    as_of: Optional[datetime],
+    buffer: Optional[BufferLike],
+) -> Optional[_FreshnessOutcome]:
+    """Apply ``requires_recent_within_seconds`` for every mapped obligation.
+
+    Returns ``None`` when no mapped obligation carries the property or every
+    one has a fresh sample; otherwise the overriding outcome. Freshness is
+    per *subject* (any sample on the subject inside the window), matching
+    the v2 evaluator and ``TelemetryBuffer.has_fresh_sample``. A buffer that
+    exposes ``has_fresh_sample`` is asked directly (exact v2 boundary
+    semantics); otherwise the ``BufferLike`` protocol's ``window_query`` is
+    used. A stale obligation wins over an undecidable one.
+    """
+    gated = [
+        ob
+        for ob in kg_snapshot.get("obligations", [])
+        if isinstance(ob, dict)
+        and ob.get("requires_recent_within_seconds") is not None
+        and isinstance(ob.get("metric"), str)
+        and ob["metric"] in measurement
+    ]
+    if not gated:
+        return None
+
+    stale: List[str] = []
+    undecidable: List[str] = []
+    for ob in gated:
+        ob_id = ob.get("id", "<unknown>")
+        window = ob["requires_recent_within_seconds"]
+        if isinstance(window, bool) or not isinstance(window, int) or window <= 0:
+            undecidable.append(f"{ob_id} (invalid requires_recent_within_seconds={window!r})")
+            continue
+        if buffer is None or subject is None or as_of is None:
+            missing = [
+                n for n, v in (("buffer", buffer), ("subject", subject), ("as_of", as_of)) if v is None
+            ]
+            undecidable.append(f"{ob_id} (no {'/'.join(missing)} supplied)")
+            continue
+        try:
+            has_fresh_sample = getattr(buffer, "has_fresh_sample", None)
+            if callable(has_fresh_sample):
+                fresh = bool(await has_fresh_sample(subject=subject, as_of=as_of, within_seconds=window))
+            else:
+                data = await buffer.window_query(subject=subject, as_of=as_of, window_seconds=window)
+                fresh = _window_has_sample(data)
+        except Exception as exc:
+            undecidable.append(f"{ob_id} (buffer freshness check failed: {exc!r})")
+            continue
+        if not fresh:
+            stale.append(f"{ob_id} ({window}s)")
+
+    when = as_of.isoformat() if as_of is not None else "<no as_of>"
+    if stale:
+        return _FreshnessOutcome(
+            V3Verdict.NULL_STALE,
+            f"no telemetry for subject {subject!r} within the freshness window of "
+            f"{when} for {', '.join(stale)}",
+        )
+    if undecidable:
+        return _FreshnessOutcome(
+            V3Verdict.DISCRETIONARY,
+            f"freshness could not be established for {', '.join(undecidable)}; "
+            "fail-safe routes to human review, never CLEAR",
+        )
+    return None
+
+
+def _apply_freshness(
+    envelope: V3VerdictEnvelope, freshness: Optional[_FreshnessOutcome]
+) -> V3VerdictEnvelope:
+    """Override ``envelope``'s verdict with a freshness-gate outcome, if any."""
+    if freshness is None:
+        return envelope
+    # use_enum_values=True: a validated envelope holds the verdict as a str.
+    prior = getattr(envelope.verdict, "value", envelope.verdict)
+    if freshness.verdict == V3Verdict.DISCRETIONARY and prior == V3Verdict.NULL_STALE.value:
+        # Staleness is already established (e.g. the missing-telemetry
+        # guard); an undecidable gate must not soften it to DISCRETIONARY.
+        note = (
+            f"taxonomy_guard: freshness gate (requires_recent_within_seconds): {freshness.note}; "
+            "verdict already NULL_STALE, kept."
+        )
+        logger.warning(note)
+        return envelope.model_copy(update={"notes": [*envelope.notes, note]})
+    note = (
+        f"taxonomy_guard: freshness gate (requires_recent_within_seconds): {freshness.note}; "
+        f"verdict {prior} remapped to {freshness.verdict.value} per spec §4.1."
+    )
+    logger.warning(note)
+    update: Dict[str, Any] = {"verdict": freshness.verdict, "notes": [*envelope.notes, note]}
+    if freshness.verdict == V3Verdict.DISCRETIONARY and envelope.human_attestation is None:
+        update["human_attestation"] = {"required": True, "fulfilled": False}
+    return envelope.model_copy(update=update)
+
+
 # ---- Evaluator ----------------------------------------------------------------
 
 
@@ -565,6 +702,18 @@ class V3Evaluator:
           5. Apply the risk-tier policy per spec §5.4.
           6. If a signer is configured, sign the (canonical prompt,
              canonical response) pair and emit an :class:`LLMTranscript`.
+
+        Freshness gate (spec §4.1): every scoped obligation that maps to
+        the measurement (its ``metric`` is a measurement key) and carries
+        ``requires_recent_within_seconds`` is checked against ``buffer``
+        for a sample on ``subject`` within that window of ``as_of``. If
+        any has none, the verdict is ``NULL_STALE``. If freshness cannot
+        be established -- no ``buffer`` / ``subject`` / ``as_of``, a
+        malformed window, or a buffer error -- the verdict is
+        ``DISCRETIONARY`` with human attestation required (fail safe:
+        never CLEAR; mirrors the v2 Symbolic Evaluator). Either outcome
+        overrides the LLM's verdict on every path, bypasses the risk-tier
+        policy, and is recorded as a ``taxonomy_guard`` note.
         """
         started_at = datetime.now(timezone.utc)
         canonical_prompt = self._render_canonical_prompt(measurement, kg_snapshot)
@@ -588,6 +737,19 @@ class V3Evaluator:
             else f"transcript:{transcript.transcript_id}"
             if transcript is not None
             else "transcript:unsigned"
+        )
+
+        # Freshness gate (spec §4.1, v2 parity with symbolic_evaluator's
+        # ``requires_recent_within_seconds``). Decided from the KG snapshot,
+        # the measurement keys and the buffer alone -- never from the LLM --
+        # and applied to every envelope this call returns, so no LLM output
+        # (valid or not) can talk its way past stale telemetry.
+        freshness = await _freshness_gate(
+            measurement=measurement,
+            kg_snapshot=kg_snapshot,
+            subject=subject,
+            as_of=as_of,
+            buffer=buffer,
         )
 
         # Citation enforcement: every cited node MUST exist in the snapshot.
@@ -624,7 +786,7 @@ class V3Evaluator:
                 model_provenance=self._build_provenance(),
                 transcript_ref=effective_transcript_ref,
             )
-            return EvaluationResult(envelope=envelope, transcript=transcript)
+            return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Build envelope from LLM output, then have the Symbolic Verifier
         # mechanically cross-check the formalizable assertions and stamp the
@@ -669,7 +831,7 @@ class V3Evaluator:
                 model_provenance=self._build_provenance(),
                 transcript_ref=effective_transcript_ref,
             )
-            return EvaluationResult(envelope=envelope, transcript=transcript)
+            return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Taxonomy guard (spec §4.1): CLEAR asserts *verified* satisfaction.
         # A CLEAR with zero formalizable assertions is an unverifiable
@@ -758,6 +920,13 @@ class V3Evaluator:
             transcript_ref=effective_transcript_ref,
             notes=all_notes,
         )
+
+        # A failed or undecidable freshness gate is final: the LLM's verdict
+        # is not being accepted, so there is nothing for the risk-tier policy
+        # to gate. The verifier result above still records how the LLM's
+        # assertions fared, for the auditor.
+        if freshness is not None:
+            return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Risk-tier policy may downgrade verdict to DISCRETIONARY and / or
         # flag human attestation as required, per spec §5.4.
