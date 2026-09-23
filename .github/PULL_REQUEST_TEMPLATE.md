@@ -50,7 +50,7 @@ entry under the next planned version. -->
 - [ ] `pytest conformance/` passes locally (or N/A)
 - [ ] New behaviour has tests
 - [ ] CHANGELOG.md updated
-- [ ] Commits are signed (`git commit -S`)
+- [ ] Commits are signed (`git commit -S`) and show as Verified on GitHub
 - [ ] No `ANTHROPIC_API_KEY` (or equivalent cloud-only credential) is required at runtime
 
 ## Linked issues
