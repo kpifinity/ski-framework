@@ -170,9 +170,12 @@ def _downgrade_to_discretionary(
     attestation: Optional[Dict[str, Any]] = envelope.human_attestation
     if human_attestation_required and attestation is None:
         attestation = {"required": True, "fulfilled": False}
+    # ``model_copy`` skips validation, so ``use_enum_values`` would not
+    # convert an enum member here -- pass the plain value to keep the
+    # envelope's ``verdict`` a ``str`` like every validated envelope.
     return envelope.model_copy(
         update={
-            "verdict": V3Verdict.DISCRETIONARY,
+            "verdict": V3Verdict.DISCRETIONARY.value,
             "notes": notes,
             "human_attestation": attestation,
         }
