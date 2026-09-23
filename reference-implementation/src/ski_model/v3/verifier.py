@@ -38,10 +38,11 @@ Stateful predicates are evaluated via the async ``acheck_assertion`` /
 from __future__ import annotations
 
 import logging
+import math
 import statistics
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple
+from typing import Any, List, Mapping, Optional, Protocol, Sequence, Tuple, Union
 
 from .envelope import (
     FormalizableAssertion,
@@ -63,11 +64,17 @@ class BufferLike(Protocol):
     satisfies this protocol; tests use a fake. Implementations are async
     because real buffers issue database queries.
 
-    Returns:
-        A list of ``(timestamp, value)`` pairs covering the window
-        ``[as_of - window_seconds, as_of]`` for ``metric_path`` on
-        ``subject``, sorted ascending by timestamp. Empty list if no
-        samples in the window.
+    ``window_query`` covers the window ``[as_of - window_seconds, as_of]``
+    for ``metric_path`` on ``subject`` and returns either:
+
+    * an aggregate with ``avg_value`` and ``max_value`` attributes (the
+      production ``telemetry_buffer.WindowQueryResult``), each ``None``
+      when the window holds no numeric sample for the metric; or
+    * a list of samples — ``(timestamp, value)`` pairs, dicts with a
+      ``value`` key, or bare numerics. Empty if no samples in the window.
+
+    Any other result, or an exception from the query, makes the stateful
+    predicate UNVERIFIABLE.
     """
 
     async def window_query(
@@ -218,33 +225,130 @@ _PREDICATE_HANDLERS = {
 _STATEFUL_PREDICATES = frozenset({"must_average_within", "must_not_exceed_in_window"})
 
 
+def _finite_number(v: Any) -> Optional[float]:
+    """``float(v)`` for a finite int/float; ``None`` for anything else.
+
+    bool is an int subclass and is rejected explicitly; NaN/inf are not
+    readings (and NaN makes ``max()`` order-dependent).
+    """
+    if isinstance(v, bool) or not isinstance(v, (int, float)):
+        return None
+    return float(v) if math.isfinite(v) else None
+
+
 def _extract_values(window_data: Any) -> List[float]:
-    """Coerce a buffer's window_query result into a list of floats.
+    """Coerce a list-shaped window_query result into a list of floats.
 
-    Accepts:
-      * list of (timestamp, value) tuples
-      * list of dicts with a ``value`` key
-      * list of bare numerics
+    Accepts an iterable of:
+      * (timestamp, value) tuples
+      * dicts with a ``value`` key
+      * bare numerics
 
-    Non-numeric or malformed entries are dropped (with a log warning).
-    Returning a clean list lets the predicate handlers stay focused on
-    the statistical question, not the parsing.
+    Non-numeric, non-finite or malformed entries are dropped. Returning a
+    clean list lets the predicate handlers stay focused on the statistical
+    question, not the parsing. Raises ``TypeError`` if ``window_data`` is
+    not iterable.
     """
     values: List[float] = []
-    for entry in window_data or []:
+    for entry in window_data:
         if isinstance(entry, tuple) and len(entry) == 2:
             _ts, v = entry
         elif isinstance(entry, dict) and "value" in entry:
             v = entry["value"]
         else:
             v = entry
-        if isinstance(v, bool):
-            # bool is an int subclass; reject explicitly.
-            logger.debug("Dropping boolean buffer value: %r", v)
+        f = _finite_number(v)
+        if f is None:
+            logger.debug("Dropping non-numeric buffer value: %r", v)
             continue
-        if isinstance(v, (int, float)):
-            values.append(float(v))
+        values.append(f)
     return values
+
+
+@dataclass(frozen=True)
+class _WindowSummary:
+    """The window statistics the stateful predicates need, whatever the buffer shape.
+
+    ``average`` / ``peak`` are ``None`` when there is no numeric sample for
+    the metric in the window, or the buffer does not report that statistic.
+    ``samples`` is ``None`` when the buffer only reports aggregates.
+    """
+
+    average: Optional[float]
+    peak: Optional[float]
+    samples: Optional[int]
+    peak_reported: bool = True
+
+
+def _summarize_window(window_data: Any) -> Optional[_WindowSummary]:
+    """Reduce a buffer's window_query result to a :class:`_WindowSummary`.
+
+    Two shapes are accepted (see :class:`BufferLike`):
+
+    * the production aggregate (``telemetry_buffer.WindowQueryResult``):
+      ``avg_value`` is the average; ``max_value`` the peak. A result
+      without ``max_value`` (older buffers) cannot answer peak queries.
+    * a list of samples, reduced here with ``fmean`` / ``max``.
+
+    Returns ``None`` for any other shape; the caller maps that to
+    UNVERIFIABLE.
+    """
+    if hasattr(window_data, "avg_value"):
+        return _WindowSummary(
+            average=_finite_number(getattr(window_data, "avg_value", None)),
+            peak=_finite_number(getattr(window_data, "max_value", None)),
+            samples=None,
+            peak_reported=hasattr(window_data, "max_value"),
+        )
+    try:
+        values = _extract_values(window_data)
+    except TypeError:
+        return None
+    return _WindowSummary(
+        average=statistics.fmean(values) if values else None,
+        peak=max(values) if values else None,
+        samples=len(values),
+    )
+
+
+async def _query_window(
+    predicate: str,
+    assertion: FormalizableAssertion,
+    *,
+    subject: str,
+    as_of: datetime,
+    buffer: BufferLike,
+) -> Union[_WindowSummary, _CheckOutcome]:
+    """Run the window query; any failure becomes an UNVERIFIABLE outcome.
+
+    A stateful check must never crash the evaluation (the buffer is a
+    database) and never guess: a failed query or an unrecognised result
+    is undecidable, not CLEAR.
+    """
+    try:
+        data = await buffer.window_query(
+            subject=subject,
+            as_of=as_of,
+            window_seconds=assertion.window_seconds,
+            metric_path=assertion.metric,
+        )
+    except Exception as exc:
+        logger.warning("%s: buffer window_query failed for %r: %r", predicate, assertion.metric, exc)
+        return _CheckOutcome(
+            None,
+            f"{predicate}: telemetry buffer window query failed ({type(exc).__name__}: {exc}).",
+        )
+    summary = _summarize_window(data)
+    if summary is None:
+        return _CheckOutcome(
+            None,
+            f"{predicate}: unrecognised telemetry buffer result of type {type(data).__name__}.",
+        )
+    return summary
+
+
+def _sample_note(summary: _WindowSummary) -> str:
+    return f" (n={summary.samples})" if summary.samples is not None else ""
 
 
 async def _check_must_average_within(
@@ -274,14 +378,12 @@ async def _check_must_average_within(
             f"must_average_within requires value=[lo, hi]; got {assertion.value!r}.",
         )
 
-    data = await buffer.window_query(
-        subject=subject,
-        as_of=as_of,
-        window_seconds=assertion.window_seconds,
-        metric_path=assertion.metric,
+    summary = await _query_window(
+        "must_average_within", assertion, subject=subject, as_of=as_of, buffer=buffer
     )
-    values = _extract_values(data)
-    if not values:
+    if isinstance(summary, _CheckOutcome):
+        return summary
+    if summary.average is None:
         return _CheckOutcome(
             None,
             f"No samples for metric {assertion.metric!r} in the last "
@@ -289,12 +391,12 @@ async def _check_must_average_within(
         )
 
     lo, hi = float(assertion.value[0]), float(assertion.value[1])
-    average = statistics.fmean(values)
+    average = summary.average
     ok = lo <= average <= hi
     return _CheckOutcome(
         ok,
         f"average({assertion.metric}, {assertion.window_seconds}s)={average:.6g} "
-        f"in [{lo}, {hi}]: {ok} (n={len(values)})",
+        f"in [{lo}, {hi}]: {ok}{_sample_note(summary)}",
     )
 
 
@@ -321,14 +423,18 @@ async def _check_must_not_exceed_in_window(
             f"must_not_exceed_in_window requires numeric value; got {assertion.value!r}.",
         )
 
-    data = await buffer.window_query(
-        subject=subject,
-        as_of=as_of,
-        window_seconds=assertion.window_seconds,
-        metric_path=assertion.metric,
+    summary = await _query_window(
+        "must_not_exceed_in_window", assertion, subject=subject, as_of=as_of, buffer=buffer
     )
-    values = _extract_values(data)
-    if not values:
+    if isinstance(summary, _CheckOutcome):
+        return summary
+    if not summary.peak_reported:
+        return _CheckOutcome(
+            None,
+            "must_not_exceed_in_window: telemetry buffer does not report a window "
+            "peak (no max_value); cannot check peak.",
+        )
+    if summary.peak is None:
         return _CheckOutcome(
             None,
             f"No samples for metric {assertion.metric!r} in the last "
@@ -336,12 +442,12 @@ async def _check_must_not_exceed_in_window(
         )
 
     threshold = float(assertion.value)
-    peak = max(values)
+    peak = summary.peak
     ok = peak <= threshold
     return _CheckOutcome(
         ok,
         f"peak({assertion.metric}, {assertion.window_seconds}s)={peak:.6g} "
-        f"<= {threshold}: {ok} (n={len(values)})",
+        f"<= {threshold}: {ok}{_sample_note(summary)}",
     )
 
 

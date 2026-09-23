@@ -37,6 +37,9 @@ class WindowQueryResult:
       * oldest_ts / newest_ts: bounds of records actually found
       * last_ts: timestamp of the most recent record for the subject
                  (may equal newest_ts; included for since_last queries)
+      * max_value: largest ``measurement.<metric>.value`` in the window
+                   (None if no records or metric missing); the window peak
+                   checked by the v3 verifier's ``must_not_exceed_in_window``
     """
 
     count: int
@@ -45,6 +48,7 @@ class WindowQueryResult:
     oldest_ts: Optional[datetime]
     newest_ts: Optional[datetime]
     last_ts: Optional[datetime]
+    max_value: Optional[float] = None
 
 
 def canonical_measurement_hash(measurement: dict[str, Any]) -> str:
@@ -142,9 +146,9 @@ class TelemetryBuffer:
         grammar (see docs/knowledge-graph.md).
 
         ``metric_path`` is a dotted path into the JSON measurement
-        (e.g. "so2_ppm.value"). When provided, sum_value and avg_value
-        are computed over numeric values found at that path; rows where
-        the path resolves to null are ignored.
+        (e.g. "so2_ppm.value"). When provided, sum_value, avg_value and
+        max_value are computed over numeric values found at that path;
+        rows where the path resolves to null are ignored.
         """
         if window_seconds <= 0:
             raise BufferError(f"window_seconds must be positive, got {window_seconds}")
@@ -181,6 +185,7 @@ class TelemetryBuffer:
 
             sum_value: Optional[float] = None
             avg_value: Optional[float] = None
+            max_value: Optional[float] = None
             if metric_path and count > 0:
                 # The metric path is dotted; build a #>'{a,b,c}' Postgres
                 # JSON access expression. We split on '.' and parameterise
@@ -194,7 +199,8 @@ class TelemetryBuffer:
                             """
                             SELECT
                                 SUM((measurement #> :path)::text::numeric) AS s,
-                                AVG((measurement #> :path)::text::numeric) AS a
+                                AVG((measurement #> :path)::text::numeric) AS a,
+                                MAX((measurement #> :path)::text::numeric) AS m
                             FROM telemetry_buffer
                             WHERE tenant_id = :tenant_id
                               AND subject = :subject
@@ -215,6 +221,7 @@ class TelemetryBuffer:
                 ).one()
                 sum_value = float(agg_row[0]) if agg_row[0] is not None else None
                 avg_value = float(agg_row[1]) if agg_row[1] is not None else None
+                max_value = float(agg_row[2]) if agg_row[2] is not None else None
 
         return WindowQueryResult(
             count=count,
@@ -223,6 +230,7 @@ class TelemetryBuffer:
             oldest_ts=oldest_ts,
             newest_ts=newest_ts,
             last_ts=newest_ts,
+            max_value=max_value,
         )
 
     async def last_record_ts(
