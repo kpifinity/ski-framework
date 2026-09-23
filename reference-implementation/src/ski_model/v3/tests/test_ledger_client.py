@@ -22,6 +22,7 @@ suite's live-Postgres tests, which are skipped without a DSN.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -39,6 +40,7 @@ from ski_model.v3.envelope import (
     VerifierResult,
     VerifierStatus,
 )
+from ski_model.v3.policies.risk_tier import apply_risk_policy
 from ski_model.v3.transcript import LLMTranscript
 
 _HASH = "sha256:" + "a" * 64
@@ -398,6 +400,88 @@ class TestAppendV3:
         insert_params = session.executed[1][1]
         assert insert_params is not None
         assert insert_params["track"] == "v3-evaluator"
+
+    @pytest.mark.asyncio
+    async def test_risk_policy_downgraded_envelope_stores_enum_value(self) -> None:
+        """Regression: ``apply_risk_policy`` downgrades via ``model_copy``,
+        which skips validation, so ``use_enum_values`` never runs and the
+        envelope's ``verdict`` stays a ``V3Verdict`` member. ``str()`` on a
+        ``(str, Enum)`` member is ``'V3Verdict.DISCRETIONARY'`` on Python
+        3.11+, which violates the ``ledger_entries.verdict`` CHECK constraint
+        and would corrupt the entry hash. The stored value must be the bare
+        enum value."""
+        base = _envelope(verdict=V3Verdict.FLAG).model_copy(
+            update={
+                "verifier_result": VerifierResult(
+                    status=VerifierStatus.NEURO_SYMBOLIC_DIVERGENCE, checked_assertions=1, divergences=[]
+                )
+            }
+        )
+        downgraded = apply_risk_policy(base, "tier-2")
+
+        session = _FakeSession([_FakeResult(first_row=None), _FakeResult()])
+        client = _client_with_session(session)
+        await client.append_v3(
+            envelope=downgraded,
+            transcript=None,
+            telemetry_id="t1",
+            telemetry_hash="h1",
+            rule_id="ob.x",
+            kg_version="v1",
+            ski_model_version="3.1.0",
+        )
+        insert_params = session.executed[1][1]
+        assert insert_params is not None
+        assert insert_params["verdict"] == "DISCRETIONARY"
+        assert insert_params["verifier_status"] == "NEURO_SYMBOLIC_DIVERGENCE"
+
+        # The entry hash must be computed over the same bare value that is
+        # stored, so an auditor re-deriving it from the row gets a match.
+        expected_payload = canonical_entry_payload(
+            sequence_number=1,
+            previous_hash="0" * 64,
+            timestamp_iso=insert_params["ts"],
+            verdict="DISCRETIONARY",
+            telemetry_id="t1",
+            telemetry_hash="h1",
+            rule_id="ob.x",
+            kg_version="v1",
+            ski_model_version="3.1.0",
+            reasoning=downgraded.reasoning,
+            track="v3-evaluator",
+        )
+        assert insert_params["hash"] == hashlib.sha256(expected_payload).hexdigest()
+
+    @pytest.mark.asyncio
+    async def test_unvalidated_enum_members_are_stored_as_values(self) -> None:
+        """Defence in depth: any caller that builds an envelope via
+        ``model_copy`` with raw enum members (bypassing ``use_enum_values``)
+        must still produce CHECK-valid columns."""
+        envelope = _envelope().model_copy(
+            update={
+                "verdict": V3Verdict.DISCRETIONARY,
+                "verifier_result": VerifierResult.model_construct(
+                    status=VerifierStatus.LLM_CONTRADICTION, checked_assertions=1, divergences=[]
+                ),
+            }
+        )
+        assert isinstance(envelope.verdict, V3Verdict)  # precondition: not coerced
+
+        session = _FakeSession([_FakeResult(first_row=None), _FakeResult()])
+        client = _client_with_session(session)
+        await client.append_v3(
+            envelope=envelope,
+            transcript=None,
+            telemetry_id="t1",
+            telemetry_hash="h1",
+            rule_id="ob.x",
+            kg_version="v1",
+            ski_model_version="3.1.0",
+        )
+        insert_params = session.executed[1][1]
+        assert insert_params is not None
+        assert insert_params["verdict"] == "DISCRETIONARY"
+        assert insert_params["verifier_status"] == "LLM_CONTRADICTION"
 
 
 # ---- list() — paginated read path ------------------------------------------------

@@ -298,6 +298,62 @@ def test_evaluate_records_to_ledger() -> None:
     assert entry["rule_id"] == "energy.so2.lte_100ppm"
 
 
+def test_risk_policy_downgrade_persists_valid_verdict_through_real_ledger_client() -> None:
+    """Regression: a risk-policy downgrade must produce a ledger row that
+    satisfies ``ledger_entries.verdict CHECK (verdict IN (...))``.
+
+    Mirrors golden case ``flag-flow-just-under`` in
+    ``evals/datasets/energy``: FakeLLM misreads the ``must_be_at_least``
+    breach, the verifier reports NEURO_SYMBOLIC_DIVERGENCE, and the tier-2
+    policy downgrades to DISCRETIONARY via ``model_copy``. The real
+    :class:`LedgerClient` (over a fake session) is used so the actual
+    INSERT parameters are asserted, not just the kwargs the endpoint passes.
+    """
+    from ski_model.ledger_client import LedgerClient
+
+    from .test_ledger_client import _FakeResult, _FakeSession
+
+    _install_test_state()
+    server.state.knowledge_graph = KnowledgeGraph(
+        version="v3test-flow",
+        rules=[
+            {
+                "id": "energy.flow.min",
+                "metric": "flow_m3h",
+                "predicate": "must_be_at_least",
+                "value": 10,
+            }
+        ],
+        tag_registry={"facility.flow_m3h": "energy.flow.min"},
+        metadata={"version": "v3test-flow"},
+        signature_verified=True,
+    )
+    session = _FakeSession([_FakeResult(first_row=None), _FakeResult()])
+    ledger = LedgerClient("postgresql://user:pass@localhost/ski")
+    ledger._session_factory = lambda: session  # type: ignore[assignment]
+    server.state.ledger = ledger  # type: ignore[assignment]
+
+    client = TestClient(server.app)
+    resp = client.post(
+        "/api/evaluate",
+        json={
+            "measurement_id": "meas-flow",
+            "timestamp": "2026-01-15T12:00:00Z",
+            "subject": "facility.flow_m3h",
+            "measurement": {"flow_m3h": 9.9},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    envelope = V3VerdictEnvelope.model_validate(resp.json())
+    assert envelope.verdict == "DISCRETIONARY"
+    assert envelope.verifier_result.status == "NEURO_SYMBOLIC_DIVERGENCE"
+
+    insert_params = session.executed[1][1]
+    assert insert_params is not None
+    assert insert_params["verdict"] == "DISCRETIONARY"
+    assert insert_params["verifier_status"] == "NEURO_SYMBOLIC_DIVERGENCE"
+
+
 def test_list_verdicts_reads_through_to_ledger() -> None:
     ledger = _install_test_state()
     with _client() as client:
