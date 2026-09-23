@@ -19,6 +19,8 @@ import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
 from telemetry_buffer.buffer import BufferError, TelemetryBuffer, canonical_measurement_hash
 
+from ski_model.v3 import FormalizableAssertion, SymbolicVerifier, V3Verdict, VerifierStatus
+
 _AS_OF = datetime(2026, 1, 15, 12, 0, 0, tzinfo=timezone.utc)
 
 
@@ -138,7 +140,7 @@ class TestWindowQuery:
         session = _FakeSession(
             [
                 _FakeResult(row=(2, _AS_OF - timedelta(seconds=50), _AS_OF - timedelta(seconds=10))),
-                _FakeResult(row=(150.0, 75.0)),  # SUM, AVG
+                _FakeResult(row=(150.0, 75.0, 90.0)),  # SUM, AVG, MAX
             ]
         )
         buf = _buffer_with_session(session)
@@ -148,7 +150,9 @@ class TestWindowQuery:
         assert result.count == 2
         assert result.sum_value == 150.0
         assert result.avg_value == 75.0
+        assert result.max_value == 90.0
         assert len(session.executed) == 2
+        assert "MAX(" in session.executed[1][0]
         agg_params = session.executed[1][1]
         assert agg_params is not None
         assert agg_params["path"] == "{so2_ppm,value}"
@@ -163,6 +167,7 @@ class TestWindowQuery:
         assert result.count == 0
         assert result.sum_value is None
         assert result.avg_value is None
+        assert result.max_value is None
         assert len(session.executed) == 1  # aggregation query skipped
 
     @pytest.mark.asyncio
@@ -171,7 +176,7 @@ class TestWindowQuery:
         session = _FakeSession(
             [
                 _FakeResult(row=(1, _AS_OF, _AS_OF)),
-                _FakeResult(row=(None, None)),
+                _FakeResult(row=(None, None, None)),
             ]
         )
         buf = _buffer_with_session(session)
@@ -180,6 +185,73 @@ class TestWindowQuery:
         )
         assert result.sum_value is None
         assert result.avg_value is None
+        assert result.max_value is None
+
+
+# ---- window_query -> SymbolicVerifier (production shape end to end) -----------------
+
+
+def _stateful_assertion(predicate: str, value: Any, *, satisfied: bool) -> FormalizableAssertion:
+    return FormalizableAssertion(
+        predicate=predicate,
+        metric="so2_ppm",
+        value=value,
+        observed=None,
+        satisfied=satisfied,
+        obligation_id="ob.x",
+        window_seconds=300,
+    )
+
+
+class TestVerifierConsumesWindowQueryResult:
+    """The verifier must consume the real buffer's aggregate result.
+
+    Regression: ``SymbolicVerifier`` used to iterate ``window_query``'s result
+    as a list of samples, so a ``WindowQueryResult`` raised ``TypeError`` and
+    crashed any v3 evaluation carrying a stateful assertion.
+    """
+
+    @staticmethod
+    def _buffer(sum_avg_max: Sequence[Any]) -> TelemetryBuffer:
+        oldest, newest = _AS_OF - timedelta(seconds=100), _AS_OF - timedelta(seconds=10)
+        return _buffer_with_session(
+            _FakeSession([_FakeResult(row=(3, oldest, newest)), _FakeResult(row=tuple(sum_avg_max))])
+        )
+
+    @pytest.mark.asyncio
+    async def test_must_average_within_uses_avg_value(self) -> None:
+        result = await SymbolicVerifier().averify(
+            [_stateful_assertion("must_average_within", [50.0, 100.0], satisfied=True)],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=self._buffer((210.0, 70.0, 150.0)),
+        )
+        assert result.status == VerifierStatus.AGREED.value
+
+    @pytest.mark.asyncio
+    async def test_must_not_exceed_in_window_uses_max_value(self) -> None:
+        # Average 70 is under the cap; the 150 peak is not.
+        result = await SymbolicVerifier().averify(
+            [_stateful_assertion("must_not_exceed_in_window", 100, satisfied=True)],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=self._buffer((210.0, 70.0, 150.0)),
+        )
+        assert result.status == VerifierStatus.LLM_CONTRADICTION.value
+        assert any("peak(so2_ppm, 300s)=150" in d for d in result.divergences)
+
+    @pytest.mark.asyncio
+    async def test_no_numeric_samples_is_unverifiable(self) -> None:
+        result = await SymbolicVerifier().averify(
+            [_stateful_assertion("must_not_exceed_in_window", 100, satisfied=True)],
+            llm_verdict=V3Verdict.CLEAR,
+            subject="emissions",
+            as_of=_AS_OF,
+            buffer=self._buffer((None, None, None)),
+        )
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
 
 
 # ---- last_record_ts / has_fresh_sample ---------------------------------------------

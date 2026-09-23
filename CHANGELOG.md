@@ -9,6 +9,19 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Fixed
+- **v3 stateful predicates no longer crash against the production
+  telemetry buffer.** `SymbolicVerifier` iterated `window_query`'s result
+  as a list of samples, but `TelemetryBuffer.window_query` returns a single
+  `WindowQueryResult` aggregate, so any v3 evaluation carrying a
+  `must_average_within` or `must_not_exceed_in_window` assertion raised
+  `TypeError`. The verifier now reads `avg_value` / `max_value` from the
+  aggregate (list-shaped buffers are still accepted), and
+  `WindowQueryResult` gains a `max_value` field (window peak, computed
+  in the same aggregate query). A failed buffer query, an unrecognised
+  result, a missing peak, or a non-finite aggregate now degrades the
+  assertion to UNVERIFIABLE instead of crashing or guessing.
+
 ### Security
 - **Freshness gate (`NULL_STALE`) enforced on the v3 path.**
   `V3Evaluator` now applies `requires_recent_within_seconds`: for every

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import pytest
+from telemetry_buffer import WindowQueryResult
 
 from ski_model.v3 import (
     BufferLike,
@@ -463,6 +464,163 @@ class TestBufferShapes:
             as_of=_AS_OF,
             buffer=BareFloatsBuffer(),
         )
+        assert result.status == VerifierStatus.AGREED.value
+
+
+# ---- Production buffer shape (aggregate WindowQueryResult) --------------------
+
+
+@dataclass
+class AggregateBuffer:
+    """Fake returning the production ``TelemetryBuffer.window_query`` shape.
+
+    The real buffer returns one :class:`WindowQueryResult` aggregate, not a
+    list of samples. Before this shape was supported, iterating it raised
+    ``TypeError`` out of ``averify`` and crashed the v3 evaluation.
+    """
+
+    result: Any
+    calls: List[Dict[str, Any]] = field(default_factory=list)
+
+    async def window_query(self, **kwargs: Any) -> Any:
+        self.calls.append(kwargs)
+        return self.result
+
+
+def _wqr(*, count: int, avg: Optional[float], peak: Optional[float]) -> WindowQueryResult:
+    return WindowQueryResult(
+        count=count,
+        sum_value=None if avg is None else avg * count,
+        avg_value=avg,
+        oldest_ts=_ts(100) if count else None,
+        newest_ts=_ts(10) if count else None,
+        last_ts=_ts(10) if count else None,
+        max_value=peak,
+    )
+
+
+@dataclass(frozen=True)
+class _LegacyWindowQueryResult:
+    """The pre-``max_value`` WindowQueryResult shape (no window peak)."""
+
+    count: int
+    sum_value: Optional[float]
+    avg_value: Optional[float]
+    oldest_ts: Optional[datetime]
+    newest_ts: Optional[datetime]
+    last_ts: Optional[datetime]
+
+
+async def _averify_one(predicate: str, value: Any, buffer: Any, *, satisfied: bool = True) -> Any:
+    return await SymbolicVerifier().averify(
+        [_assertion(predicate=predicate, value=value, satisfied=satisfied, window_seconds=300)],
+        llm_verdict=V3Verdict.CLEAR if satisfied else V3Verdict.FLAG,
+        subject="emissions",
+        as_of=_AS_OF,
+        buffer=buffer,
+    )
+
+
+class TestProductionBufferShape:
+    @pytest.mark.asyncio
+    async def test_legacy_aggregate_shape_does_not_crash(self) -> None:
+        """Regression: the pre-fix WindowQueryResult (no max_value) crashed averify."""
+        legacy = _LegacyWindowQueryResult(
+            count=3, sum_value=210.0, avg_value=70.0, oldest_ts=_ts(100), newest_ts=_ts(10), last_ts=_ts(10)
+        )
+        avg = await _averify_one("must_average_within", [50.0, 100.0], AggregateBuffer(legacy))
+        assert avg.status == VerifierStatus.AGREED.value
+        # No peak reported -> the peak is undecidable, never CLEAR.
+        peak = await _averify_one("must_not_exceed_in_window", 100, AggregateBuffer(legacy))
+        assert peak.status == VerifierStatus.UNVERIFIABLE.value
+        assert any("peak" in d for d in peak.divergences)
+
+    @pytest.mark.asyncio
+    async def test_average_agreed_from_avg_value(self) -> None:
+        buffer = AggregateBuffer(_wqr(count=3, avg=70.0, peak=90.0))
+        result = await _averify_one("must_average_within", [50.0, 100.0], buffer)
+        assert result.status == VerifierStatus.AGREED.value
+        assert buffer.calls[0]["metric_path"] == "so2_ppm"
+
+    @pytest.mark.asyncio
+    async def test_average_contradiction_from_avg_value(self) -> None:
+        buffer = AggregateBuffer(_wqr(count=2, avg=125.0, peak=130.0))
+        result = await _averify_one("must_average_within", [0.0, 100.0], buffer)
+        assert result.status == VerifierStatus.LLM_CONTRADICTION.value
+
+    @pytest.mark.asyncio
+    async def test_peak_agreed_from_max_value(self) -> None:
+        buffer = AggregateBuffer(_wqr(count=2, avg=85.0, peak=90.0))
+        result = await _averify_one("must_not_exceed_in_window", 100, buffer)
+        assert result.status == VerifierStatus.AGREED.value
+
+    @pytest.mark.asyncio
+    async def test_peak_contradiction_uses_max_not_average(self) -> None:
+        # Average (95) is under the cap; the peak (150) is not.
+        buffer = AggregateBuffer(_wqr(count=3, avg=95.0, peak=150.0))
+        result = await _averify_one("must_not_exceed_in_window", 100, buffer)
+        assert result.status == VerifierStatus.LLM_CONTRADICTION.value
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "predicate,value", [("must_average_within", [0.0, 100.0]), ("must_not_exceed_in_window", 100)]
+    )
+    async def test_records_but_no_numeric_samples_is_unverifiable(self, predicate: str, value: Any) -> None:
+        # Records exist in the window but none has a numeric value at the metric path.
+        buffer = AggregateBuffer(_wqr(count=4, avg=None, peak=None))
+        result = await _averify_one(predicate, value, buffer)
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+        assert any("No samples" in d for d in result.divergences)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "predicate,value", [("must_average_within", [0.0, 100.0]), ("must_not_exceed_in_window", 100)]
+    )
+    async def test_empty_window_is_unverifiable(self, predicate: str, value: Any) -> None:
+        result = await _averify_one(predicate, value, AggregateBuffer(_wqr(count=0, avg=None, peak=None)))
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf"), True, "70"])
+    async def test_non_finite_or_non_numeric_aggregate_is_unverifiable(self, bad: Any) -> None:
+        buffer = AggregateBuffer(_wqr(count=2, avg=bad, peak=bad))
+        avg = await _averify_one("must_average_within", [0.0, 100.0], buffer)
+        peak = await _averify_one("must_not_exceed_in_window", 100, buffer)
+        assert avg.status == VerifierStatus.UNVERIFIABLE.value
+        assert peak.status == VerifierStatus.UNVERIFIABLE.value
+
+
+class TestBufferFailuresDegrade:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "predicate,value", [("must_average_within", [0.0, 100.0]), ("must_not_exceed_in_window", 100)]
+    )
+    async def test_buffer_exception_is_unverifiable(self, predicate: str, value: Any) -> None:
+        class FailingBuffer:
+            async def window_query(self, **kwargs: Any) -> Any:
+                raise RuntimeError("connection refused")
+
+        result = await _averify_one(predicate, value, FailingBuffer())
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+        assert any("connection refused" in d for d in result.divergences)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("shape", [object(), 42, None])
+    async def test_unrecognised_result_shape_is_unverifiable(self, shape: Any) -> None:
+        result = await _averify_one("must_not_exceed_in_window", 100, AggregateBuffer(shape))
+        assert result.status == VerifierStatus.UNVERIFIABLE.value
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("samples", [[float("nan"), 80.0], [80.0, float("nan")]])
+    async def test_non_finite_list_samples_are_dropped(self, samples: List[float]) -> None:
+        """A NaN sample is not a reading. Left in, max() is order-dependent
+        (max([nan, 80]) is nan, max([80, nan]) is 80); dropped, it is not."""
+
+        class NanBuffer:
+            async def window_query(self, **kwargs: Any) -> Any:
+                return samples
+
+        result = await _averify_one("must_not_exceed_in_window", 100, NanBuffer())
         assert result.status == VerifierStatus.AGREED.value
 
 
