@@ -331,7 +331,7 @@ def test_risk_policy_downgrade_persists_valid_verdict_through_real_ledger_client
     session = _FakeSession([_FakeResult(first_row=None), _FakeResult()])
     ledger = LedgerClient("postgresql://user:pass@localhost/ski")
     ledger._session_factory = lambda: session  # type: ignore[assignment]
-    server.state.ledger = ledger  # type: ignore[assignment]
+    server.state.ledger = ledger
 
     client = TestClient(server.app)
     resp = client.post(
