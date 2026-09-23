@@ -9,6 +9,20 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Security
+- **No silent CLEAR on a silent sensor.** A CLEAR whose mapped obligation
+  has a null reading (or a non-numeric / NaN reading for a numeric
+  predicate) is now remapped by the v3 evaluator's taxonomy guard to
+  `NULL_STALE`, with a `taxonomy_guard` note naming the obligation. The
+  check is grounded in the measurement and the scoped KG snapshot, so a
+  model that skips or fabricates the missing reading is caught too.
+  Previously `{"so2_ppm": null}` came back CLEAR with verifier status
+  UNVERIFIABLE, which tier-2 accepted with only a note.
+- `FakeLLM` now emits `NULL_STALE` for a missing mapped reading, so CI
+  exercises the stale path; the energy eval dataset gains 5 `NULL_STALE`
+  cases and the eval report gains *Silent sensors CLEARed* (must be 0)
+  and *NULL_STALE recall*.
+
 ## [3.1.0] -- 2026-09-19
 
 First general-availability release of the v3.1 line. **No wire-format,
