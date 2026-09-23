@@ -129,7 +129,10 @@ the v3 *verifiable provenance* contract.
 
 One of the five verdicts. A rule matched, but its
 `requires_recent_within_seconds` freshness gate found no telemetry
-sample in the buffer for that subject within the window.
+sample in the buffer for that subject within the window. The v3
+evaluator also emits it when a mapped metric's current reading is
+missing — `null`, or non-numeric / NaN for a numeric predicate (a
+silent sensor). A silent sensor is never CLEAR.
 
 ## NULL_UNMAPPED
 
