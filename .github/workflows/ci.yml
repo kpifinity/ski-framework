@@ -151,9 +151,9 @@ jobs:
 
   # ====================================================================
   # GATING (since Phase 0 hardening, 2026-06) — lint, types, unit tests,
-  # coverage floor, security scans, SBOM, and the container scan all
-  # block the merge. The only advisory job is commit-signatures (see the
-  # note on that job). See pyproject.toml for tool configuration.
+  # coverage floor, security scans, SBOM, the container scan, and (since
+  # it moved to GitHub's own verification) commit-signatures all block
+  # the merge. See pyproject.toml for tool configuration.
   # ====================================================================
 
   lint:
@@ -316,22 +316,46 @@ jobs:
   commit-signatures:
     name: Commit signature verification
     runs-on: ubuntu-latest
-    # Deliberately advisory: external contributors and squash-merges
-    # cannot be forced to carry signed commits without blocking
-    # first-time PRs. Tags remain signed and verified (RELEASING.md).
-    continue-on-error: true
+    # Every commit in the PR must be verified by GitHub
+    # (commit.verification.verified == true). GitHub checks GPG, SSH and
+    # S/MIME signatures against the author's registered keys, and signs
+    # web-flow commits (web edits, "Update branch" merges) itself, so no
+    # keyring is maintained here. A local `git log %G?` cannot do this:
+    # the runner has no public keys, so every signed commit reads "E".
+    # Fail-closed: an API error, an empty or truncated commit list, or any
+    # verified != true fails the job. Tags remain signed (RELEASING.md).
     if: github.event_name == 'pull_request'
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Verify all PR commits are signed
+      - name: Verify all PR commits are signed (GitHub verification)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
-          head="${{ github.event.pull_request.head.sha }}"
-          bad=$(git log --format='%H %G?' "$base..$head" | awk '$2!="G" && $2!="U"' || true)
-          if [ -n "$bad" ]; then
-            echo "Unsigned or invalidly-signed commits found:"
-            echo "$bad"
+          set -euo pipefail
+          # Compare the exact SHAs this run was triggered for (same set as
+          # `git log base..head`), so a push mid-run cannot change it.
+          url="repos/$REPO/compare/$BASE_SHA...$HEAD_SHA?per_page=100"
+          total=$(gh api "$url" --jq '.total_commits')
+          gh api --paginate "$url" --jq '.commits[]
+            | [.sha, (.commit.verification.verified | tostring),
+               (.commit.verification.reason // "unknown")] | @tsv' > commits.tsv
+          listed=$(wc -l < commits.tsv)
+          if [ "$total" -lt 1 ] || [ "$listed" -ne "$total" ]; then
+            echo "::error::Listed $listed of $total commits in $BASE_SHA...$HEAD_SHA; refusing to pass an incomplete check."
             exit 1
           fi
+          bad=$(awk -F'\t' '$2 != "true"' commits.tsv)
+          if [ -n "$bad" ]; then
+            echo "Commits not verified by GitHub (sha, verified, reason):"
+            echo "$bad"
+            while IFS=$'\t' read -r sha _ reason; do
+              echo "::error::Commit $sha is not verified (reason: $reason)"
+            done <<< "$bad"
+            exit 1
+          fi
+          echo "All $total commits verified by GitHub."

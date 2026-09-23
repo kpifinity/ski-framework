@@ -50,6 +50,20 @@ referenced from each release entry.
   cases and the eval report gains *Silent sensors CLEARed* (must be 0)
   and *NULL_STALE recall*.
 
+### CI
+- **Commit signature verification now checks GitHub's verification and
+  gates.** The `commit-signatures` job lists the PR's commits via the
+  compare API (`base...head`) and fails if any has
+  `commit.verification.verified != true`, printing each SHA with its
+  `reason`. It previously ran `git log %G?` on a runner with an empty
+  keyring, so every GPG-signed commit reported `E` (missing key) and the
+  job was red on every PR while enforcing nothing. GitHub's check covers
+  GPG, SSH, and S/MIME signatures and web-flow commits without a
+  maintained key list. The job is fail-closed (an API error or an
+  incomplete commit list fails it) and is no longer `continue-on-error`.
+  It runs with `contents: read` and `pull-requests: read` only.
+  CONTRIBUTING.md now documents the requirement.
+
 ## [3.1.0] -- 2026-09-19
 
 First general-availability release of the v3.1 line. **No wire-format,

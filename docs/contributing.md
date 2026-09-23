@@ -65,6 +65,8 @@ Wires the freshness predicate to the telemetry buffer so rules with
 has no fresh sample. Closes #142.
 ```
 
+Every commit in a PR must be signed and show as **Verified** on GitHub; the `commit-signatures` CI job blocks the merge otherwise. Sign with GPG, SSH, or S/MIME (`git commit -S`) using a key registered on your GitHub account. Commits GitHub creates for you (web edits, "Update branch") are signed by GitHub and pass. To fix an unsigned branch, re-sign and force-push: `git rebase --exec 'git commit --amend --no-edit -S' origin/main`.
+
 ## Pull request process
 
 1. Fork and create a feature branch off `main`.
