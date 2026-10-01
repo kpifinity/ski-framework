@@ -1,5 +1,5 @@
 # audit-ledger — pinned dependencies.
-psycopg[binary]==3.3.5
+psycopg[binary]==3.3.6
 sqlalchemy==2.0.54
 click==8.5.0
 pydantic==2.13.5
