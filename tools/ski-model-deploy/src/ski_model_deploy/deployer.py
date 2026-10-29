@@ -31,9 +31,11 @@ try:
         0,
         str(Path(__file__).resolve().parents[5] / "reference-implementation" / "src"),
     )
-    from ski_model.kg_loader import KnowledgeGraph  # type: ignore
+    from ski_model.kg_loader import KGTrustPolicy, KnowledgeGraph, load_trust_anchors  # type: ignore
 except Exception:  # pragma: no cover — fall back when run as installed package
     KnowledgeGraph = None  # type: ignore
+    KGTrustPolicy = None  # type: ignore
+    load_trust_anchors = None  # type: ignore
 
 
 class UnsignedKGError(RuntimeError):
@@ -68,11 +70,18 @@ class Deployer:
     # KG loading — signature verification is MANDATORY.
     # ------------------------------------------------------------------
 
-    def load_knowledge_graph(self, kg_path: str) -> bool:
+    def load_knowledge_graph(self, kg_path: str, trust_anchors: Optional[str] = None) -> bool:
         """Verify a Knowledge Graph signature and register it with the deployment.
 
         Raises UnsignedKGError if the KG has no signature or the signature
         does not verify. There is no flag to bypass this.
+
+        Framework v3.2.0: the signature must verify against an operator
+        trust anchor, exactly as the runtime checks it. ``trust_anchors`` is
+        the path of a PEM bundle of Ed25519 public keys; when omitted the
+        runtime's own configuration applies (``SKI_KG_TRUST_ANCHORS``, or
+        the dev-only ``SKI_KG_ALLOW_UNANCHORED=true``), and with neither the
+        KG is refused.
         """
         if not os.path.exists(kg_path):
             raise FileNotFoundError(f"Knowledge Graph not found: {kg_path}")
@@ -96,7 +105,8 @@ class Deployer:
             )
 
         try:
-            kg = KnowledgeGraph.from_dict(kg_data, require_signature=True)
+            trust = KGTrustPolicy(anchors=load_trust_anchors(Path(trust_anchors))) if trust_anchors else None
+            kg = KnowledgeGraph.from_dict(kg_data, require_signature=True, trust=trust)
         except Exception as exc:
             raise UnsignedKGError(f"Signature verification failed for {kg_path}: {exc}") from exc
 
@@ -106,7 +116,9 @@ class Deployer:
             self.config.knowledge_graph = KnowledgeGraphConfig(
                 path=kg_path,
                 version=kg.version,
-                signature_verified=True,
+                # True only when verified against a trust anchor; an
+                # unanchored (SKI_KG_ALLOW_UNANCHORED) load is not "verified".
+                signature_verified=kg.signature_verified,
             )
         return True
 

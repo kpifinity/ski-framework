@@ -20,7 +20,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- fail "The SKI Model is single-worker BY DESIGN (docs/CONCURRENCY.md): one Pod per ledger. replicas/replicaCount are not supported - shard by installing one release per shard." -}}
 {{- end -}}
 {{- if not .Values.existingSecret -}}
-{{- fail "existingSecret is required (keys: api-key, ledger-dsn; +postgres-password when postgres.bundled). This chart ships NO default secrets." -}}
+{{- fail "existingSecret is required (keys: api-key; postgres-password + ledger-writer-password when postgres.bundled with postgres.useWriterRole, otherwise ledger-dsn). This chart ships NO default secrets." -}}
 {{- end -}}
 {{- if not .Values.kg.configMapName -}}
 {{- fail "kg.configMapName is required: create a ConfigMap/Secret holding your SIGNED Knowledge Graph as kg.json." -}}
@@ -33,6 +33,9 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 {{- if and (eq .Values.skiModel.backend "vllm") (not .Values.skiModel.externalVllmUrl) -}}
 {{- fail "backend=vllm requires skiModel.externalVllmUrl (vLLM is not bundled; it needs your GPU node pool)." -}}
+{{- end -}}
+{{- if and (eq .Values.skiModel.backend "fake") (not .Values.skiModel.allowFakeLlm) -}}
+{{- fail "backend=fake is the non-conformant pattern-matching FakeLLM; the runtime refuses to start on it unless skiModel.allowFakeLlm=true (demos/CI only)." -}}
 {{- end -}}
 {{- end -}}
 

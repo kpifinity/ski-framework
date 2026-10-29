@@ -12,10 +12,17 @@ blind spots differently than it did before normalisation was added:
   for the two must_be_at_least cases, so ``assertion_accuracy`` rises to
   100% (was 94.7% before normalisation).
 * After normalisation ``averify`` sees ``satisfied=False`` alongside
-  verdict=CLEAR -- a verdict/assertion inconsistency -- and records
-  ``NEURO_SYMBOLIC_DIVERGENCE`` (was ``LLM_CONTRADICTION`` before).
-* Tier-2 policy still routes NEURO_SYMBOLIC_DIVERGENCE to DISCRETIONARY
-  (same outcome as before -- no safety regression).
+  verdict=CLEAR -- a CLEAR resting on a breach the verifier itself
+  establishes. Since framework v3.2.0 (finding C1) that is an
+  ``UNFLAGGED_BREACH`` contradiction, ``LLM_CONTRADICTION`` (it was
+  ``NEURO_SYMBOLIC_DIVERGENCE``, which tier-3 accepted => CLEAR).
+* Tier-2 policy routes LLM_CONTRADICTION to DISCRETIONARY (same verdict as
+  before -- no safety regression).
+* Independent enumeration (v3.2.0) checks mapped obligations the model did
+  not assert: ``stale-mixed-so2-ok-nox-null`` now counts one checked
+  obligation (so2) while staying UNVERIFIABLE / NULL_STALE, so the
+  agreement-rate denominator grows from 38 to 39 (36/38 -> 36/39). Every
+  verdict metric is unchanged.
 * Zero silent CLEARs: the invariant holds under the new flow.
 
 If FakeLLM, the evaluator, the verifier, or the scoping logic changes
@@ -59,7 +66,7 @@ def test_fakellm_pinned_baseline(fake_run) -> None:
     assert m.unmapped_recall == 1.0
     assert m.stale_recall == 1.0
     assert m.assertion_accuracy == 1.0
-    assert m.verifier_agreement_rate == pytest.approx(36 / 38, abs=1e-4)
+    assert m.verifier_agreement_rate == pytest.approx(36 / 39, abs=1e-4)
 
 
 def test_no_breach_is_silently_cleared(fake_run) -> None:
@@ -82,7 +89,7 @@ def test_verifier_catches_the_blind_spots(fake_run) -> None:
     by_id = {r.case_id: r for r in fake_run.results}
     for case_id in BLIND_SPOTS:
         r = by_id[case_id]
-        assert r.verifier_status == "NEURO_SYMBOLIC_DIVERGENCE"
+        assert r.verifier_status == "LLM_CONTRADICTION"
         assert r.predicted_verdict == "DISCRETIONARY"
 
 

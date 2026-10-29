@@ -16,9 +16,9 @@ server, the SDK, and the conformance suite (RFC 0003 PR 1).
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 
 # ---- Verdict taxonomy (§4.1) ----
 
@@ -127,6 +127,58 @@ class ModelProvenance(BaseModel):
     prompt_template_hash: str = Field(..., pattern=r"^sha256:[0-9a-f]+$")
     decoder_seed: int = Field(..., ge=0)
     structured_grammar_hash: str = Field(..., pattern=r"^sha256:[0-9a-f]+$")
+
+    # ---- Optional inference-provenance fields (framework v3.2.0) ----
+    # Absent on envelopes from v3.1.x runtimes; both default to None so
+    # those envelopes stay valid.
+    model_hash_verified: Optional[bool] = Field(
+        default=None,
+        description=(
+            "True only when an operator pin (SKI_MODEL_FILE_SHA256) matched a weights "
+            "digest the runtime obtained independently of that pin. False means "
+            "model_weight_hash is unverified: an unpinned backend digest, an "
+            "operator-asserted value, or a name commitment that is NOT a weight hash."
+        ),
+    )
+    inference_backend: Optional[str] = Field(
+        default=None,
+        description="Name of the backend that produced the verdict, e.g. 'ollama-v3', 'fake-llm'.",
+    )
+
+    # ---- Optional KG-trust fields (framework v3.2.0) ----
+    # Absent on envelopes from v3.1.x runtimes; both default to None so
+    # those envelopes stay valid.
+    kg_signer_key_id: Optional[str] = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+        description=(
+            "Key ID of the Ed25519 key the Knowledge Graph signature verified "
+            "against: 'sha256:' + hex sha256 of the raw 32-byte public key. "
+            "None when the KG was unsigned."
+        ),
+    )
+    kg_trust: Optional[Literal["anchored", "unanchored", "unsigned"]] = Field(
+        default=None,
+        description=(
+            "'anchored': the KG signature verified against an operator-pinned "
+            "trust anchor (SKI_KG_TRUST_ANCHORS). 'unanchored': no anchors, "
+            "SKI_KG_ALLOW_UNANCHORED=true, checked only against the KG's own "
+            "embedded key (dev only). 'unsigned': KG_REQUIRE_SIGNATURE=false "
+            "loaded a KG with no signature (dev only)."
+        ),
+    )
+
+    @model_serializer(mode="wrap")
+    def _omit_unset_optional_fields(self, handler: SerializerFunctionWrapHandler):  # type: ignore[no-untyped-def]
+        # The six spec §4.6 fields can never be None, so dropping None
+        # values only drops optional fields that were never set. A
+        # v3.1-shape envelope therefore re-serialises byte-identically and
+        # stored envelope hashes stay stable. No return annotation on
+        # purpose: pydantic then keeps the per-field serialisation schema.
+        data = handler(self)
+        if isinstance(data, dict):
+            return {key: value for key, value in data.items() if value is not None}
+        return data
 
 
 # ---- Verdict envelope (§4.2) ----

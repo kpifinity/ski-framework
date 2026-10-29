@@ -5,7 +5,7 @@ Checks:
   * SKI Model /api/health
   * Sidecar /health
   * Postgres reachability via LEDGER_DSN
-  * Ollama backend reachability if SKI_INFERENCE_BACKEND=ollama
+  * Ollama backend reachability if SKI_V3_LLM_BACKEND=ollama
 """
 
 from __future__ import annotations

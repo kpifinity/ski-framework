@@ -37,6 +37,9 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pytest -q evals/tests/
       - run: python -m evals.run --backend fake --out evals-report
+        env:
+          # v3.2.0: the backend factory refuses FakeLLM without this opt-in.
+          SKI_ALLOW_FAKE_LLM: "true"
       - uses: actions/upload-artifact@v4
         with:
           name: evals-report-fake

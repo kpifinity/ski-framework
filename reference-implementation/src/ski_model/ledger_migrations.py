@@ -38,6 +38,7 @@ import os
 from typing import Final
 
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 logger = logging.getLogger(__name__)
@@ -142,8 +143,10 @@ async def ensure_v3_ledger_schema(engine: AsyncEngine) -> None:
         msg = (
             "Ledger schema is missing v3 columns "
             f"{list(missing)!r} and SKI_AUTOMIGRATE=false. "
-            "Apply the migration manually before restarting: "
-            '`psql "$LEDGER_DSN" -f '
+            "Apply the migration manually, as the schema OWNER (POSTGRES_USER), "
+            "before restarting -- not with the runtime's LEDGER_DSN, which uses the "
+            "least-privilege ski_ledger_writer role since v3.2.0: "
+            '`psql "<owner DSN>" -f '
             "reference-implementation/src/ledger/migrations/"
             "0002_transcript_columns.sql`. "
             "See docs/migrations.md for the full upgrade procedure."
@@ -157,8 +160,19 @@ async def ensure_v3_ledger_schema(engine: AsyncEngine) -> None:
         list(missing),
     )
 
-    async with engine.begin() as conn:
-        await conn.execute(text(_V3_LEDGER_MIGRATION_SQL))
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(_V3_LEDGER_MIGRATION_SQL))
+    except DBAPIError as exc:
+        # Expected when the runtime connects as ski_ledger_writer (v3.2.0
+        # default): it has no DDL rights by design. Fail closed, with the fix.
+        raise LedgerSchemaError(
+            f"Ledger schema is missing v3 columns {list(missing)!r} and the runtime's "
+            f"database role cannot add them ({exc.orig!r}). This is expected when "
+            "LEDGER_DSN uses the least-privilege ski_ledger_writer role. Apply "
+            "reference-implementation/src/ledger/migrations/0002_transcript_columns.sql "
+            "as the schema OWNER, then restart."
+        ) from exc
 
     # Re-probe to confirm the migration succeeded. Defensive against a
     # partial apply (e.g. the operator's role lacks DDL privileges).
@@ -166,8 +180,8 @@ async def ensure_v3_ledger_schema(engine: AsyncEngine) -> None:
     if still_missing:
         raise LedgerSchemaError(
             f"Applied 0002 migration but {still_missing!r} are still missing. "
-            "Check the database role has CREATE / ALTER privileges on "
-            "ledger_entries, or apply the migration as a privileged user."
+            "Apply the migration as the schema owner (the runtime's "
+            "ski_ledger_writer role has no DDL rights by design)."
         )
 
     logger.info("Applied 0002_transcript_columns. Ledger schema is now at v3.")

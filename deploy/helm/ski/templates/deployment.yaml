@@ -1,4 +1,5 @@
 {{- include "ski.validate" . -}}
+{{- include "ski.validateTrust" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,6 +41,10 @@ spec:
               value: "1"
             - name: SKI_V3_LLM_BACKEND
               value: {{ .Values.skiModel.backend | quote }}
+            {{- if and (eq .Values.skiModel.backend "fake") .Values.skiModel.allowFakeLlm }}
+            - name: SKI_ALLOW_FAKE_LLM
+              value: "true"
+            {{- end }}
             - name: SKI_MODEL_NAME
               value: {{ .Values.skiModel.modelName | quote }}
             - name: SKI_MODEL_SEED
@@ -62,6 +67,21 @@ spec:
               value: /app/kg/kg.json
             - name: KG_REQUIRE_SIGNATURE
               value: {{ .Values.kg.requireSignature | quote }}
+            {{- if .Values.kg.trustAnchors.configMapName }}
+            - name: SKI_KG_TRUST_ANCHORS
+              value: /app/trust/kg-trust-anchors.pem
+            {{- end }}
+            {{- if .Values.kg.allowUnanchored }}
+            - name: SKI_KG_ALLOW_UNANCHORED
+              value: "true"
+            {{- end }}
+            {{- if .Values.kg.hotLoad.enabled }}
+            - name: SKI_ENABLE_KG_HOT_LOAD
+              value: "true"
+            - name: SKI_ADMIN_API_KEY
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret | quote }}, key: admin-api-key}
+            {{- end }}
             - name: TLS_ENABLED
               value: {{ .Values.tls.enabled | quote }}
             - name: SKI_TENANT_ID
@@ -72,18 +92,39 @@ spec:
               value: {{ .Values.skiModel.agreementWindow | quote }}
             - name: SKI_AGREEMENT_THRESHOLD
               value: {{ .Values.skiModel.agreementThreshold | quote }}
-            {{- if .Values.skiModel.persistence.enabled }}
+            {{- if .Values.skiModel.transcriptKey.existingSecret }}
+            - name: SKI_TRANSCRIPT_KEY_PATH
+              value: /app/keys/transcript.ed25519
+            {{- else if .Values.skiModel.persistence.enabled }}
             - name: SKI_TRANSCRIPT_KEY_PATH
               value: /data/keys/transcript.ed25519
             {{- end }}
+            - name: SKI_ALLOW_KEY_GENERATION
+              value: {{ and .Values.skiModel.transcriptKey.allowGeneration (not .Values.skiModel.transcriptKey.existingSecret) | ternary "true" "false" | quote }}
             - name: API_KEY
               valueFrom:
                 secretKeyRef: {name: {{ .Values.existingSecret | quote }}, key: api-key}
+            {{- if and .Values.postgres.bundled .Values.postgres.useWriterRole }}
+            # v3.2.0: the runtime connects as the least-privilege
+            # ski_ledger_writer role (INSERT + SELECT), never the owner.
+            - name: SKI_LEDGER_WRITER_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ .Values.existingSecret | quote }}, key: ledger-writer-password}
+            - name: LEDGER_DSN
+              value: "postgresql://ski_ledger_writer:$(SKI_LEDGER_WRITER_PASSWORD)@{{ include "ski.fullname" . }}-postgres:5432/{{ .Values.postgres.database }}"
+            {{- else }}
             - name: LEDGER_DSN
               valueFrom:
                 secretKeyRef: {name: {{ .Values.existingSecret | quote }}, key: ledger-dsn}
+            {{- end }}
           volumeMounts:
             - {name: kg, mountPath: /app/kg, readOnly: true}
+            {{- if .Values.kg.trustAnchors.configMapName }}
+            - {name: kg-trust-anchors, mountPath: /app/trust, readOnly: true}
+            {{- end }}
+            {{- if .Values.skiModel.transcriptKey.existingSecret }}
+            - {name: transcript-key, mountPath: /app/keys, readOnly: true}
+            {{- end }}
             {{- if .Values.tls.enabled }}
             - {name: tls, mountPath: /app/tls, readOnly: true}
             {{- end }}
@@ -109,6 +150,27 @@ spec:
           {{- else }}
           configMap: {name: {{ .Values.kg.configMapName | quote }}}
           {{- end }}
+        {{- with .Values.kg.trustAnchors }}
+        {{- if .configMapName }}
+        - name: kg-trust-anchors
+          {{- if .fromSecret }}
+          secret:
+            secretName: {{ .configMapName | quote }}
+            items: [{key: kg-trust-anchors.pem, path: kg-trust-anchors.pem}]
+          {{- else }}
+          configMap:
+            name: {{ .configMapName | quote }}
+            items: [{key: kg-trust-anchors.pem, path: kg-trust-anchors.pem}]
+          {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- if .Values.skiModel.transcriptKey.existingSecret }}
+        - name: transcript-key
+          secret:
+            secretName: {{ .Values.skiModel.transcriptKey.existingSecret | quote }}
+            defaultMode: 0440
+            items: [{key: transcript.ed25519, path: transcript.ed25519}]
+        {{- end }}
         {{- if .Values.tls.enabled }}
         - name: tls
           secret:

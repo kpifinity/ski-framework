@@ -28,8 +28,15 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
         "--ledger-dsn", default=os.getenv("LEDGER_DSN"), help="PostgreSQL DSN for the audit ledger."
     )
+    # TLS verification is ON by default (it was stuck on "skip" up to v3.1.x:
+    # store_true with default=True could never be turned off). Trust a private
+    # CA with SSL_CERT_FILE=/path/to/ca.crt; --insecure is the explicit opt-out.
     parser.addoption(
-        "--insecure", action="store_true", default=True, help="Skip TLS verification (self-signed certs)."
+        "--insecure",
+        action="store_true",
+        default=False,
+        help="Skip TLS certificate verification (explicit opt-in, local testing only). "
+        "Prefer SSL_CERT_FILE=<ca.crt> to trust a self-signed CA.",
     )
 
 

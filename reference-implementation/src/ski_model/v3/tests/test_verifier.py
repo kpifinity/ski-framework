@@ -164,12 +164,15 @@ class TestNeuroSymbolicDivergence:
         assert any("not consistent" in d for d in result.divergences)
 
     def test_any_unsatisfied_but_llm_emitted_clear(self) -> None:
+        """A CLEAR resting on an agreed breach is a contradiction since v3.2.0
+        (it was NEURO_SYMBOLIC_DIVERGENCE, which tier-3 accepted => CLEAR)."""
         v = SymbolicVerifier()
         result = v.verify(
             [_assertion(predicate="must_not_exceed", value=100, observed=200, satisfied=False)],
             llm_verdict=V3Verdict.CLEAR,
         )
-        assert result.status == VerifierStatus.NEURO_SYMBOLIC_DIVERGENCE.value
+        assert result.status == VerifierStatus.LLM_CONTRADICTION.value
+        assert any(d.startswith("UNFLAGGED_BREACH:") for d in result.divergences)
 
 
 # ---- UNVERIFIABLE -------------------------------------------------------------
@@ -190,7 +193,8 @@ class TestUnverifiable:
             llm_verdict=V3Verdict.DISCRETIONARY,
         )
         assert result.status == VerifierStatus.UNVERIFIABLE.value
-        assert any("not mechanically verifiable" in d for d in result.divergences)
+        # Out-of-enum predicate: a schema violation since v3.2.0 (spec §3.3).
+        assert any(d.startswith("SCHEMA_VIOLATION:") for d in result.divergences)
 
     def test_empty_assertions_is_unverifiable(self) -> None:
         v = SymbolicVerifier()
@@ -257,7 +261,8 @@ class TestUnverifiable:
             llm_verdict=V3Verdict.DISCRETIONARY,
         )
         assert result.status == VerifierStatus.UNVERIFIABLE.value
-        assert any("not mechanically verifiable" in d for d in result.divergences)
+        # Out-of-enum predicate: a schema violation since v3.2.0 (spec §3.3).
+        assert any(d.startswith("SCHEMA_VIOLATION:") for d in result.divergences)
 
 
 # ---- Predicate coverage -------------------------------------------------------

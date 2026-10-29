@@ -30,6 +30,7 @@ image to exercise instead of building the reference one.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import secrets
@@ -101,15 +102,26 @@ _WORKLOAD: List[Tuple[str, Dict[str, Any], str]] = [
 ]
 
 
-def _signed_fixture_kg() -> Dict[str, Any]:
+@dataclass(frozen=True)
+class SignedFixtureKG:
+    """The workload KG plus the trust anchor the rig pins for it."""
+
+    kg: Dict[str, Any]
+    anchor_pem: str  # one-key PEM trust-anchor bundle (SKI_KG_TRUST_ANCHORS)
+    anchor_key_id: str  # sha256:<hex sha256 of the raw 32-byte public key>
+
+
+def _signed_fixture_kg() -> SignedFixtureKG:
     """Build the workload KG and sign it with an ephemeral ed25519 key.
 
     The signature scheme is the one the spec documents (and
     ``kg_loader._canonical_bytes`` implements): ed25519 over the
     RFC 8785-compatible canonical JSON of ``{metadata, rules,
-    tag_registry}`` — sorted keys, no whitespace, UTF-8. Signing with a
-    throwaway key is conformant: the runtime's claim is "a KG without a
-    *verifiable* signature must not load", not "only blessed keys load".
+    tag_registry}`` — sorted keys, no whitespace, UTF-8. The throwaway
+    key is conformant only because the rig PINS it as the runtime's trust
+    anchor (``SKI_KG_TRUST_ANCHORS``, spec §2.1.2/§3.5): a KG loads only if
+    its signature verifies against an operator-pinned anchor, never against
+    the key the KG embeds, so the rig must declare which key it trusts.
     """
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -131,7 +143,8 @@ def _signed_fixture_kg() -> Dict[str, Any]:
         serialization.Encoding.PEM,
         serialization.PublicFormat.SubjectPublicKeyInfo,
     )
-    return {
+    raw_public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    kg = {
         "metadata": metadata,
         "rules": _KG_RULES,
         "tag_registry": _KG_TAG_REGISTRY,
@@ -141,6 +154,11 @@ def _signed_fixture_kg() -> Dict[str, Any]:
             "value_hex": key.sign(canonical).hex(),
         },
     }
+    return SignedFixtureKG(
+        kg=kg,
+        anchor_pem=public_pem.decode("ascii"),
+        anchor_key_id="sha256:" + hashlib.sha256(raw_public).hexdigest(),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -171,6 +189,7 @@ class AirgapRig:
     model: str
     api_key: str
     workdir: Path
+    anchor_key_id: str
     _workload: Optional[List[Tuple[str, str, Dict[str, Any]]]] = field(default=None, repr=False)
 
     def exec(
@@ -288,9 +307,14 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
 
     workdir = Path(tempfile.mkdtemp(prefix="ski-l3-airgap-"))
     workdir.chmod(0o755)  # the runtime container runs as uid 10001
+    fixture = _signed_fixture_kg()
     kg_path = workdir / "kg.json"
-    kg_path.write_text(json.dumps(_signed_fixture_kg(), indent=2), encoding="utf-8")
+    kg_path.write_text(json.dumps(fixture.kg, indent=2), encoding="utf-8")
     kg_path.chmod(0o644)
+    # The throwaway signing key, pinned as the runtime's only KG trust anchor.
+    anchors_path = workdir / "kg-trust-anchors.pem"
+    anchors_path.write_text(fixture.anchor_pem, encoding="utf-8")
+    anchors_path.chmod(0o644)
 
     def cleanup() -> None:
         for name in (model_name, pg_name):
@@ -340,7 +364,9 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
         ]
     )
 
-    rig_handle = AirgapRig(pg=pg_name, model=model_name, api_key=api_key, workdir=workdir)
+    rig_handle = AirgapRig(
+        pg=pg_name, model=model_name, api_key=api_key, workdir=workdir, anchor_key_id=fixture.anchor_key_id
+    )
     _wait(
         ["pg_isready", "-U", "postgres", "-d", "ski_ledger"],
         container=pg_name,
@@ -363,12 +389,23 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
             "KG_PATH=/app/kg/kg.json",
             "-e",
             "KG_REQUIRE_SIGNATURE=true",
+            "-v",
+            f"{anchors_path}:/app/trust/kg-trust-anchors.pem:ro",
+            "-e",
+            "SKI_KG_TRUST_ANCHORS=/app/trust/kg-trust-anchors.pem",
+            # Fresh ledger, fresh container: generating the transcript
+            # signing key on this first boot is an explicit opt-in.
+            "-e",
+            "SKI_ALLOW_KEY_GENERATION=true",
             "-e",
             f"LEDGER_DSN=postgresql://postgres:{_PG_PASSWORD}@localhost:5432/ski_ledger",
             "-e",
             f"API_KEY={api_key}",
             "-e",
             "SKI_V3_LLM_BACKEND=fake",
+            # v3.2.0: FakeLLM needs an explicit opt-in to start.
+            "-e",
+            "SKI_ALLOW_FAKE_LLM=true",
             "-e",
             "TLS_ENABLED=false",
             # The fixed workload below is pinned to a fixed 2026-06-15
@@ -440,6 +477,11 @@ def test_runtime_boots_with_no_network(rig: AirgapRig) -> None:
     assert health.get("kg_signature_verified") is True, (
         "the air-gapped boot must be a CONFORMANT boot: signed KG, signature verified"
     )
+    provenance = health.get("provenance") or {}
+    assert provenance.get("kg_trust") == "anchored", (
+        f"the KG must verify against the pinned trust anchor, got provenance={provenance}"
+    )
+    assert provenance.get("kg_signer_key_id") == rig.anchor_key_id
 
 
 def test_workload_replays_with_expected_verdicts(rig: AirgapRig) -> None:
@@ -447,6 +489,10 @@ def test_workload_replays_with_expected_verdicts(rig: AirgapRig) -> None:
     produced = {mid: verdict for mid, verdict, _ in rig.replay_workload()}
     expected = {mid: verdict for mid, _, verdict in _WORKLOAD}
     assert produced == expected
+    for mid, _, envelope in rig.replay_workload():
+        provenance = envelope.get("model_provenance") or {}
+        assert provenance.get("kg_signer_key_id") == rig.anchor_key_id, mid
+        assert provenance.get("kg_trust") == "anchored", mid
 
 
 def test_ledger_persists_chained_entries_inside_airgap(rig: AirgapRig) -> None:

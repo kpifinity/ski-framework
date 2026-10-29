@@ -65,6 +65,8 @@ main() {
         SKI_API_KEY=$(openssl rand -hex 32)
         POSTGRES_USER="ski_${RANDOM}${RANDOM}"
         POSTGRES_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-40)
+        # URL-safe: it is embedded in the SKI Model's LEDGER_DSN.
+        SKI_LEDGER_WRITER_PASSWORD=$(openssl rand -hex 24)
         GRAFANA_USER="grafana_admin"
         GRAFANA_PASSWORD=$(openssl rand -base64 32 | tr -d '/+=' | cut -c1-40)
 
@@ -73,6 +75,7 @@ main() {
         sed_i "s|^SKI_API_KEY=.*|SKI_API_KEY=${SKI_API_KEY}|" "$env_file"
         sed_i "s|^POSTGRES_USER=.*|POSTGRES_USER=${POSTGRES_USER}|" "$env_file"
         sed_i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" "$env_file"
+        sed_i "s|^SKI_LEDGER_WRITER_PASSWORD=.*|SKI_LEDGER_WRITER_PASSWORD=${SKI_LEDGER_WRITER_PASSWORD}|" "$env_file"
         sed_i "s|^GRAFANA_USER=.*|GRAFANA_USER=${GRAFANA_USER}|" "$env_file"
         sed_i "s|^GRAFANA_PASSWORD=.*|GRAFANA_PASSWORD=${GRAFANA_PASSWORD}|" "$env_file"
 
@@ -87,16 +90,27 @@ main() {
         print_warning "TLS certs already exist in $tls_dir — not regenerating."
     else
         # Local CA
+        # keyUsage on the CA: Python >= 3.13 verifies with VERIFY_X509_STRICT,
+        # which rejects a CA certificate without it.
         openssl req -x509 -newkey rsa:4096 -sha256 -nodes -keyout "$tls_dir/ca.key" \
-            -out "$tls_dir/ca.crt" -days 825 -subj "/CN=ski-local-ca" >/dev/null 2>&1
+            -out "$tls_dir/ca.crt" -days 825 -subj "/CN=ski-local-ca" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign" >/dev/null 2>&1
 
         # SKI Model service cert (CN=ski-model so sidecar SNI matches)
         openssl req -newkey rsa:4096 -sha256 -nodes -keyout "$tls_dir/ski-model.key" \
             -out "$tls_dir/ski-model.csr" -subj "/CN=ski-model" >/dev/null 2>&1
+        # Extensions a verifying client needs: TLS clients match hostnames
+        # against subjectAltName only (never the CN), and Python >= 3.13
+        # (VERIFY_X509_STRICT: the sidecar, the conformance suite with
+        # SSL_CERT_FILE=$tls_dir/ca.crt) also requires the AKID.
+        printf '%s\n' "subjectAltName=DNS:ski-model,DNS:localhost,IP:127.0.0.1" \
+            "basicConstraints=CA:FALSE" "keyUsage=critical,digitalSignature,keyEncipherment" \
+            "extendedKeyUsage=serverAuth" "subjectKeyIdentifier=hash" \
+            "authorityKeyIdentifier=keyid,issuer" >"$tls_dir/ski-model.ext"
         openssl x509 -req -in "$tls_dir/ski-model.csr" -CA "$tls_dir/ca.crt" \
             -CAkey "$tls_dir/ca.key" -CAcreateserial -out "$tls_dir/ski-model.crt" \
-            -days 825 -sha256 >/dev/null 2>&1
-        rm -f "$tls_dir/ski-model.csr" "$tls_dir/ca.srl"
+            -days 825 -sha256 -extfile "$tls_dir/ski-model.ext" >/dev/null 2>&1
+        rm -f "$tls_dir/ski-model.csr" "$tls_dir/ski-model.ext" "$tls_dir/ca.srl"
 
         # Grafana cert
         openssl req -newkey rsa:4096 -sha256 -nodes -keyout "$grafana_tls/grafana.key" \
@@ -126,7 +140,8 @@ main() {
 
     print_header "Generating signed demo Knowledge Graph"
     if python3 "$REPO_ROOT/scripts/make-demo-kg.py"; then
-        print_success "Demo KG signed (key: reference-implementation/tls/demo-kg-signing.key)"
+        print_success "Demo KG signed (key: reference-implementation/kg-signing/demo-kg-signing.key;"
+        print_success "  trust anchor pinned by compose: reference-implementation/kg-signing/kg-trust-anchors.pem)"
     else
         print_warning "Demo KG generation failed - install Python deps (pip install -r requirements-dev.txt) and re-run."
     fi

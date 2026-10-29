@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Optional
 
 from fastapi.testclient import TestClient
 
@@ -49,17 +49,18 @@ class _FakeLedger:
         return self.appended[offset : offset + limit]
 
 
-def _build_test_kg() -> KnowledgeGraph:
+def _build_test_kg(risk_tier: Optional[str] = None) -> KnowledgeGraph:
+    rule: Dict[str, Any] = {
+        "id": "energy.so2.lte_100ppm",
+        "metric": "so2_ppm",
+        "predicate": "must_not_exceed",
+        "value": 100,
+    }
+    if risk_tier is not None:
+        rule["risk_tier"] = risk_tier
     return KnowledgeGraph(
         version="v3test-0001",
-        rules=[
-            {
-                "id": "energy.so2.lte_100ppm",
-                "metric": "so2_ppm",
-                "predicate": "must_not_exceed",
-                "value": 100,
-            }
-        ],
+        rules=[rule],
         tag_registry={"emissions": "energy.so2.lte_100ppm"},
         metadata={"version": "v3test-0001"},
         signature_verified=True,
@@ -175,6 +176,7 @@ def test_evaluate_returns_null_unmapped_for_unknown_metric() -> None:
     _install_test_state()
     with _client() as client:
         _install_test_state()
+        server.state.knowledge_graph = _build_test_kg(risk_tier="tier-2")
         resp = client.post(
             "/api/evaluate",
             json={
@@ -189,12 +191,35 @@ def test_evaluate_returns_null_unmapped_for_unknown_metric() -> None:
     assert envelope.verdict == "NULL_UNMAPPED"
 
 
+def test_undeclared_tier_holds_null_unmapped_for_review() -> None:
+    """v3.2.0 (finding C1): a KG rule with no ``risk_tier`` is tier-1, which
+    requires AGREED -- a zero-assertion NULL_UNMAPPED is UNVERIFIABLE, so it
+    is held for human review instead of shipping on the old tier-2 default."""
+    _install_test_state()
+    with _client() as client:
+        _install_test_state()
+        resp = client.post(
+            "/api/evaluate",
+            json={
+                "measurement_id": "meas-x1",
+                "timestamp": "2026-01-15T12:00:00Z",
+                "subject": "unknown",
+                "measurement": {"unrelated_metric": 1},
+            },
+        )
+    assert resp.status_code == 200, resp.text
+    envelope = V3VerdictEnvelope.model_validate(resp.json())
+    assert envelope.verdict == "DISCRETIONARY"
+    assert envelope.human_attestation == {"required": True, "fulfilled": False}
+    assert any("risk-tier=tier-1" in n for n in envelope.notes)
+
+
 def test_unverifiable_increments_the_by_tier_metric() -> None:
     """A5 observability: NULL_UNMAPPED with zero assertions is UNVERIFIABLE
     (see test_evaluate_returns_null_unmapped_for_unknown_metric); the KG
-    rule declares no risk_tier, so the governor's default tier-2 is what
-    the metric should be labelled with."""
-    before = metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-2")._value.get()
+    rule declares no risk_tier, so the governor's fail-safe default tier-1
+    (v3.2.0; tier-2 before) is what the metric should be labelled with."""
+    before = metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-1")._value.get()
     _install_test_state()
     with _client() as client:
         _install_test_state()
@@ -208,7 +233,7 @@ def test_unverifiable_increments_the_by_tier_metric() -> None:
             },
         )
     assert resp.status_code == 200, resp.text
-    after = metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-2")._value.get()
+    after = metrics.UNVERIFIABLE_BY_TIER.labels(tier="tier-1")._value.get()
     assert after == before + 1
 
 
@@ -217,7 +242,7 @@ def test_strict_governor_ignores_caller_risk_tier() -> None:
 
     The caller sends ``"risk_tier": "tier-3"`` — the most permissive
     tier. The KG rule has no ``risk_tier`` field, so the governor
-    returns the default tier-2. The endpoint must accept the request
+    returns the fail-safe default tier-1. The endpoint must accept the request
     and the chosen tier must come from the KG, not the caller.
 
     We assert this indirectly: the request succeeds (200) and the
@@ -304,8 +329,9 @@ def test_risk_policy_downgrade_persists_valid_verdict_through_real_ledger_client
 
     Mirrors golden case ``flag-flow-just-under`` in
     ``evals/datasets/energy``: FakeLLM misreads the ``must_be_at_least``
-    breach, the verifier reports NEURO_SYMBOLIC_DIVERGENCE, and the tier-2
-    policy downgrades to DISCRETIONARY via ``model_copy``. The real
+    breach, the verifier reports LLM_CONTRADICTION (``UNFLAGGED_BREACH``;
+    NEURO_SYMBOLIC_DIVERGENCE before v3.2.0), and the risk-tier policy
+    downgrades to DISCRETIONARY via ``model_copy``. The real
     :class:`LedgerClient` (over a fake session) is used so the actual
     INSERT parameters are asserted, not just the kwargs the endpoint passes.
     """
@@ -346,12 +372,12 @@ def test_risk_policy_downgrade_persists_valid_verdict_through_real_ledger_client
     assert resp.status_code == 200, resp.text
     envelope = V3VerdictEnvelope.model_validate(resp.json())
     assert envelope.verdict == "DISCRETIONARY"
-    assert envelope.verifier_result.status == "NEURO_SYMBOLIC_DIVERGENCE"
+    assert envelope.verifier_result.status == "LLM_CONTRADICTION"
 
     insert_params = session.executed[1][1]
     assert insert_params is not None
     assert insert_params["verdict"] == "DISCRETIONARY"
-    assert insert_params["verifier_status"] == "NEURO_SYMBOLIC_DIVERGENCE"
+    assert insert_params["verifier_status"] == "LLM_CONTRADICTION"
 
 
 def test_list_verdicts_reads_through_to_ledger() -> None:

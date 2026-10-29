@@ -29,17 +29,35 @@ services:
       - "8000:8000"
     environment:
       SKI_V3_LLM_BACKEND: fake
+      # v3.2.0: the runtime refuses to start on FakeLLM without this
+      # explicit opt-in (so a production stack that forgets to pick a
+      # backend cannot silently serve pattern-matched verdicts).
+      SKI_ALLOW_FAKE_LLM: "true"
       KG_PATH: /app/kg/kg.json
       # Even the demo boots conformantly: setup.sh generates and SIGNS
       # the demo KG locally (scripts/make-demo-kg.py).
       KG_REQUIRE_SIGNATURE: "true"
-      LEDGER_DSN: postgresql://${POSTGRES_USER:?run ../scripts/setup.sh first}:${POSTGRES_PASSWORD:?run ../scripts/setup.sh first}@postgres:5432/${POSTGRES_DB:-ski_ledger}
+      # Least-privilege ledger role (INSERT + SELECT only), as in production.
+      LEDGER_DSN: postgresql://ski_ledger_writer:${SKI_LEDGER_WRITER_PASSWORD:?run ../scripts/setup.sh first}@postgres:5432/${POSTGRES_DB:-ski_ledger}
       API_KEY: ${SKI_API_KEY:?run ../scripts/setup.sh first}
       TLS_ENABLED: ${TLS_ENABLED:-true}
       LOG_LEVEL: INFO
+      # Framework v3.2.0: a KG loads only if its signature verifies against
+      # an operator-pinned trust anchor, never the key embedded in the KG.
+      # setup.sh (scripts/make-demo-kg.py) writes the demo public key as a
+      # one-key anchor bundle; it is mounted read-only below and pinned here.
+      SKI_KG_TRUST_ANCHORS: /app/trust/kg-trust-anchors.pem
+      # Transcript signing key on a named volume so it survives container
+      # re-creation. Generating it on first boot is an explicit opt-in;
+      # a missing key while the ledger holds signed transcripts always
+      # refuses to start.
+      SKI_TRANSCRIPT_KEY_PATH: /data/keys/transcript.ed25519
+      SKI_ALLOW_KEY_GENERATION: "true"
     volumes:
       - ./examples/knowledge-graphs/kg.json:/app/kg/kg.json:ro
+      - ./kg-signing/kg-trust-anchors.pem:/app/trust/kg-trust-anchors.pem:ro
       - ./tls:/app/tls:ro
+      - ski-demo-data:/data
     networks: [ski-demo]
     depends_on:
       postgres:
@@ -53,16 +71,21 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?run ../scripts/setup.sh first}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?run ../scripts/setup.sh first}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      SKI_LEDGER_WRITER_PASSWORD: ${SKI_LEDGER_WRITER_PASSWORD:?run ../scripts/setup.sh first}
     volumes:
       - ./src/ledger/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./src/ledger/append_only.sql:/docker-entrypoint-initdb.d/02-append-only.sql:ro
       - ./src/ledger/migrations/0002_transcript_columns.sql:/docker-entrypoint-initdb.d/03-transcript-columns.sql:ro
+      - ./src/ledger/ledger_writer_login.sh:/docker-entrypoint-initdb.d/04-ledger-writer-login.sh:ro
     networks: [ski-demo]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+volumes:
+  ski-demo-data:
 
 networks:
   ski-demo:

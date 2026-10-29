@@ -17,7 +17,12 @@ services:
   # Runs entirely offline once the model has been pulled at provisioning time.
   # --------------------------------------------------------------------------
   ollama:
-    image: ollama/ollama:0.3.12
+    # >= 0.5.0 is required: the runtime sends a JSON-schema object as
+    # /api/generate `format`; 0.3.x/0.4.x accept only a string there and
+    # reject every request (400), which v3.1.x mapped to DISCRETIONARY.
+    # Pinned by multi-arch index digest (linux/amd64 + linux/arm64); keep in
+    # step with deploy/helm/ski/values.yaml (ollama.image).
+    image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
     container_name: ski-ollama
     # No host port published by default — the SKI Model is the only client.
     # Uncomment for local debugging on host 11434.
@@ -49,9 +54,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      # Inference backend — local by default. "anthropic" is a non-conformant
-      # demo mode and disqualifies the deployment from any conformance level.
-      SKI_INFERENCE_BACKEND: ${SKI_INFERENCE_BACKEND:-ollama}
+      # Inference backend — local Ollama by default. SKI_V3_LLM_BACKEND is the
+      # name the runtime reads (v3.1.x compose set SKI_INFERENCE_BACKEND, which
+      # the runtime ignored, so it silently ran FakeLLM). There is no cloud backend.
+      SKI_V3_LLM_BACKEND: ${SKI_V3_LLM_BACKEND:-ollama}
+      # Deprecated alias, passed through on purpose: a stale .env that still
+      # sets it to a DIFFERENT backend makes the runtime refuse to start
+      # instead of being silently ignored.
+      SKI_INFERENCE_BACKEND: ${SKI_INFERENCE_BACKEND:-}
       SKI_MODEL_NAME: ${SKI_MODEL_NAME:-qwen2.5:7b-instruct}
       SKI_MODEL_TEMPERATURE: "0"
       SKI_MODEL_SEED: "${SKI_MODEL_SEED:-42}"
@@ -60,13 +70,34 @@ services:
       OLLAMA_BASE_URL: http://ollama:11434
       KG_PATH: /app/kg/kg.json
       KG_REQUIRE_SIGNATURE: ${KG_REQUIRE_SIGNATURE:-true}
-      LEDGER_DSN: postgresql://${POSTGRES_USER:?POSTGRES_USER is required}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-ski_ledger}
+      # v3.2.0: least-privilege ledger role (INSERT + SELECT only), never the
+      # owner/superuser. The role and its password are created on first init
+      # (02-append-only.sql + 04-ledger-writer-login.sh below).
+      LEDGER_DSN: postgresql://ski_ledger_writer:${SKI_LEDGER_WRITER_PASSWORD:?SKI_LEDGER_WRITER_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-ski_ledger}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       TLS_ENABLED: ${TLS_ENABLED:-true}
       API_KEY: ${SKI_API_KEY:?SKI_API_KEY is required — generate one with `openssl rand -hex 32`}
       DETERMINISM_CANARY_INTERVAL: ${DETERMINISM_CANARY_INTERVAL:-300}
+      # Framework v3.2.0 KG trust anchors: the KG must verify against one of
+      # the operator-pinned Ed25519 public keys in this PEM bundle (mounted
+      # below from SKI_KG_TRUST_ANCHORS_HOST_FILE). Never the KG's own key.
+      # An explicitly EMPTY value in .env means "no anchors": the runtime then
+      # refuses every signed KG unless the dev-only escape hatch below is set.
+      SKI_KG_TRUST_ANCHORS: ${SKI_KG_TRUST_ANCHORS-/app/trust/kg-trust-anchors.pem}
+      SKI_KG_ALLOW_UNANCHORED: ${SKI_KG_ALLOW_UNANCHORED:-false}
+      # POST /api/kg/load is disabled unless explicitly enabled; it then
+      # requires SKI_ADMIN_API_KEY (never SKI_API_KEY, which the sidecar holds).
+      SKI_ENABLE_KG_HOT_LOAD: ${SKI_ENABLE_KG_HOT_LOAD:-false}
+      SKI_ADMIN_API_KEY: ${SKI_ADMIN_API_KEY:-}
+      # Transcript signing key lives on the persistent ski-model-data volume.
+      # First-boot generation is an explicit opt-in (.env from setup.sh sets
+      # it); a missing key while the ledger holds signed transcripts always
+      # refuses to start.
+      SKI_TRANSCRIPT_KEY_PATH: /data/keys/transcript.ed25519
+      SKI_ALLOW_KEY_GENERATION: ${SKI_ALLOW_KEY_GENERATION:-false}
     volumes:
       - ./examples/knowledge-graphs:/app/kg:ro
+      - ${SKI_KG_TRUST_ANCHORS_HOST_FILE:-./kg-signing/kg-trust-anchors.pem}:/app/trust/kg-trust-anchors.pem:ro
       - ski-model-data:/data
       - ./tls:/app/tls:ro
     networks:
@@ -129,6 +160,8 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — see SECURITY_DEFAULTS.md}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=scram-sha-256"
+      # Read only by 04-ledger-writer-login.sh on first init.
+      SKI_LEDGER_WRITER_PASSWORD: ${SKI_LEDGER_WRITER_PASSWORD:?SKI_LEDGER_WRITER_PASSWORD is required}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./src/ledger/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
@@ -140,6 +173,7 @@ services:
       # clean v3 schema. It remains in tree for operators upgrading an
       # existing v0.2 ledger that has only the v2.1 baseline.
       - ./src/ledger/migrations/0002_transcript_columns.sql:/docker-entrypoint-initdb.d/03-transcript-columns.sql:ro
+      - ./src/ledger/ledger_writer_login.sh:/docker-entrypoint-initdb.d/04-ledger-writer-login.sh:ro
     networks:
       - ski-internal
     restart: unless-stopped

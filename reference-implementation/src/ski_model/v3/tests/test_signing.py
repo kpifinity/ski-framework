@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from ski_model.v3 import TranscriptSigner, verify_signature
+from ski_model.v3.signing import TranscriptKeyError, transcript_key_path
 from ski_model.v3.transcript import signing_message
 
 
@@ -39,6 +40,53 @@ class TestAutoProvisioning:
         TranscriptSigner.auto_provision(key_path)
         mode = key_path.stat().st_mode & 0o777
         assert mode == 0o600, f"private key file mode should be 0600, got {oct(mode)}"
+
+
+class TestKeyGenerationGuard:
+    """Framework v3.2.0: no silent key regeneration (C6)."""
+
+    @pytest.fixture(autouse=True)
+    def _generation_not_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SKI_ALLOW_KEY_GENERATION", raising=False)
+
+    def test_missing_key_without_opt_in_refuses(self, tmp_path: Path) -> None:
+        key_path = tmp_path / "keys" / "transcript.ed25519"
+        with pytest.raises(TranscriptKeyError, match="SKI_ALLOW_KEY_GENERATION=true"):
+            TranscriptSigner.auto_provision(key_path)
+        assert not key_path.exists()
+
+    def test_env_opt_in_generates_on_first_boot(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SKI_ALLOW_KEY_GENERATION", "true")
+        key_path = tmp_path / "keys" / "transcript.ed25519"
+        signer = TranscriptSigner.auto_provision(key_path)
+        assert key_path.exists()
+        assert signer.key_id.startswith("sha256:")
+
+    def test_explicit_parameter_overrides_env(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SKI_ALLOW_KEY_GENERATION", "true")
+        with pytest.raises(TranscriptKeyError):
+            TranscriptSigner.auto_provision(tmp_path / "a.ed25519", allow_generation=False)
+        assert TranscriptSigner.auto_provision(tmp_path / "b.ed25519", allow_generation=True).key_id
+
+    def test_missing_key_with_signed_ledger_refuses_even_with_opt_in(self, tmp_path: Path) -> None:
+        key_path = tmp_path / "transcript.ed25519"
+        with pytest.raises(TranscriptKeyError, match="already holds signed transcripts"):
+            TranscriptSigner.auto_provision(
+                key_path, allow_generation=True, ledger_has_signed_transcripts=True
+            )
+        assert not key_path.exists()
+
+    def test_existing_key_loads_without_opt_in_even_with_signed_ledger(self, tmp_path: Path) -> None:
+        key_path = tmp_path / "transcript.ed25519"
+        first = TranscriptSigner.auto_provision(key_path, allow_generation=True)
+        again = TranscriptSigner.auto_provision(key_path, ledger_has_signed_transcripts=True)
+        assert again.key_id == first.key_id
+
+    def test_transcript_key_path_follows_env(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("SKI_TRANSCRIPT_KEY_PATH", str(tmp_path / "k.ed25519"))
+        assert transcript_key_path() == tmp_path / "k.ed25519"
 
 
 class TestSignVerify:
