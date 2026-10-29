@@ -28,11 +28,9 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "tools" / "ski-schemas" / "src"))
 sys.path.insert(0, str(_REPO_ROOT / "spec" / "contracts"))
 
-from jsonschema.validators import Draft202012Validator  # noqa: E402
-
-from ski_schemas.canonical import canonicalize, sha256_canonical  # noqa: E402
-
 from generate_schemas import SCHEMAS_DIR, build_schemas  # noqa: E402  (spec/contracts on path)
+from jsonschema.validators import Draft202012Validator  # noqa: E402
+from ski_schemas.canonical import canonicalize, sha256_canonical  # noqa: E402
 
 CANONICAL_DIR = _REPO_ROOT / "spec" / "test-vectors" / "canonical"
 ENVELOPES_DIR = _REPO_ROOT / "spec" / "test-vectors" / "envelopes"
@@ -63,7 +61,9 @@ def check_canonical_vectors(failures: list[str]) -> None:
         vec: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         got = canonicalize(vec["input"]).decode("utf-8")
         if got != vec["canonical"]:
-            failures.append(f"canonical mismatch {_rel(path)}:\n  got      {got!r}\n  expected {vec['canonical']!r}")
+            failures.append(
+                f"canonical mismatch {_rel(path)}:\n  got      {got!r}\n  expected {vec['canonical']!r}"
+            )
             continue
         digest = sha256_canonical(vec["input"])
         if digest != vec["sha256"]:

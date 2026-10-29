@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 from jsonschema.validators import Draft202012Validator
 from pydantic import ValidationError
-
 from ski_schemas.kg import KGObligation
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]

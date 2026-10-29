@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from ski_schemas.canonical import (
     CanonicalizationError,
     canonicalize,

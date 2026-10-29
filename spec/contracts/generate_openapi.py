@@ -85,7 +85,7 @@ def _transitive_schemas(paths: dict[str, Any], all_schemas: dict[str, Any]) -> d
 
 def build_openapi() -> dict[str, Any]:
     """Return the pruned OpenAPI 3.1 document for the public API."""
-    from ski_model.server import app  # noqa: PLC0415 — import after sys.path/env setup
+    from ski_model.server import app
 
     full = app.openapi()
     all_paths = full.get("paths", {})
