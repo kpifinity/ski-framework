@@ -1,0 +1,9 @@
+{
+  "name": "nfc_key_not_normalized",
+  "description": "A member NAME is NOT NFC-normalized (spec §7.3 rule 3 scopes NFC to values); recorded for RFC 0004.",
+  "input": {
+    "é": 1
+  },
+  "canonical": "{\"é\":1}",
+  "sha256": "sha256:e5bb0b455cae8a4f7c6b6d839a50c4e7d0cf32dded3bcb83f6a9bd122d16c559"
+}

@@ -1,0 +1,487 @@
+components:
+  schemas:
+    FormalizableAssertion:
+      additionalProperties: false
+      description: A structured assertion the symbolic verifier can mechanically check.
+      properties:
+        metric:
+          description: Dotted-path into the measurement object.
+          title: Metric
+          type: string
+        obligation_id:
+          description: The KG obligation this assertion checks.
+          title: Obligation Id
+          type: string
+        observed:
+          anyOf:
+          - type: number
+          - type: integer
+          - type: string
+          - items: {}
+            type: array
+          - type: 'null'
+          title: Observed
+        predicate:
+          description: Predicate type, e.g. 'must_not_exceed'.
+          title: Predicate
+          type: string
+        satisfied:
+          title: Satisfied
+          type: boolean
+        value:
+          anyOf:
+          - type: number
+          - type: integer
+          - type: string
+          - items: {}
+            type: array
+          - type: 'null'
+          title: Value
+        window_seconds:
+          anyOf:
+          - minimum: 1.0
+            type: integer
+          - type: 'null'
+          description: Time-window length in seconds for stateful predicates (e.g. 86400 for a 24h rolling
+            average). None for stateless predicates.
+          title: Window Seconds
+      required:
+      - predicate
+      - metric
+      - satisfied
+      - obligation_id
+      title: FormalizableAssertion
+      type: object
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          title: Detail
+          type: array
+      title: HTTPValidationError
+      type: object
+    HealthStatus:
+      properties:
+        canary_status:
+          title: Canary Status
+          type: string
+        kg_loaded:
+          title: Kg Loaded
+          type: boolean
+        kg_signature_verified:
+          title: Kg Signature Verified
+          type: boolean
+        provenance:
+          additionalProperties: true
+          title: Provenance
+          type: object
+        runtime_version:
+          title: Runtime Version
+          type: string
+        status:
+          title: Status
+          type: string
+        timestamp:
+          title: Timestamp
+          type: string
+        verdicts_produced:
+          title: Verdicts Produced
+          type: integer
+      required:
+      - status
+      - kg_loaded
+      - kg_signature_verified
+      - canary_status
+      - verdicts_produced
+      - timestamp
+      - runtime_version
+      title: HealthStatus
+      type: object
+    KGCitation:
+      additionalProperties: false
+      description: A single KG node the LLM cited as informing the verdict.
+      properties:
+        node_id:
+          title: Node Id
+          type: string
+        role:
+          $ref: '#/components/schemas/KGCitationRole'
+        version:
+          title: Version
+          type: string
+      required:
+      - node_id
+      - version
+      - role
+      title: KGCitation
+      type: object
+    KGCitationRole:
+      description: The role a cited KG node played in the verdict.
+      enum:
+      - obligation
+      - definition_resolved
+      - exemption_considered
+      - precedent_referenced
+      - jurisdiction_matched
+      title: KGCitationRole
+      type: string
+    MeasurementRecord:
+      description: 'Measurement input for /api/evaluate.
+
+
+        The v3 evaluator consumes the full measurement. Before evaluation, the
+
+        server scopes the KG to this record''s ``jurisdiction`` and effective
+
+        date (:meth:`~ski_model.kg_loader.KnowledgeGraph.scope_to`) and sends
+
+        the LLM only that scoped snapshot, not the full graph.'
+      properties:
+        jurisdiction:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Tenant-declared jurisdiction (e.g. 'us-ca', 'eu', 'global'). When set, the KG is
+            scoped to obligations whose jurisdiction matches or is universal ('global', '*'). None means
+            'no restriction' — all rules effective at the measurement's timestamp are sent to the LLM.
+          title: Jurisdiction
+        measurement:
+          additionalProperties: true
+          description: Structured measurement values keyed by metric name.
+          title: Measurement
+          type: object
+        measurement_id:
+          description: Stable id for replay correlation.
+          title: Measurement Id
+          type: string
+        subject:
+          description: Subject token (e.g. data source identifier).
+          title: Subject
+          type: string
+        timestamp:
+          description: ISO-8601 UTC.
+          title: Timestamp
+          type: string
+      required:
+      - measurement_id
+      - timestamp
+      - subject
+      title: MeasurementRecord
+      type: object
+    ModelProvenance:
+      additionalProperties: false
+      description: 'Inference provenance metadata required for v3 replay.
+
+
+        All hash values MUST be lowercase hex prefixed with ``sha256:`` per
+
+        spec §4.6. The Pydantic layer enforces the prefix.'
+      properties:
+        decoder_seed:
+          minimum: 0.0
+          title: Decoder Seed
+          type: integer
+        inference_backend:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Name of the backend that produced the verdict, e.g. 'ollama-v3', 'fake-llm'.
+          title: Inference Backend
+        kg_signer_key_id:
+          anyOf:
+          - pattern: ^sha256:[0-9a-f]{64}$
+            type: string
+          - type: 'null'
+          description: 'Key ID of the Ed25519 key the Knowledge Graph signature verified against: ''sha256:''
+            + hex sha256 of the raw 32-byte public key. None when the KG was unsigned.'
+          title: Kg Signer Key Id
+        kg_trust:
+          anyOf:
+          - enum:
+            - anchored
+            - unanchored
+            - unsigned
+            type: string
+          - type: 'null'
+          description: '''anchored'': the KG signature verified against an operator-pinned trust anchor
+            (SKI_KG_TRUST_ANCHORS). ''unanchored'': no anchors, SKI_KG_ALLOW_UNANCHORED=true, checked
+            only against the KG''s own embedded key (dev only). ''unsigned'': KG_REQUIRE_SIGNATURE=false
+            loaded a KG with no signature (dev only).'
+          title: Kg Trust
+        kg_version_hash:
+          pattern: ^sha256:[0-9a-f]+$
+          title: Kg Version Hash
+          type: string
+        model_hash_verified:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: 'True only when an operator pin (SKI_MODEL_FILE_SHA256) matched a weights digest
+            the runtime obtained independently of that pin. False means model_weight_hash is unverified:
+            an unpinned backend digest, an operator-asserted value, or a name commitment that is NOT a
+            weight hash.'
+          title: Model Hash Verified
+        model_weight_hash:
+          pattern: ^sha256:[0-9a-f]+$
+          title: Model Weight Hash
+          type: string
+        prompt_template_hash:
+          pattern: ^sha256:[0-9a-f]+$
+          title: Prompt Template Hash
+          type: string
+        prompt_template_id:
+          description: Stable id, e.g. 'ski.v3.evaluate.1'.
+          title: Prompt Template Id
+          type: string
+        structured_grammar_hash:
+          pattern: ^sha256:[0-9a-f]+$
+          title: Structured Grammar Hash
+          type: string
+      required:
+      - model_weight_hash
+      - kg_version_hash
+      - prompt_template_id
+      - prompt_template_hash
+      - decoder_seed
+      - structured_grammar_hash
+      title: ModelProvenance
+      type: object
+    V3Verdict:
+      description: The five-verdict taxonomy, preserved from v2.1.
+      enum:
+      - CLEAR
+      - FLAG
+      - NULL_UNMAPPED
+      - NULL_STALE
+      - DISCRETIONARY
+      title: V3Verdict
+      type: string
+    V3VerdictEnvelope:
+      additionalProperties: false
+      description: 'The complete v3 verdict envelope.
+
+
+        Every required field is enforced at the Pydantic layer. The
+
+        envelope MUST round-trip through JSON without loss; that property
+
+        is what makes the audit ledger''s hash chain meaningful.'
+      properties:
+        formalizable_assertions:
+          items:
+            $ref: '#/components/schemas/FormalizableAssertion'
+          title: Formalizable Assertions
+          type: array
+        human_attestation:
+          anyOf:
+          - additionalProperties: true
+            type: object
+          - type: 'null'
+          title: Human Attestation
+        kg_citations:
+          items:
+            $ref: '#/components/schemas/KGCitation'
+          title: Kg Citations
+          type: array
+        model_provenance:
+          $ref: '#/components/schemas/ModelProvenance'
+        notes:
+          items:
+            type: string
+          title: Notes
+          type: array
+        reasoning:
+          title: Reasoning
+          type: string
+        transcript_ref:
+          description: Pointer to the LLM transcript in the ledger.
+          title: Transcript Ref
+          type: string
+        verdict:
+          $ref: '#/components/schemas/V3Verdict'
+        verdict_path:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: 'Per §5.6: ''fast'' or None.'
+          title: Verdict Path
+        verifier_result:
+          $ref: '#/components/schemas/VerifierResult'
+      required:
+      - verdict
+      - reasoning
+      - verifier_result
+      - model_provenance
+      - transcript_ref
+      title: V3VerdictEnvelope
+      type: object
+    ValidationError:
+      properties:
+        ctx:
+          title: Context
+          type: object
+        input:
+          title: Input
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          title: Location
+          type: array
+        msg:
+          title: Message
+          type: string
+        type:
+          title: Error Type
+          type: string
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+      type: object
+    VerifierResult:
+      additionalProperties: false
+      description: The symbolic verifier's per-assertion result.
+      properties:
+        checked_assertions:
+          default: 0
+          minimum: 0.0
+          title: Checked Assertions
+          type: integer
+        divergences:
+          items:
+            type: string
+          title: Divergences
+          type: array
+        status:
+          $ref: '#/components/schemas/VerifierStatus'
+      required:
+      - status
+      title: VerifierResult
+      type: object
+    VerifierStatus:
+      description: Status returned by the Symbolic Verifier (spec §5.3).
+      enum:
+      - AGREED
+      - LLM_CONTRADICTION
+      - NEURO_SYMBOLIC_DIVERGENCE
+      - UNVERIFIABLE
+      title: VerifierStatus
+      type: string
+info:
+  description: Public contract for the SKI Model API, pruned to the three public paths. Generated from
+    the FastAPI app by spec/contracts/generate_openapi.py; do not edit by hand.
+  title: SKI Model Inference Engine
+  version: 3.2.0
+openapi: 3.1.0
+paths:
+  /api/evaluate:
+    post:
+      description: 'v3 evaluation: KG-grounded LLM → V3VerdictEnvelope.
+
+
+        The evaluator validates citations against the KG snapshot before
+
+        returning; bogus citations are mapped to NULL_UNMAPPED. The Symbolic
+
+        Verifier mechanically cross-checks every formalizable assertion the
+
+        LLM emits and populates :attr:`VerifierResult` with the real agreement
+
+        outcome (``AGREED`` / ``LLM_CONTRADICTION`` / ``NEURO_SYMBOLIC_DIVERGENCE``
+
+        / ``UNVERIFIABLE``); the risk-tier policy then decides whether a
+
+        disagreeing result may still pass through or must downgrade to
+
+        ``DISCRETIONARY``.'
+      operationId: evaluate_api_evaluate_post
+      parameters:
+      - in: header
+        name: x-api-key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MeasurementRecord'
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/V3VerdictEnvelope'
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Evaluate
+  /api/health:
+    get:
+      operationId: health_check_api_health_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+          description: Successful Response
+      summary: Health Check
+  /api/kg/load:
+    post:
+      description: 'Hot-load a Knowledge Graph supplied via API.
+
+
+        Disabled unless ``SKI_ENABLE_KG_HOT_LOAD=true``; then requires the
+
+        ``X-SKI-Admin-Key`` header to match ``SKI_ADMIN_API_KEY``. Signature is
+
+        REQUIRED and must verify against a configured trust anchor (or, with no
+
+        anchors, the explicit ``SKI_KG_ALLOW_UNANCHORED=true`` dev mode).'
+      operationId: load_kg_api_kg_load_post
+      parameters:
+      - in: header
+        name: x-ski-admin-key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Ski-Admin-Key
+      requestBody:
+        content:
+          application/json:
+            schema:
+              additionalProperties: true
+              title: Kg Data
+              type: object
+        required: true
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Load Kg Api Kg Load Post
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Load Kg

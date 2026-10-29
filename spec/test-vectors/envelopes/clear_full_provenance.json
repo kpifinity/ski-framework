@@ -1,0 +1,43 @@
+{
+  "verdict": "CLEAR",
+  "reasoning": "The scoped KG carried one obligation mapped to the measurement (energy.so2.cap, must_not_exceed 100 ppm). The observed SO2 reading was 98.6 ppm, below the cap, and the symbolic verifier independently confirmed the single formalizable assertion.",
+  "kg_citations": [
+    {
+      "node_id": "energy.so2.cap",
+      "version": "3",
+      "role": "obligation"
+    }
+  ],
+  "formalizable_assertions": [
+    {
+      "predicate": "must_not_exceed",
+      "metric": "so2_ppm",
+      "value": 100,
+      "observed": 98.6,
+      "satisfied": true,
+      "obligation_id": "energy.so2.cap",
+      "window_seconds": null
+    }
+  ],
+  "verifier_result": {
+    "status": "AGREED",
+    "checked_assertions": 1,
+    "divergences": []
+  },
+  "model_provenance": {
+    "model_weight_hash": "sha256:96f21bbc1cc0f2463de2aee12e98f1ec135db482bb97766ceb66fd48e61a57ca",
+    "kg_version_hash": "sha256:f8aadffe1a19cc92c2b198088849481399a411d0099a111d12a941294b90bb20",
+    "prompt_template_id": "ski.v3.evaluate.1",
+    "prompt_template_hash": "sha256:e61e1c10e601115bd37324e1681acfe2e1bbf95b5963b0634722067cb5030e6b",
+    "decoder_seed": 0,
+    "structured_grammar_hash": "sha256:5235f4caa8dc55bb323bf8f3397c1ae64f4c887be9608a4c3248b8634c1fea45",
+    "model_hash_verified": true,
+    "inference_backend": "ollama-v3",
+    "kg_signer_key_id": "sha256:abababababababababababababababababababababababababababababababab",
+    "kg_trust": "anchored"
+  },
+  "transcript_ref": "sha256:8c90cea421e595a853be6b59c14858049c0210e14ba421abe24de90644fa3278",
+  "human_attestation": null,
+  "notes": [],
+  "verdict_path": null
+}

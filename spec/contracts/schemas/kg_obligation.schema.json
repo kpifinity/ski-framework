@@ -1,0 +1,158 @@
+{
+  "$id": "https://kpifinity.github.io/ski-framework/contracts/schemas/kg_obligation.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One obligation in the flat KG the reference runtime loads.\n\n``predicate`` is left an open string, exactly as the runtime's own\nstructured-output grammar declares it (``{\"type\": \"string\"}``), so a\nKG carrying an implementation-extension predicate (e.g.\n``must_average_within``) is still valid. The closed base enumeration is\nspec §3.3 (``ObligationType`` in ``kg_validator.models``).\n\nUnknown members are permitted (``additionalProperties`` stays open): the\nKG format is extensible and the runtime ignores members it does not read.",
+  "properties": {
+    "effective_date": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO-8601 date or datetime; the obligation is out of scope before this instant.",
+      "title": "Effective Date"
+    },
+    "id": {
+      "description": "Stable obligation identifier, unique within the KG.",
+      "title": "Id",
+      "type": "string"
+    },
+    "jurisdiction": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Jurisdiction the obligation applies to, or a universal sentinel ('global', '*', ''). Absent means universal.",
+      "title": "Jurisdiction"
+    },
+    "metric": {
+      "description": "Dotted-path identifier into the measurement record's measurement object.",
+      "title": "Metric",
+      "type": "string"
+    },
+    "predicate": {
+      "description": "The obligation type, drawn from spec §3.3's closed enumeration plus the runtime extensions (e.g. 'must_not_exceed', 'must_be_at_least', 'must_average_within'). Left an open string to match the runtime grammar.",
+      "title": "Predicate",
+      "type": "string"
+    },
+    "requires_recent_within_seconds": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Maximum age in seconds of an acceptable reading for a recency obligation.",
+      "title": "Requires Recent Within Seconds"
+    },
+    "risk_tier": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Declared risk tier ('tier-1' strictest .. 'tier-3'). A missing or unrecognised tier resolves to 'tier-1' at runtime (fail-safe). Never a trust input the LLM controls.",
+      "title": "Risk Tier"
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Human-readable summary of the obligation, for transcripts and review UIs.",
+      "title": "Summary"
+    },
+    "sunset_date": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "ISO-8601 date or datetime; the obligation is out of scope after this instant.",
+      "title": "Sunset Date"
+    },
+    "unit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Unit of 'value' and of the measured reading, when the obligation is unit-bearing.",
+      "title": "Unit"
+    },
+    "value": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {},
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The operand the predicate is evaluated against (scalar, list, or null).",
+      "title": "Value"
+    },
+    "window_seconds": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Window length in seconds for a windowed predicate (e.g. a 24h rolling average).",
+      "title": "Window Seconds"
+    }
+  },
+  "required": [
+    "id",
+    "metric",
+    "predicate"
+  ],
+  "title": "KGObligation",
+  "type": "object"
+}

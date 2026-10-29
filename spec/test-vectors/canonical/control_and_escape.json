@@ -1,0 +1,9 @@
+{
+  "name": "control_and_escape",
+  "description": "RFC 8785 §3.2.2.2 string escaping: short escapes, lowercase \\u00xx, literal '/' and U+007F.",
+  "input": {
+    "s": "\b\t\n\f\r\u0000\u001f/\"\\"
+  },
+  "canonical": "{\"s\":\"\\b\\t\\n\\f\\r\\u0000\\u001f/\\\"\\\\\"}",
+  "sha256": "sha256:5b9e26305202b1d29aebc66e8d5cbeb0f6efe5d298a56e3fa1682a93a77eb6ee"
+}

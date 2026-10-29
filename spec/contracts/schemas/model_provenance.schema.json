@@ -1,0 +1,106 @@
+{
+  "$id": "https://kpifinity.github.io/ski-framework/contracts/schemas/model_provenance.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Inference provenance metadata required for v3 replay.\n\nAll hash values MUST be lowercase hex prefixed with ``sha256:`` per\nspec §4.6. The Pydantic layer enforces the prefix.",
+  "properties": {
+    "decoder_seed": {
+      "minimum": 0,
+      "title": "Decoder Seed",
+      "type": "integer"
+    },
+    "inference_backend": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Name of the backend that produced the verdict, e.g. 'ollama-v3', 'fake-llm'.",
+      "title": "Inference Backend"
+    },
+    "kg_signer_key_id": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Key ID of the Ed25519 key the Knowledge Graph signature verified against: 'sha256:' + hex sha256 of the raw 32-byte public key. None when the KG was unsigned.",
+      "title": "Kg Signer Key Id"
+    },
+    "kg_trust": {
+      "anyOf": [
+        {
+          "enum": [
+            "anchored",
+            "unanchored",
+            "unsigned"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "'anchored': the KG signature verified against an operator-pinned trust anchor (SKI_KG_TRUST_ANCHORS). 'unanchored': no anchors, SKI_KG_ALLOW_UNANCHORED=true, checked only against the KG's own embedded key (dev only). 'unsigned': KG_REQUIRE_SIGNATURE=false loaded a KG with no signature (dev only).",
+      "title": "Kg Trust"
+    },
+    "kg_version_hash": {
+      "pattern": "^sha256:[0-9a-f]+$",
+      "title": "Kg Version Hash",
+      "type": "string"
+    },
+    "model_hash_verified": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "True only when an operator pin (SKI_MODEL_FILE_SHA256) matched a weights digest the runtime obtained independently of that pin. False means model_weight_hash is unverified: an unpinned backend digest, an operator-asserted value, or a name commitment that is NOT a weight hash.",
+      "title": "Model Hash Verified"
+    },
+    "model_weight_hash": {
+      "pattern": "^sha256:[0-9a-f]+$",
+      "title": "Model Weight Hash",
+      "type": "string"
+    },
+    "prompt_template_hash": {
+      "pattern": "^sha256:[0-9a-f]+$",
+      "title": "Prompt Template Hash",
+      "type": "string"
+    },
+    "prompt_template_id": {
+      "description": "Stable id, e.g. 'ski.v3.evaluate.1'.",
+      "title": "Prompt Template Id",
+      "type": "string"
+    },
+    "structured_grammar_hash": {
+      "pattern": "^sha256:[0-9a-f]+$",
+      "title": "Structured Grammar Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "model_weight_hash",
+    "kg_version_hash",
+    "prompt_template_id",
+    "prompt_template_hash",
+    "decoder_seed",
+    "structured_grammar_hash"
+  ],
+  "title": "ModelProvenance",
+  "type": "object"
+}

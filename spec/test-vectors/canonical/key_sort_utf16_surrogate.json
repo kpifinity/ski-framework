@@ -1,0 +1,11 @@
+{
+  "name": "key_sort_utf16_surrogate",
+  "description": "The JCS subtlety: U+10000 (high surrogate 0xD800) sorts BEFORE U+FFFF by UTF-16 code unit.",
+  "input": {
+    "￿": 1,
+    "𐀀": 2,
+    "a": 3
+  },
+  "canonical": "{\"a\":3,\"𐀀\":2,\"￿\":1}",
+  "sha256": "sha256:6c75323f2e1c8dcea926319a73fbb3ab58b0f063893b8d5b5e5c7c126290cb67"
+}
