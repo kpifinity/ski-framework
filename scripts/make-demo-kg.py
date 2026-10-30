@@ -64,14 +64,11 @@ def main(argv: list[str] | None = None) -> int:
         "DEMO Knowledge Graph (energy) — generated and signed locally by "
         "scripts/make-demo-kg.py for the quickstart. Not regulatory advice."
     )
-    rules, tag_registry = src["rules"], src["tag_registry"]
+    from ski_model.kg_loader import signing_bytes
 
-    canonical = json.dumps(
-        {"metadata": metadata, "rules": rules, "tag_registry": tag_registry},
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
+    # The spec §3 graph; signed over the runtime's own signing bytes (§3.5).
+    content = {"metadata": metadata, "nodes": src["nodes"], "edges": src["edges"]}
+    canonical = signing_bytes(content)
 
     KEY_DIR.mkdir(parents=True, exist_ok=True)
     key_path = KEY_DIR / "demo-kg-signing.key"
@@ -102,9 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     TRUST_ANCHORS.chmod(0o644)  # public material; the runtime container (uid 10001) reads it
 
     kg = {
-        "metadata": metadata,
-        "rules": rules,
-        "tag_registry": tag_registry,
+        **content,
         "signature": {
             "algorithm": "ed25519",
             "public_key_pem": public_pem.decode("ascii"),
@@ -125,7 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.print_key_id:
         print(loaded.signer_key_id)
         return 0
-    print(f"Signed demo KG written to {OUT.relative_to(REPO)} ({len(rules)} rules, signature verified).")
+    print(
+        f"Signed demo KG written to {OUT.relative_to(REPO)} ({len(loaded.rules)} obligations, signature verified)."
+    )
     print(
         f"Trust anchor written to {TRUST_ANCHORS.relative_to(REPO)} "
         f"(key ID {loaded.signer_key_id}); pin it with SKI_KG_TRUST_ANCHORS."
