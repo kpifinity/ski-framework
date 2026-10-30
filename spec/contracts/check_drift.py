@@ -12,6 +12,9 @@ Checks, in order:
 3. **Envelope vectors** — validate every ``spec/test-vectors/envelopes/*.json``
    against the committed ``v3_verdict_envelope.schema.json`` (JSON Schema
    draft 2020-12), proving the published schema accepts a real envelope.
+4. **Ledger vectors** — for every ``spec/test-vectors/ledger/*.json``, re-derive
+   the evidence hashes, the v4 entry payload and the entry hash from the
+   vector's ``columns`` (``ski_schemas.ledger``) and compare.
 
 Exit code 0 when everything matches, 1 otherwise. Depends only on
 ``ski_schemas`` (pydantic) and ``jsonschema``; it does not import the server.
@@ -27,7 +30,9 @@ from typing import Any
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_REPO_ROOT / "tools" / "ski-schemas" / "src"))
 sys.path.insert(0, str(_REPO_ROOT / "spec" / "contracts"))
+sys.path.insert(0, str(_REPO_ROOT / "spec" / "test-vectors" / "ledger"))
 
+from generate import derive as derive_ledger_vector  # noqa: E402  (spec/test-vectors/ledger on path)
 from generate_schemas import SCHEMAS_DIR, build_schemas  # noqa: E402  (spec/contracts on path)
 from jsonschema.validators import Draft202012Validator  # noqa: E402
 from ski_schemas.canonical import canonicalize, sha256_canonical  # noqa: E402
@@ -35,6 +40,7 @@ from ski_schemas.canonical import canonicalize, sha256_canonical  # noqa: E402
 CANONICAL_DIR = _REPO_ROOT / "spec" / "test-vectors" / "canonical"
 ENVELOPES_DIR = _REPO_ROOT / "spec" / "test-vectors" / "envelopes"
 ENVELOPE_SCHEMA = SCHEMAS_DIR / "v3_verdict_envelope.schema.json"
+LEDGER_DIR = _REPO_ROOT / "spec" / "test-vectors" / "ledger"
 
 
 def _rel(path: Path) -> str:
@@ -91,11 +97,26 @@ def check_envelope_vectors(failures: list[str]) -> None:
             print(f"ok   envelope {path.name}")
 
 
+def check_ledger_vectors(failures: list[str]) -> None:
+    paths = sorted(LEDGER_DIR.glob("*.json"))
+    if not paths:
+        failures.append(f"no ledger vectors found under {_rel(LEDGER_DIR)}")
+    for path in paths:
+        vec = json.loads(path.read_text(encoding="utf-8"))
+        derived = derive_ledger_vector(vec["columns"])
+        mismatched = [key for key, value in derived.items() if vec.get(key) != value]
+        if mismatched:
+            failures.append(f"ledger vector {_rel(path)} does not reproduce: {', '.join(mismatched)}")
+        else:
+            print(f"ok   ledger {path.name}")
+
+
 def main() -> int:
     failures: list[str] = []
     check_schema_drift(failures)
     check_canonical_vectors(failures)
     check_envelope_vectors(failures)
+    check_ledger_vectors(failures)
 
     print()
     if failures:
@@ -103,7 +124,7 @@ def main() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("drift check passed: schemas, canonical vectors, and envelope vectors all consistent.")
+    print("drift check passed: schemas, canonical, envelope and ledger vectors all consistent.")
     return 0
 
 

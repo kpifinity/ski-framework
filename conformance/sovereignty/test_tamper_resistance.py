@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,10 @@ DSN = os.environ.get("SKI_L3_LEDGER_DSN")
 REPO = Path(__file__).resolve().parent.parent.parent
 SCHEMA = REPO / "reference-implementation" / "src" / "ledger" / "schema.sql"
 TRIGGERS = REPO / "reference-implementation" / "src" / "ledger" / "append_only.sql"
+# The v4 cases append through the runtime's own LedgerClient.
+_RUNTIME_SRC = str(REPO / "reference-implementation" / "src")
+if _RUNTIME_SRC not in sys.path:
+    sys.path.insert(0, _RUNTIME_SRC)
 
 pytestmark = pytest.mark.sovereignty
 
@@ -117,3 +122,183 @@ def test_modified_ledger_row_fails_verify_integrity() -> None:
         "verify_integrity must detect an in-place edit via entry-hash recomputation, "
         "even though chain linkage (previous_hash pointers) is untouched."
     )
+
+
+# ---------------------------------------------------------------------------
+# Ledger v4: the chain also commits to the stored envelope and transcript.
+# ---------------------------------------------------------------------------
+
+
+def _evaluation(reading: float, *, signed: bool) -> Any:
+    import asyncio
+
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from ski_model.v3.evaluator import FakeLLM, V3Evaluator
+    from ski_model.v3.signing import TranscriptSigner
+
+    key = Ed25519PrivateKey.generate()
+    evaluator = V3Evaluator(
+        llm=FakeLLM(),
+        kg_version_hash="sha256:" + "0" * 64,
+        signer=TranscriptSigner(key, key.public_key()) if signed else None,
+    )
+    snapshot = {
+        "version": "kg-1",
+        "obligations": [
+            {"id": "energy.so2.cap", "metric": "so2_ppm", "predicate": "must_not_exceed", "value": 100}
+        ],
+        "definitions": [],
+    }
+    return asyncio.run(
+        evaluator.aevaluate_with_transcript(
+            measurement={"so2_ppm": reading},
+            kg_snapshot=snapshot,
+            subject="stack-1",
+            as_of=datetime.now(timezone.utc),
+        )
+    )
+
+
+def _seed_mixed(engine: Any, sqlalchemy: Any) -> None:
+    """Three v3-format entries, then two v4 entries written by the runtime's LedgerClient."""
+    import asyncio
+
+    from ski_model.ledger_client import LedgerClient
+
+    _seed(engine, sqlalchemy, n=3)
+    # 142.5 is stored as written; 1e300 comes back from JSONB as a 301-digit
+    # integer literal and must still verify (spec/test-vectors/ledger/).
+    evaluations = [_evaluation(142.5, signed=True), _evaluation(1e300, signed=False)]
+
+    async def _append() -> None:
+        assert DSN is not None
+        client = LedgerClient(DSN)
+        await client.initialize()
+        try:
+            for i, result in enumerate(evaluations, start=4):
+                await client.append_v3(
+                    envelope=result.envelope,
+                    transcript=result.transcript,
+                    telemetry_id=f"tel-{i}",
+                    telemetry_hash=f"{i:064x}",
+                    rule_id="energy.so2.cap",
+                    kg_version="kg-1",
+                    ski_model_version="3.2.0",
+                )
+        finally:
+            await client.close()
+
+    asyncio.run(_append())
+
+
+def _tamper(engine: Any, sqlalchemy: Any, statement: str) -> None:
+    with engine.begin() as cx:
+        cx.execute(sqlalchemy.text("ALTER TABLE ledger_entries DISABLE TRIGGER USER"))
+        cx.execute(sqlalchemy.text(statement))
+        cx.execute(sqlalchemy.text("ALTER TABLE ledger_entries ENABLE TRIGGER USER"))
+
+
+def _issue_types(result: Any) -> set[str]:
+    return {issue.issue_type for issue in result.issues}
+
+
+def test_mixed_v3_and_v4_ledger_verifies() -> None:
+    sqlalchemy, engine = _connect()
+    _seed_mixed(engine, sqlalchemy)
+    from audit_ledger.ledger import Ledger
+
+    assert DSN is not None
+    result = Ledger(DSN).verify_integrity()
+    assert result.is_valid, result.issues
+    assert result.entry_hash_verified_count == 5
+
+
+def test_edited_v4_envelope_fails_verify_integrity() -> None:
+    sqlalchemy, engine = _connect()
+    _seed_mixed(engine, sqlalchemy)
+    from audit_ledger.ledger import Ledger
+
+    # The verdict-line columns are untouched; only the stored evidence changes.
+    _tamper(
+        engine,
+        sqlalchemy,
+        "UPDATE ledger_entries SET envelope_json = jsonb_set(envelope_json, '{reasoning}', '\"rewritten\"')"
+        " WHERE sequence_number = 4",
+    )
+    assert DSN is not None
+    result = Ledger(DSN).verify_integrity()
+    assert not result.is_valid
+    assert "ENTRY_HASH_MISMATCH" in _issue_types(result)
+
+
+def test_edited_v4_transcript_fails_verify_integrity() -> None:
+    sqlalchemy, engine = _connect()
+    _seed_mixed(engine, sqlalchemy)
+    from audit_ledger.ledger import Ledger
+
+    _tamper(
+        engine,
+        sqlalchemy,
+        "UPDATE ledger_entries SET transcript_json = jsonb_set(transcript_json, '{backend_name}', '\"other\"')"
+        " WHERE sequence_number = 4",
+    )
+    assert DSN is not None
+    result = Ledger(DSN).verify_integrity()
+    assert not result.is_valid
+    assert "ENTRY_HASH_MISMATCH" in _issue_types(result)
+
+
+def test_rewritten_envelope_hash_column_is_detected() -> None:
+    sqlalchemy, engine = _connect()
+    _seed_mixed(engine, sqlalchemy)
+    from audit_ledger.ledger import Ledger
+
+    _tamper(
+        engine,
+        sqlalchemy,
+        "UPDATE ledger_entries SET envelope_hash = 'sha256:' || repeat('0', 64) WHERE sequence_number = 5",
+    )
+    assert DSN is not None
+    result = Ledger(DSN).verify_integrity()
+    assert not result.is_valid
+    assert "EVIDENCE_HASH_MISMATCH" in _issue_types(result)
+
+
+def test_v3_format_entry_after_v4_is_flagged() -> None:
+    sqlalchemy, engine = _connect()
+    _seed_mixed(engine, sqlalchemy)
+    from audit_ledger.canonical import canonical_entry_payload
+    from audit_ledger.ledger import Ledger
+
+    # A correctly chained entry in the old format: what a pre-v4 runtime
+    # pointed at this ledger would write. Its evidence is not chained.
+    with engine.begin() as cx:
+        head = cx.execute(
+            sqlalchemy.text("SELECT entry_hash FROM ledger_entries ORDER BY sequence_number DESC LIMIT 1")
+        ).scalar_one()
+        ts = datetime.now(timezone.utc).isoformat()
+        payload = canonical_entry_payload(
+            sequence_number=6,
+            previous_hash=head,
+            timestamp_iso=ts,
+            verdict="CLEAR",
+            telemetry_id="tel-6",
+            telemetry_hash="6" * 64,
+            rule_id=None,
+            kg_version="kg-1",
+            ski_model_version="3.1.0",
+            reasoning="old writer",
+            track="v3-evaluator",
+        )
+        cx.execute(
+            sqlalchemy.text(
+                "INSERT INTO ledger_entries (sequence_number, previous_hash, entry_hash, timestamp, verdict,"
+                " telemetry_id, telemetry_hash, knowledge_graph_version, ski_model_version, reasoning, track)"
+                " VALUES (6, :prev, :eh, :ts, 'CLEAR', 'tel-6', :th, 'kg-1', '3.1.0', 'old writer', 'v3-evaluator')"
+            ),
+            {"prev": head, "eh": hashlib.sha256(payload).hexdigest(), "ts": ts, "th": "6" * 64},
+        )
+    assert DSN is not None
+    result = Ledger(DSN).verify_integrity()
+    assert not result.is_valid
+    assert _issue_types(result) == {"FORMAT_DOWNGRADE"}

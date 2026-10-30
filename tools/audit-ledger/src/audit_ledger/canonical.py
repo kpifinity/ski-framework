@@ -1,4 +1,8 @@
-"""Canonical serialization used to compute the audit-ledger entry hash.
+"""Canonical serialization of a pre-v4 audit-ledger entry hash.
+
+Entries written since ledger v4 hash ``ski_schemas.ledger.entry_payload_v4``
+instead, which also commits to the stored envelope and transcript. This
+format stays so the entries written before v4 still verify.
 
 This module is duplicated (deliberately and exactly) between the
 reference-implementation and the audit-ledger tool so that third parties

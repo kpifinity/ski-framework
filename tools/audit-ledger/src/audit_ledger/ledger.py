@@ -9,6 +9,12 @@ v2.1 changes:
   * Canonical serialization documented in
     `audit_ledger.canonical.canonical_entry_payload` so third parties can
     re-verify without our code.
+
+Ledger v4: new entries hash `ski_schemas.ledger.entry_payload_v4`, which
+also commits to the stored envelope and transcript. `verify_integrity`
+tells v3 and v4 entries apart by which payload reproduces the stored hash,
+re-derives the evidence digests from the stored JSON, and flags a v3-format
+entry that follows a v4 one.
 """
 
 from __future__ import annotations
@@ -23,6 +29,8 @@ import subprocess
 from datetime import datetime
 from typing import Any, Iterable, List, Optional
 
+from ski_schemas.canonical import CanonicalizationError
+from ski_schemas.ledger import entry_payload_v4, evidence_hash
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
@@ -58,7 +66,10 @@ class Ledger:
 
         For every entry, this method recomputes the entry hash from the
         canonical payload and compares against the stored entry_hash. This
-        catches tampering with any field, not just the previous_hash.
+        catches tampering with any field, not just the previous_hash. For a
+        ledger-v4 entry that includes the stored envelope and transcript:
+        their digests are re-derived from the stored JSON and are part of
+        the recomputed payload.
         """
         session = self.Session()
         try:
@@ -67,7 +78,9 @@ class Ledger:
                     """
                     SELECT id, sequence_number, previous_hash, entry_hash, timestamp,
                            verdict, telemetry_id, telemetry_hash, rule_id,
-                           knowledge_graph_version, ski_model_version, reasoning, track
+                           knowledge_graph_version, ski_model_version, reasoning, track,
+                           envelope_json::text, envelope_hash, transcript_json::text,
+                           transcript_signature, signing_key_id, verifier_status
                     FROM ledger_entries
                     ORDER BY sequence_number ASC
                     """
@@ -99,6 +112,8 @@ class Ledger:
             entry_hash_verified = 0
             timestamps_valid = True
             sequence_valid = True
+            v4_seen = False
+            unchained_evidence = 0
 
             for row in rows:
                 (
@@ -115,6 +130,12 @@ class Ledger:
                     ski_model_version,
                     reasoning,
                     track,
+                    envelope_text,
+                    stored_envelope_hash,
+                    transcript_text,
+                    transcript_signature,
+                    signing_key_id,
+                    verifier_status,
                 ) = row
 
                 # 1. Sequence continuity
@@ -149,36 +170,100 @@ class Ledger:
 
                 # 3. Entry hash recomputation — the real integrity check.
                 timestamp_iso = timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
-                payload = canonical_entry_payload(
-                    sequence_number=int(seq),
-                    previous_hash=str(stored_prev),
-                    timestamp_iso=timestamp_iso,
-                    verdict=str(verdict),
-                    telemetry_id=str(tid),
-                    telemetry_hash=str(thash),
-                    rule_id=rule_id,
-                    kg_version=kg_version,
-                    ski_model_version=str(ski_model_version),
-                    reasoning=reasoning,
-                    track=track,
-                )
-                recomputed = hashlib.sha256(payload).hexdigest()
-                if recomputed == stored_hash:
-                    entry_hash_verified += 1
-                else:
-                    issues.append(
-                        IntegrityIssue(
-                            issue_type="ENTRY_HASH_MISMATCH",
-                            sequence_number=seq,
-                            description=(
-                                f"Recomputed entry hash does not match stored hash at "
-                                f"sequence {seq} (stored={stored_hash[:12]}…, "
-                                f"recomputed={recomputed[:12]}…). Entry content has been tampered with."
-                            ),
-                            severity="CRITICAL",
-                            suggested_action="Treat as a confirmed integrity incident; do not use this ledger for regulatory reporting.",
-                        )
+
+                # 3a. Ledger v4: the payload also commits to the stored evidence.
+                is_v4 = False
+                recomputed_envelope_hash: Optional[str] = None
+                try:
+                    recomputed_envelope_hash = evidence_hash(envelope_text)
+                    v4_payload = entry_payload_v4(
+                        sequence_number=int(seq),
+                        previous_hash=str(stored_prev),
+                        timestamp_iso=timestamp_iso,
+                        verdict=str(verdict),
+                        telemetry_id=str(tid),
+                        telemetry_hash=str(thash),
+                        rule_id=rule_id,
+                        kg_version=kg_version,
+                        ski_model_version=str(ski_model_version),
+                        reasoning=reasoning,
+                        track=track,
+                        envelope_hash=recomputed_envelope_hash,
+                        transcript_hash=evidence_hash(transcript_text),
+                        transcript_signature=transcript_signature,
+                        signing_key_id=signing_key_id,
+                        verifier_status=verifier_status,
                     )
+                    is_v4 = hashlib.sha256(v4_payload).hexdigest() == stored_hash
+                except CanonicalizationError:
+                    pass  # stored evidence has no canonical form: not a valid v4 entry
+
+                if is_v4:
+                    v4_seen = True
+                    entry_hash_verified += 1
+                    if stored_envelope_hash != recomputed_envelope_hash:
+                        # The payload carries the digest of the stored JSON, not
+                        # this column, so a rewritten column alone shows up here.
+                        issues.append(
+                            IntegrityIssue(
+                                issue_type="EVIDENCE_HASH_MISMATCH",
+                                sequence_number=seq,
+                                description=(
+                                    f"Stored envelope_hash at sequence {seq} does not match the "
+                                    "digest of the stored envelope_json."
+                                ),
+                                severity="CRITICAL",
+                                suggested_action="Treat as a confirmed integrity incident.",
+                            )
+                        )
+                else:
+                    payload = canonical_entry_payload(
+                        sequence_number=int(seq),
+                        previous_hash=str(stored_prev),
+                        timestamp_iso=timestamp_iso,
+                        verdict=str(verdict),
+                        telemetry_id=str(tid),
+                        telemetry_hash=str(thash),
+                        rule_id=rule_id,
+                        kg_version=kg_version,
+                        ski_model_version=str(ski_model_version),
+                        reasoning=reasoning,
+                        track=track,
+                    )
+                    recomputed = hashlib.sha256(payload).hexdigest()
+                    if recomputed != stored_hash:
+                        issues.append(
+                            IntegrityIssue(
+                                issue_type="ENTRY_HASH_MISMATCH",
+                                sequence_number=seq,
+                                description=(
+                                    f"Recomputed entry hash does not match stored hash at "
+                                    f"sequence {seq} (stored={stored_hash[:12]}…, "
+                                    f"recomputed={recomputed[:12]}…). Entry content has been tampered with."
+                                ),
+                                severity="CRITICAL",
+                                suggested_action="Treat as a confirmed integrity incident; do not use this ledger for regulatory reporting.",
+                            )
+                        )
+                    elif v4_seen:
+                        # Every writer since ledger v4 commits to the evidence;
+                        # a v3-format entry after a v4 one did not.
+                        issues.append(
+                            IntegrityIssue(
+                                issue_type="FORMAT_DOWNGRADE",
+                                sequence_number=seq,
+                                description=(
+                                    f"Entry {seq} uses the v3 entry format after a ledger-v4 entry, "
+                                    "so its envelope and transcript are not covered by the chain."
+                                ),
+                                severity="CRITICAL",
+                                suggested_action="Find the writer that produced it; only a pre-v4 runtime writes this format.",
+                            )
+                        )
+                    else:
+                        entry_hash_verified += 1
+                        if envelope_text is not None:
+                            unchained_evidence += 1
 
                 # 4. Timestamp ordering
                 if prev_timestamp is not None and timestamp < prev_timestamp:
@@ -194,6 +279,12 @@ class Ledger:
 
                 prev_hash = stored_hash
                 prev_timestamp = timestamp
+
+            if unchained_evidence:
+                warnings.append(
+                    f"{unchained_evidence} entr{'y' if unchained_evidence == 1 else 'ies'} predate ledger v4: "
+                    "their stored envelope and transcript are not covered by the hash chain."
+                )
 
             # Verdict distribution
             verdict_rows = session.execute(

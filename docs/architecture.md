@@ -225,9 +225,14 @@ Append-only Postgres table. Each v3 row carries the full provenance:
 - `verifier_status`, `knowledge_graph_version`, `schema_version`,
   `recorded_at`.
 
-UPDATE / DELETE / TRUNCATE are blocked by triggers. The canonical
-serialization is documented in `tools/audit-ledger/src/audit_ledger/canonical.py`
-so any third party can re-verify.
+UPDATE / DELETE / TRUNCATE are blocked by triggers. Since ledger v4 the
+`entry_hash` also commits to the digests of the stored envelope and
+transcript, so `audit-ledger verify` detects an edit to the evidence, not
+only to the verdict line. The v4 payload is documented in
+`tools/ski-schemas/src/ski_schemas/ledger.py` (with vectors in
+`spec/test-vectors/ledger/`), and the earlier format in
+`tools/audit-ledger/src/audit_ledger/canonical.py`, so any third party can
+re-verify.
 
 ## Conformance levels
 
