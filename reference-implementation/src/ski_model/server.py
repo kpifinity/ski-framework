@@ -22,11 +22,13 @@ enforcement is preserved from v2.1 (see docs/CONCURRENCY.md).
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import os
 import secrets
 import sys
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Final, List, Optional
@@ -50,7 +52,7 @@ except ImportError:  # pragma: no cover
 from ski_schemas.canonical import CanonicalizationError, canonicalize, sha256_canonical
 from ski_schemas.measurement import MeasurementRecord
 
-from . import metrics
+from . import metrics, sovereignty
 from .kg_loader import KGTrustPolicy, KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
 from .ledger_migrations import ensure_v3_ledger_schema
@@ -68,6 +70,7 @@ from .v3 import (
 from .v3 import (
     build_backend as build_v3_backend,
 )
+from .v3.backends import resolve_backend_name
 from .v3.signing import TranscriptKeyError, transcript_key_path
 from .v3.verifier import measurement_input_errors
 
@@ -111,6 +114,11 @@ class _State:
     kg_version_hash: str = "sha256:" + "0" * 64
     transcript_signer: Optional[TranscriptSigner] = None
     agreement_monitor: Optional[AgreementMonitor] = None
+
+    # Spec §6: the startup report and the evaluation-path egress guard.
+    sovereignty_mode: str = sovereignty.STRICT
+    sovereignty_checks: tuple[sovereignty.Check, ...] = ()
+    egress_guard: Optional[sovereignty.EgressGuard] = None
 
 
 state = _State()
@@ -361,6 +369,29 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # SKI_KG_TRUST_ANCHORS bundle refuses to start; it never degrades.
     state.kg_trust_policy = KGTrustPolicy.from_env()
     logger.info("KG trust policy: %s", state.kg_trust_policy.describe())
+
+    # Spec §6.2: decide the configuration-only requirements before the model
+    # backend or the ledger is contacted, so strict mode never calls out to
+    # a destination it is about to reject.
+    state.sovereignty_mode = sovereignty.resolve_mode(os.environ)
+    config_checks = sovereignty.config_checks(
+        backend=resolve_backend_name(),
+        env=os.environ,
+        trust_anchor_count=len(state.kg_trust_policy.anchors),
+        unanchored=state.kg_trust_policy.allow_unanchored,
+    )
+    if state.sovereignty_mode == sovereignty.STRICT and any(c.ok is False for c in config_checks):
+        sovereignty.enforce(
+            state.sovereignty_mode,
+            [
+                *config_checks,
+                sovereignty.not_evaluated(
+                    "model_weight_registered",
+                    "§6.2(2) the model weight hash is in the operator's weight registry",
+                    "the backend is not contacted while another requirement is unmet",
+                ),
+            ],
+        )
     if _kg_hot_load_enabled():
         _kg_admin_api_key()  # refuse to start with an unusable admin key
         logger.warning(
@@ -403,6 +434,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         backend_prov["model_weight_hash"],
         backend_prov["model_hash_verified"],
         backend_prov["model_hash_source"],
+    )
+    state.sovereignty_checks = (
+        *config_checks,
+        sovereignty.model_hash_check(backend_prov["model_hash_source"]),
+    )
+    sovereignty.enforce(state.sovereignty_mode, list(state.sovereignty_checks))
+    state.egress_guard = sovereignty.install_egress_guard(
+        sovereignty.EgressGuard(state.sovereignty_mode, sovereignty.local_suffixes(os.environ))
     )
 
     # The ledger comes up before the transcript signer: a missing signing key
@@ -574,7 +613,26 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     / ``UNVERIFIABLE``); the risk-tier policy then decides whether a
     disagreeing result may still pass through or must downgrade to
     ``DISCRETIONARY``.
+
+    Evaluation runs under the spec §6.3 egress guard: in strict sovereignty
+    mode one network call leaving the deployment stops all further
+    evaluation (``503``) until the runtime is restarted.
     """
+    guard = state.egress_guard
+    if guard is None:
+        return await _evaluate(measurement)
+    if guard.tripped:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"Evaluation refused: {guard.attempts} egress attempt(s) outside the deployment "
+            "(SKI_SOVEREIGNTY=strict, spec §6.3). Investigate ski_egress_attempts_total and restart.",
+        )
+    with guard.evaluation():
+        return await _evaluate(measurement)
+
+
+async def _evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
+    """The evaluation itself; :func:`evaluate` runs it inside the egress guard."""
     if state.knowledge_graph is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No KG loaded.")
     if state.evaluator is None or state.ledger is None:
@@ -723,6 +781,54 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     metrics.VERDICTS.labels(verdict=getattr(envelope.verdict, "value", str(envelope.verdict))).inc()
     metrics.EVALUATION_SECONDS.observe((datetime.now(timezone.utc) - _eval_started).total_seconds())
     return envelope
+
+
+@app.get("/api/sovereignty")
+async def sovereignty_attestation() -> Dict[str, Any]:
+    """Spec §6.4: a signed statement of what this runtime is running and under which mode.
+
+    ``signature.value_hex`` is the runtime's Ed25519 transcript key over the
+    §7.3 canonical JSON of ``document``; ``signature.signing_key_id`` names
+    the key, the same one that signs LLM transcripts.
+    """
+    if state.transcript_signer is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Signer not initialised.")
+    backend_prov = _backend_provenance(state.llm_backend)
+    guard = state.egress_guard
+    document: Dict[str, Any] = {
+        "sovereignty_mode": state.sovereignty_mode,
+        "checks": [asdict(c) for c in state.sovereignty_checks],
+        "model_weight_hash": backend_prov["model_weight_hash"],
+        "model_hash_source": backend_prov["model_hash_source"],
+        "kg_version_hash": state.kg_version_hash,
+        **{k: v for k, v in _trust_provenance().items() if k in ("kg_signer_key_id", "kg_trust")},
+        "codebase_commit_hash": os.getenv("SKI_BUILD_COMMIT") or "unknown",
+        "build_provenance_attestation": _build_provenance(),
+        "egress_attempts_total": guard.attempts if guard is not None else 0,
+        "runtime_version": _VERSION,
+        "signed_at": _now_iso(),
+    }
+    return {
+        "document": document,
+        "signature": {
+            "algorithm": "ed25519",
+            "signing_key_id": state.transcript_signer.key_id,
+            "public_key_pem": state.transcript_signer.public_key_pem,
+            "value_hex": state.transcript_signer.sign(canonicalize(document)),
+        },
+    }
+
+
+def _build_provenance() -> Optional[Any]:
+    """The SLSA provenance at ``$SKI_BUILD_PROVENANCE`` (JSON), or None when the build supplied none."""
+    path = os.getenv("SKI_BUILD_PROVENANCE")
+    if not path:
+        return None
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("SKI_BUILD_PROVENANCE=%s is unreadable (%r); attesting without it.", path, exc)
+        return None
 
 
 @app.get("/api/verdicts", dependencies=[Depends(require_api_key)])

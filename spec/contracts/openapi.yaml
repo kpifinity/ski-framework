@@ -372,7 +372,7 @@ components:
       title: VerifierStatus
       type: string
 info:
-  description: Public contract for the SKI Model API, pruned to the three public paths. Generated from
+  description: Public contract for the SKI Model API, pruned to the four public paths. Generated from
     the FastAPI app by spec/contracts/generate_openapi.py; do not edit by hand.
   title: SKI Model Inference Engine
   version: 3.2.0
@@ -397,7 +397,14 @@ paths:
 
         disagreeing result may still pass through or must downgrade to
 
-        ``DISCRETIONARY``.'
+        ``DISCRETIONARY``.
+
+
+        Evaluation runs under the spec §6.3 egress guard: in strict sovereignty
+
+        mode one network call leaving the deployment stops all further
+
+        evaluation (``503``) until the runtime is restarted.'
       operationId: evaluate_api_evaluate_post
       parameters:
       - in: header
@@ -485,3 +492,24 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Load Kg
+  /api/sovereignty:
+    get:
+      description: 'Spec §6.4: a signed statement of what this runtime is running and under which mode.
+
+
+        ``signature.value_hex`` is the runtime''s Ed25519 transcript key over the
+
+        §7.3 canonical JSON of ``document``; ``signature.signing_key_id`` names
+
+        the key, the same one that signs LLM transcripts.'
+      operationId: sovereignty_attestation_api_sovereignty_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Sovereignty Attestation Api Sovereignty Get
+                type: object
+          description: Successful Response
+      summary: Sovereignty Attestation

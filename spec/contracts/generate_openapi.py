@@ -2,10 +2,10 @@
 """Generate the public OpenAPI 3.1 contract for the SKI Model API.
 
 Derived from FastAPI's ``app.openapi()`` so it cannot drift from the live
-server, then pruned to the three public paths and the components they
+server, then pruned to the four public paths and the components they
 reference. Run this to (re)write ``spec/contracts/openapi.yaml``.
 
-Public paths: ``POST /api/evaluate``, ``GET /api/health``,
+Public paths: ``POST /api/evaluate``, ``GET /api/health``, ``GET /api/sovereignty``,
 ``POST /api/kg/load``. The operational endpoints (``/api/verdicts``,
 ``/api/canary``, ``/metrics``) are intentionally excluded from the public
 contract.
@@ -49,7 +49,7 @@ for _src in _TOOL_SRCS:
 os.environ.setdefault("SKI_ALLOW_FAKE_LLM", "true")
 os.environ.setdefault("SKI_ALLOW_KEY_GENERATION", "true")
 
-PUBLIC_PATHS = ("/api/evaluate", "/api/health", "/api/kg/load")
+PUBLIC_PATHS = ("/api/evaluate", "/api/health", "/api/kg/load", "/api/sovereignty")
 
 OPENAPI_PATH = Path(__file__).resolve().parent / "openapi.yaml"
 
@@ -103,7 +103,7 @@ def build_openapi() -> dict[str, Any]:
             "title": full.get("info", {}).get("title", "SKI Model Inference Engine"),
             "version": full.get("info", {}).get("version", "unknown"),
             "description": (
-                "Public contract for the SKI Model API, pruned to the three public paths. "
+                "Public contract for the SKI Model API, pruned to the four public paths. "
                 "Generated from the FastAPI app by spec/contracts/generate_openapi.py; do not edit by hand."
             ),
         },

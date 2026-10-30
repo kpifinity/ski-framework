@@ -63,7 +63,7 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: pip install -e tools/ski-schemas -e tools/audit-ledger -e tools/ski-model-deploy
       - name: Build the runtime image
-        run: docker build -q -t ski-model:ci -f reference-implementation/Dockerfile.ski-model .
+        run: docker build -q -t ski-model:ci --build-arg SKI_BUILD_COMMIT=${{ github.sha }} -f reference-implementation/Dockerfile.ski-model .
       - name: No cloud-LLM SDK installed in the runtime image (sovereignty)
         run: |
           docker run --rm --network=none --entrypoint python ski-model:ci -c \
@@ -134,6 +134,7 @@ jobs:
           grep -q "NetworkPolicy" /tmp/render-default.yaml
           grep -q "postgresql://ski_ledger_writer:" /tmp/render-default.yaml
           grep -q "04-ledger-writer-login.sh" /tmp/render-default.yaml
+          grep -A1 "name: SKI_SOVEREIGNTY$" /tmp/render-default.yaml | grep -q '"strict"'
       - name: Render — air-gap + vllm external
         run: |
           helm template ski deploy/helm/ski \
