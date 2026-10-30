@@ -264,9 +264,28 @@ def _load_kg() -> KnowledgeGraph:
     return KnowledgeGraph.from_dict(raw, require_signature=False)
 
 
+_PREDICATE_SYMBOLS = {
+    "must_not_exceed": "≤",
+    "must_be_at_least": "≥",
+    "must_be_below": "<",
+    "must_be_above": ">",
+    "must_equal": "=",
+}
+
+
+def _limit_text(ob: dict[str, Any]) -> str:
+    """The obligation's limit as the KG states it, e.g. ``≤ 100 ppm`` or ``6.0 - 8.5 pH``."""
+    value, unit = ob.get("value"), ob.get("unit")
+    suffix = f" {unit}" if unit else ""
+    if isinstance(value, list) and len(value) == 2:
+        return f"{value[0]} - {value[1]}{suffix}"
+    symbol = _PREDICATE_SYMBOLS.get(str(ob.get("predicate")), "")
+    return f"{symbol} {value}{suffix}".strip() if value is not None else ""
+
+
 def _show_kg_overview(kg: KnowledgeGraph) -> None:
     snapshot = kg.scope_to(jurisdiction=JURISDICTION, as_of=AS_OF)
-    obligations = snapshot.get("obligations", {})
+    obligations: list[dict[str, Any]] = snapshot.get("obligations", [])
 
     CONSOLE.print(Rule("[bold]The Knowledge Graph[/bold]", style="dim"))
     CONSOLE.print()
@@ -287,18 +306,18 @@ def _show_kg_overview(kg: KnowledgeGraph) -> None:
     t.add_column("Limit / Range", justify="right")
 
     rule_descriptions = {
-        "energy.so2.cap": ("SO₂ emissions (sulfur dioxide)", "≤ 100 ppm"),
-        "energy.nox.cap": ("NOₓ emissions (nitrogen oxides)", "≤ 75 ppm"),
-        "energy.ph.range": ("Wastewater pH (acidity/alkalinity)", "6.0 - 8.5"),
-        "energy.temp.range": ("Effluent temperature", "5 - 40 °C"),
-        "energy.methane.cap": ("Methane emissions", "≤ 12 kg/h"),
-        "energy.turbidity.cap": ("Water turbidity", "≤ 1.0 NTU"),
-        "energy.flow.min": ("Cooling water flow rate", "≥ 10 m³/h"),
+        "energy.so2.cap": "SO₂ emissions (sulfur dioxide)",
+        "energy.nox.cap": "NOₓ emissions (nitrogen oxides)",
+        "energy.ph.range": "Wastewater pH (acidity/alkalinity)",
+        "energy.temp.range": "Effluent temperature",
+        "energy.methane.cap": "Methane emissions",
+        "energy.turbidity.cap": "Water turbidity",
+        "energy.flow.min": "Cooling water flow rate",
     }
 
-    for ob_id in obligations:
-        desc, limit = rule_descriptions.get(ob_id, (ob_id, ""))
-        t.add_row(ob_id, desc, limit)
+    for ob in obligations:
+        ob_id = str(ob.get("id", ""))
+        t.add_row(ob_id, rule_descriptions.get(ob_id, str(ob.get("name") or ob_id)), _limit_text(ob))
 
     if not obligations:
         CONSOLE.print("  [dim](No obligations in scope for this jurisdiction / date.)[/dim]")
