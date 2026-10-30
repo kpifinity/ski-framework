@@ -14,6 +14,7 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+from ski_schemas.ledger import entry_payload_v4, evidence_hash
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
@@ -189,14 +190,16 @@ class LedgerClient:
         ski_model_version: str,
         track: str = "v3-evaluator",
     ) -> None:
-        """Append a v3 ledger entry with envelope + signed transcript.
+        """Append a ledger-v4 entry with envelope + signed transcript.
 
-        The envelope JSON, the canonical envelope hash, and the (optional)
+        The envelope JSON, its canonical hash, and the (optional)
         transcript JSON / signature / key_id are all persisted so an
-        auditor can independently replay the verdict per spec §6.
-        The entry_hash chain continues; both the verdict-line columns and
-        the new envelope_hash column are populated so the existing v2 hash
-        chain stays unbroken.
+        auditor can independently replay the verdict per spec §6. The
+        entry hash is the v4 payload (:mod:`ski_schemas.ledger`), which
+        commits to the envelope and transcript digests as well as the
+        verdict-line columns, so editing the stored evidence breaks the
+        chain. Earlier (v3-format) entries keep their hashes; the chain
+        continues across the format change.
         """
         assert self._session_factory is not None
 
@@ -207,13 +210,16 @@ class LedgerClient:
         verdict = _enum_value(envelope.verdict)
         verifier_status = _enum_value(envelope.verifier_result.status)
 
-        envelope_json = envelope.model_dump(mode="json")
-        envelope_canonical = json.dumps(
-            envelope_json, sort_keys=True, separators=(",", ":"), ensure_ascii=False
-        ).encode("utf-8")
-        envelope_hash = "sha256:" + hashlib.sha256(envelope_canonical).hexdigest()
+        # Hash the evidence from the exact JSON text stored, as the verifier does.
+        envelope_text = json.dumps(envelope.model_dump(mode="json"), ensure_ascii=False)
+        envelope_hash = evidence_hash(envelope_text)
 
-        transcript_json = transcript.model_dump(mode="json") if transcript is not None else None
+        transcript_text = (
+            json.dumps(transcript.model_dump(mode="json"), ensure_ascii=False)
+            if transcript is not None
+            else None
+        )
+        transcript_hash = evidence_hash(transcript_text)
         transcript_signature = transcript.signature_hex if transcript is not None else None
         signing_key_id = transcript.signing_key_id if transcript is not None else None
 
@@ -234,7 +240,7 @@ class LedgerClient:
                 previous_hash = str(row[1])
 
             timestamp_iso = datetime.now(timezone.utc).isoformat()
-            payload = canonical_entry_payload(
+            payload = entry_payload_v4(
                 sequence_number=sequence_number,
                 previous_hash=previous_hash,
                 timestamp_iso=timestamp_iso,
@@ -246,6 +252,11 @@ class LedgerClient:
                 ski_model_version=ski_model_version,
                 reasoning=envelope.reasoning,
                 track=track,
+                envelope_hash=envelope_hash,
+                transcript_hash=transcript_hash,
+                transcript_signature=transcript_signature,
+                signing_key_id=signing_key_id,
+                verifier_status=verifier_status,
             )
             entry_hash = hashlib.sha256(payload).hexdigest()
 
@@ -284,13 +295,9 @@ class LedgerClient:
                     "ski_model_version": ski_model_version,
                     "reasoning": envelope.reasoning,
                     "track": track,
-                    "envelope_json": json.dumps(envelope_json, ensure_ascii=False),
+                    "envelope_json": envelope_text,
                     "envelope_hash": envelope_hash,
-                    "transcript_json": (
-                        json.dumps(transcript_json, ensure_ascii=False)
-                        if transcript_json is not None
-                        else None
-                    ),
+                    "transcript_json": transcript_text,
                     "transcript_signature": transcript_signature,
                     "signing_key_id": signing_key_id,
                     "verifier_status": verifier_status,

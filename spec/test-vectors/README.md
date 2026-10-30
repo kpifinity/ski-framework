@@ -69,11 +69,21 @@ tier — plus the controls that an honest CLEAR survives. The reference
 runtime enforces every case in
 `conformance/adversarial/test_fail_closed_verifier.py`.
 
+### `ledger/` — ledger-v4 entry hashes
+
+Each file gives one ledger entry's stored columns, with the envelope and
+transcript as the JSON text the database returns (JSONB respells numbers:
+`1e+300` comes back as a 301-digit integer), and pins the evidence digests,
+the canonical v4 payload and the `entry_hash` a conforming verifier must
+derive from them. The payload is specified in
+`tools/ski-schemas/src/ski_schemas/ledger.py` (spec §7.1).
+
 ## Regenerating
 
 - `python spec/contracts/generate_schemas.py` — JSON Schemas from the models.
 - `python spec/contracts/generate_openapi.py` — OpenAPI from the FastAPI app.
 - `python spec/test-vectors/canonical/generate.py` — canonical vectors.
 - `python spec/test-vectors/envelopes/generate.py` — envelope examples.
+- `python spec/test-vectors/ledger/generate.py` — ledger-v4 entry hashes.
 - `python spec/contracts/check_drift.py` — fails if any committed schema or
   vector no longer matches the code (wired into CI).

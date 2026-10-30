@@ -23,10 +23,12 @@ suite's live-Postgres tests, which are skipped without a DSN.
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Sequence
 
 import pytest
+from ski_schemas.ledger import entry_payload_v4, evidence_hash
 
 from ski_model import metrics
 from ski_model.ledger_client import LedgerClient, canonical_entry_payload
@@ -322,6 +324,29 @@ class TestAppend:
 # ---- append_v3() — envelope + transcript ledger entries ------------------------
 
 
+def _rederive_entry_hash(params: Dict[str, Any]) -> str:
+    """Re-derive a ledger-v4 entry hash from an INSERT's parameters, as an auditor does from the row."""
+    payload = entry_payload_v4(
+        sequence_number=params["seq"],
+        previous_hash=params["prev"],
+        timestamp_iso=params["ts"],
+        verdict=params["verdict"],
+        telemetry_id=params["tid"],
+        telemetry_hash=params["thash"],
+        rule_id=params["rule_id"],
+        kg_version=params["kg_version"],
+        ski_model_version=params["ski_model_version"],
+        reasoning=params["reasoning"],
+        track=params["track"],
+        envelope_hash=evidence_hash(params["envelope_json"]),
+        transcript_hash=evidence_hash(params["transcript_json"]),
+        transcript_signature=params["transcript_signature"],
+        signing_key_id=params["signing_key_id"],
+        verifier_status=params["verifier_status"],
+    )
+    return hashlib.sha256(payload).hexdigest()
+
+
 class TestAppendV3:
     @pytest.mark.asyncio
     async def test_appends_envelope_with_transcript(self) -> None:
@@ -437,20 +462,32 @@ class TestAppendV3:
 
         # The entry hash must be computed over the same bare value that is
         # stored, so an auditor re-deriving it from the row gets a match.
-        expected_payload = canonical_entry_payload(
-            sequence_number=1,
-            previous_hash="0" * 64,
-            timestamp_iso=insert_params["ts"],
-            verdict="DISCRETIONARY",
+        assert insert_params["hash"] == _rederive_entry_hash(insert_params)
+
+    @pytest.mark.asyncio
+    async def test_entry_hash_commits_to_the_stored_evidence(self) -> None:
+        """Ledger v4: the entry hash covers the stored envelope and transcript."""
+        session = _FakeSession([_FakeResult(first_row=None), _FakeResult()])
+        client = _client_with_session(session)
+        await client.append_v3(
+            envelope=_envelope(),
+            transcript=_transcript(),
             telemetry_id="t1",
             telemetry_hash="h1",
             rule_id="ob.x",
             kg_version="v1",
             ski_model_version="3.1.0",
-            reasoning=downgraded.reasoning,
-            track="v3-evaluator",
         )
-        assert insert_params["hash"] == hashlib.sha256(expected_payload).hexdigest()
+        params = session.executed[1][1]
+        assert params is not None
+        assert params["hash"] == _rederive_entry_hash(params)
+        assert params["envelope_hash"] == evidence_hash(params["envelope_json"])
+
+        # Any edit to the stored evidence changes the hash an auditor derives.
+        for column in ("envelope_json", "transcript_json"):
+            stored = json.loads(params[column])
+            stored["tampered"] = True
+            assert _rederive_entry_hash({**params, column: json.dumps(stored)}) != params["hash"], column
 
     @pytest.mark.asyncio
     async def test_unvalidated_enum_members_are_stored_as_values(self) -> None:

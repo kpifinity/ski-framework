@@ -51,6 +51,24 @@ referenced from each release entry.
   every entry. The runtime now computes `telemetry_hash` once and writes that
   value to both.
 
+### Security
+- **Ledger v4: the hash chain covers the evidence.** A ledger entry's
+  `entry_hash` covered only the verdict line, so the stored envelope (KG
+  citations, assertions, verifier result, provenance) and the signed
+  transcript could be edited by anyone with SQL access without
+  `audit-ledger verify` noticing. New entries hash a format-4 payload
+  (`ski_schemas.ledger`) that adds the §7.3 digests of the stored envelope
+  and transcript JSON, the transcript signature and key id, and the
+  verifier status. `verify_integrity` re-derives those digests from the
+  stored JSON. It reports `ENTRY_HASH_MISMATCH` for an edited envelope or
+  transcript, `EVIDENCE_HASH_MISMATCH` for a rewritten `envelope_hash`
+  column, and `FORMAT_DOWNGRADE` for an old-format entry written after a
+  v4 one. Existing entries keep their hashes and still verify; the chain
+  continues across the change, and no schema migration is needed.
+  `envelope_hash` on new entries is the §7.3 digest. `audit-ledger` now
+  depends on `ski-schemas`. Vectors: `spec/test-vectors/ledger/`, checked
+  by the contracts drift job.
+
 ## [3.2.0] -- 2026-10-29
 
 Trust-and-safety hardening release. It closes the gap the internal

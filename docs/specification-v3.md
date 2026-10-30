@@ -661,6 +661,18 @@ with at minimum the following columns:
 The implementation MAY add additional columns; the columns above are
 the minimum a conforming implementation MUST emit.
 
+**Entry hash (ledger format 4).** `entry_hash` MUST commit to the stored
+evidence as well as the verdict line, so that re-computing it from the
+recovered envelope ([§8.1](#81-provenance-re-verification-procedure),
+step 6) detects an edited envelope or transcript. The reference
+implementation's format 4 hashes the [§7.3](#73-prompt-template-and-kg-canonical-hashing)
+canonical form of an object holding `"ledger_format": 4`, the verdict-line
+columns, and the digests of the stored envelope and transcript JSON; the
+field list is in `tools/ski-schemas/src/ski_schemas/ledger.py` and
+`spec/test-vectors/ledger/` pins worked examples. Entries written before
+format 4 hash the verdict line only; a verifier MUST accept them and MUST
+flag a pre-format-4 entry that follows a format-4 entry.
+
 ### 7.2 Append-only enforcement
 
 The implementation MUST enforce append-only semantics at the storage
