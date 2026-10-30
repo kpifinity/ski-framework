@@ -1,0 +1,21 @@
+{
+  "name": "rfc8785_section_3_2_3",
+  "description": "The full worked example from RFC 8785 Section 3.2.3; 'canonical' is the RFC's published output.json.",
+  "input": {
+    "numbers": [
+      333333333.3333333,
+      1e+30,
+      4.5,
+      0.002,
+      1e-27
+    ],
+    "string": "€$\u000f\nA'B\"\\\\\"/",
+    "literals": [
+      null,
+      true,
+      false
+    ]
+  },
+  "canonical": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}",
+  "sha256": "sha256:2d5e01a318d0f0879ab568c4be289c8b1f64ef8921a53c6277d5e069978baacb"
+}

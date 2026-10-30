@@ -139,6 +139,7 @@ testpaths = [
     "tools/kg-validator/tests",
     "tools/ski-model-deploy/tests",
     "tools/audit-ledger/tests",
+    "tools/ski-schemas/tests",
     "reference-implementation/src/symbolic_evaluator/tests",
     "reference-implementation/src/telemetry_buffer/tests",
     "reference-implementation/src/ski_model/v3/tests",

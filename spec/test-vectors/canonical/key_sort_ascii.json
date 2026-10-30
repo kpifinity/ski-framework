@@ -1,0 +1,13 @@
+{
+  "name": "key_sort_ascii",
+  "description": "Keys sorted by UTF-16 code unit: digits before uppercase before lowercase.",
+  "input": {
+    "b": 2,
+    "a": 1,
+    "A": 3,
+    "10": 4,
+    "1": 5
+  },
+  "canonical": "{\"1\":5,\"10\":4,\"A\":3,\"a\":1,\"b\":2}",
+  "sha256": "sha256:ebee34000486cd4584d795fefeedacb4f31c2e9b6939dc50e61003213fcf452e"
+}

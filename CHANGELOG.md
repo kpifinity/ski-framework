@@ -9,6 +9,25 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Added
+- **Language-neutral contracts (Phase 1).** The wire protocol is now published
+  independently of the Python implementation so a second implementation can be
+  built and certified against it:
+  - an RFC 8785 (JCS) canonicalizer with spec §7.3 NFC normalization
+    (`ski_schemas.canonical`), additive — no existing hash output changed;
+  - JSON Schema (draft 2020-12) for `MeasurementRecord`, `V3VerdictEnvelope`,
+    `ModelProvenance` and the flat KG obligation, generated from the models;
+  - an OpenAPI 3.1 description of `/api/evaluate`, `/api/health`, `/api/kg/load`,
+    generated from the app;
+  - conformance **test vectors** under `spec/test-vectors/` (canonicalization
+    known-answer tests, a signed-envelope example, and a verifier truth table
+    covering the fail-closed cases) that any implementation must reproduce;
+  - a CI **drift check** that fails if the published schemas or OpenAPI fall out
+    of sync with the models, and validates the vectors.
+  The ~15 existing ad-hoc canonical-JSON hashing sites are deliberately left
+  unchanged in this slice; switching them onto the canonicalizer changes stored
+  hashes and lands with the ledger-v4 / spec-3.1 (RFC 0004) work.
+
 ## [3.2.0] -- 2026-10-29
 
 Trust-and-safety hardening release. It closes the gap the internal

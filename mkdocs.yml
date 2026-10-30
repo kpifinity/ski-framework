@@ -101,6 +101,7 @@ nav:
       - replay.md
       - migrations.md
   - Conformance: conformance.md
+  - Contracts: contracts.md
   - SKI Evals: evals.md
   - Benchmarks: benchmarks.md
   - Crosswalks:

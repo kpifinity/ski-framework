@@ -1,0 +1,17 @@
+{
+  "name": "nested_measurement",
+  "description": "A realistic nested object (unsorted keys, mixed types) exercising recursion.",
+  "input": {
+    "timestamp": "2026-05-01T12:00:00Z",
+    "measurement": {
+      "so2_ppm": 98.6,
+      "nox_ppm": 12,
+      "online": true,
+      "notes": null
+    },
+    "measurement_id": "m-42",
+    "subject": "stack-7"
+  },
+  "canonical": "{\"measurement\":{\"notes\":null,\"nox_ppm\":12,\"online\":true,\"so2_ppm\":98.6},\"measurement_id\":\"m-42\",\"subject\":\"stack-7\",\"timestamp\":\"2026-05-01T12:00:00Z\"}",
+  "sha256": "sha256:8ede6bb17e5f038a320a285b7280b6450e118b26c5e5a5f6d9cabb0fdc716e4f"
+}

@@ -1,0 +1,11 @@
+{
+  "name": "literals",
+  "description": "null/true/false as member values; keys already sorted.",
+  "input": {
+    "a": null,
+    "b": true,
+    "c": false
+  },
+  "canonical": "{\"a\":null,\"b\":true,\"c\":false}",
+  "sha256": "sha256:17073ac6186d8c60c0c0da712ce30cdb52ed5a9155f616983da39a9785dce715"
+}

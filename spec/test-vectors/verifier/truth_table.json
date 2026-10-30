@@ -1,0 +1,155 @@
+{
+  "description": "Verifier/evaluator wire-contract truth table. Each case states an input (the scoped KG obligations, the measurement, and the language model's scripted output) and the externally observable outcome a conforming SKI implementation MUST produce: either an HTTP status (for inputs rejected at the API boundary) or the verdict, the verifier_result.status, and any required verifier_result.divergences substrings. These describe the WIRE contract (what /api/evaluate returns), not any implementation's internals. They encode finding C1 (fail-open verifier) from the 2026-10-09 gold-standard review; the reference runtime enforces every case in conformance/adversarial/test_fail_closed_verifier.py.",
+  "verdict_enum": ["CLEAR", "FLAG", "NULL_UNMAPPED", "NULL_STALE", "DISCRETIONARY"],
+  "verifier_status_enum": ["AGREED", "LLM_CONTRADICTION", "NEURO_SYMBOLIC_DIVERGENCE", "UNVERIFIABLE"],
+  "notes": [
+    "A verdict is 'never CLEAR' means the API MUST NOT return verdict == 'CLEAR' for that input at ANY risk tier.",
+    "SCHEMA_VIOLATION and OMITTED_OBLIGATION are verifier divergence kinds, surfaced as substrings in verifier_result.divergences; they are not verifier_result.status values.",
+    "A SCHEMA_VIOLATION (assertion predicate outside the closed, verifier-checkable set) routes the verdict to DISCRETIONARY at every tier.",
+    "Non-finite and non-numeric readings for numeric obligations are rejected at the API boundary with HTTP 422 before any verdict is formed."
+  ],
+  "cases": [
+    {
+      "id": "C1a-omitted-breach-never-clear",
+      "finding": "C1(a) omission",
+      "scoped_obligations": [
+        {"id": "so2.cap", "metric": "so2_ppm", "predicate": "must_not_exceed", "value": 100},
+        {"id": "nox.cap", "metric": "nox_ppm", "predicate": "must_not_exceed", "value": 50}
+      ],
+      "measurement": {"so2_ppm": 150, "nox_ppm": 10},
+      "llm_output": {
+        "verdict": "CLEAR",
+        "kg_citations": [{"node_id": "nox.cap", "version": "x", "role": "obligation"}],
+        "formalizable_assertions": [
+          {"predicate": "must_not_exceed", "metric": "nox_ppm", "value": 50, "observed": 10, "satisfied": true, "obligation_id": "nox.cap"}
+        ]
+      },
+      "expected": {
+        "verdict_not": "CLEAR",
+        "verifier_status": "LLM_CONTRADICTION",
+        "divergences_contain_all": ["OMITTED_OBLIGATION", "so2.cap"]
+      },
+      "rationale": "The model asserted only the satisfied nox.cap and omitted the breached so2.cap. The verifier grounds every mapped obligation against the measurement, detects the omitted breach, and refuses CLEAR."
+    },
+    {
+      "id": "C1a-omitted-satisfied-does-not-block-clear",
+      "finding": "C1(a) control: honest CLEAR survives",
+      "scoped_obligations": [
+        {"id": "so2.cap", "metric": "so2_ppm", "predicate": "must_not_exceed", "value": 100},
+        {"id": "nox.cap", "metric": "nox_ppm", "predicate": "must_not_exceed", "value": 50}
+      ],
+      "measurement": {"so2_ppm": 50, "nox_ppm": 10},
+      "llm_output": {
+        "verdict": "CLEAR",
+        "kg_citations": [{"node_id": "nox.cap", "version": "x", "role": "obligation"}],
+        "formalizable_assertions": [
+          {"predicate": "must_not_exceed", "metric": "nox_ppm", "value": 50, "observed": 10, "satisfied": true, "obligation_id": "nox.cap"}
+        ]
+      },
+      "expected": {
+        "verdict": "CLEAR",
+        "verifier_status": "AGREED"
+      },
+      "rationale": "Omitting a SATISFIED obligation is not a violation; the fail-closed verifier must not produce false positives on honest CLEARs."
+    },
+    {
+      "id": "C1b-masking-junk-predicate-hides-breach",
+      "finding": "C1(b) masking",
+      "scoped_obligations": [
+        {"id": "so2.cap", "metric": "so2_ppm", "predicate": "must_not_exceed", "value": 100}
+      ],
+      "measurement": {"so2_ppm": 150},
+      "llm_output": {
+        "verdict": "CLEAR",
+        "kg_citations": [{"node_id": "so2.cap", "version": "x", "role": "obligation"}],
+        "formalizable_assertions": [
+          {"predicate": "must_not_exceed", "metric": "so2_ppm", "value": 100, "observed": 150, "satisfied": true, "obligation_id": "so2.cap"},
+          {"predicate": "must_be_reasonable", "metric": "so2_ppm", "value": null, "observed": 150, "satisfied": true, "obligation_id": "so2.cap"}
+        ]
+      },
+      "expected": {
+        "verdict_not": "CLEAR",
+        "verifier_status": "LLM_CONTRADICTION",
+        "divergences_contain_any": ["SCHEMA_VIOLATION", "must_be_reasonable"]
+      },
+      "rationale": "A junk predicate ('must_be_reasonable') is a SCHEMA_VIOLATION and cannot mask the real breach (observed 150 > 100). LLM_CONTRADICTION wins over UNVERIFIABLE by precedence; the verdict is never CLEAR."
+    },
+    {
+      "id": "C1b-junk-predicate-alone-is-discretionary",
+      "finding": "C1(b) masking: schema violation routes to DISCRETIONARY",
+      "scoped_obligations": [
+        {"id": "so2.cap", "metric": "so2_ppm", "predicate": "must_not_exceed", "value": 100}
+      ],
+      "measurement": {"so2_ppm": 50},
+      "llm_output": {
+        "verdict": "CLEAR",
+        "kg_citations": [{"node_id": "so2.cap", "version": "x", "role": "obligation"}],
+        "formalizable_assertions": [
+          {"predicate": "must_not_exceed", "metric": "so2_ppm", "value": 100, "observed": 50, "satisfied": true, "obligation_id": "so2.cap"},
+          {"predicate": "must_be_reasonable", "metric": "so2_ppm", "value": null, "observed": 50, "satisfied": true, "obligation_id": "so2.cap"}
+        ]
+      },
+      "expected": {
+        "verdict": "DISCRETIONARY"
+      },
+      "rationale": "Even with the real obligation satisfied, an assertion carrying a predicate outside the closed verifier-checkable set is a SCHEMA_VIOLATION, which routes the verdict to DISCRETIONARY at every tier rather than CLEAR."
+    },
+    {
+      "id": "C1d-non-finite-reading-rejected",
+      "finding": "C1(d) -Infinity / Infinity / NaN / bool reading",
+      "scoped_obligations": [
+        {"id": "so2.cap", "metric": "so2_ppm", "predicate": "must_not_exceed", "value": 100}
+      ],
+      "measurement_raw_json": "{\"so2_ppm\": -Infinity}",
+      "llm_output": {
+        "verdict": "CLEAR",
+        "kg_citations": [{"node_id": "so2.cap", "version": "x", "role": "obligation"}],
+        "formalizable_assertions": [
+          {"predicate": "must_not_exceed", "metric": "so2_ppm", "value": 100, "observed": 0, "satisfied": true, "obligation_id": "so2.cap"}
+        ]
+      },
+      "expected": {
+        "http_status": 422
+      },
+      "rationale": "A -Infinity reading (which a permissive JSON parser accepts) for a numeric obligation is not a usable sample and is rejected at the API boundary with 422 before any verdict is formed. Same for +Infinity, NaN, and booleans."
+    },
+    {
+      "id": "C1-missing-tier-is-strictest",
+      "finding": "C1(c) default tier",
+      "scoped_obligations": [
+        {"id": "qualitative.rule", "metric": "narrative", "predicate": "discretionary", "value": null}
+      ],
+      "measurement": {"narrative": "operator asserts compliance"},
+      "llm_output": {
+        "verdict": "CLEAR",
+        "kg_citations": [{"node_id": "qualitative.rule", "version": "x", "role": "obligation"}],
+        "formalizable_assertions": []
+      },
+      "risk_tier": "missing-or-unknown",
+      "expected": {
+        "verdict": "DISCRETIONARY",
+        "verifier_status": "UNVERIFIABLE"
+      },
+      "rationale": "With no formalizable subset the verifier is UNVERIFIABLE. A missing or unrecognised risk tier resolves to tier-1 (strictest), at which an unverifiable CLEAR is downgraded to DISCRETIONARY."
+    },
+    {
+      "id": "C1-declared-lower-tier-honoured",
+      "finding": "C1(c) control: declared tier-2/3 accepts an unverifiable CLEAR",
+      "scoped_obligations": [
+        {"id": "qualitative.rule", "metric": "narrative", "predicate": "discretionary", "value": null, "risk_tier": "tier-3"}
+      ],
+      "measurement": {"narrative": "operator asserts compliance"},
+      "llm_output": {
+        "verdict": "CLEAR",
+        "kg_citations": [{"node_id": "qualitative.rule", "version": "x", "role": "obligation"}],
+        "formalizable_assertions": []
+      },
+      "risk_tier": "tier-3",
+      "expected": {
+        "verdict": "CLEAR",
+        "verifier_status": "UNVERIFIABLE"
+      },
+      "rationale": "At an explicitly declared low-criticality tier (tier-3) an unverifiable qualitative CLEAR is accepted. The governor only tightens when the tier is missing or unknown."
+    }
+  ]
+}

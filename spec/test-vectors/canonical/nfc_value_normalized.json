@@ -1,0 +1,9 @@
+{
+  "name": "nfc_value_normalized",
+  "description": "A string VALUE in NFC-decomposed form ('e' + U+0301) normalizes to the precomposed U+00E9.",
+  "input": {
+    "name": "é"
+  },
+  "canonical": "{\"name\":\"é\"}",
+  "sha256": "sha256:2f16b8477146a1b2ba7d6bb7cf7c9979c191cc2838a107dbf5f0d920b4cb3ba1"
+}

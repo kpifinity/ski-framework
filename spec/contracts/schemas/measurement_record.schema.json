@@ -1,0 +1,48 @@
+{
+  "$id": "https://kpifinity.github.io/ski-framework/contracts/schemas/measurement_record.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Measurement input for /api/evaluate.\n\nThe v3 evaluator consumes the full measurement. Before evaluation, the\nserver scopes the KG to this record's ``jurisdiction`` and effective\ndate (:meth:`~ski_model.kg_loader.KnowledgeGraph.scope_to`) and sends\nthe LLM only that scoped snapshot, not the full graph.",
+  "properties": {
+    "jurisdiction": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Tenant-declared jurisdiction (e.g. 'us-ca', 'eu', 'global'). When set, the KG is scoped to obligations whose jurisdiction matches or is universal ('global', '*'). None means 'no restriction' — all rules effective at the measurement's timestamp are sent to the LLM.",
+      "title": "Jurisdiction"
+    },
+    "measurement": {
+      "additionalProperties": true,
+      "description": "Structured measurement values keyed by metric name.",
+      "title": "Measurement",
+      "type": "object"
+    },
+    "measurement_id": {
+      "description": "Stable id for replay correlation.",
+      "title": "Measurement Id",
+      "type": "string"
+    },
+    "subject": {
+      "description": "Subject token (e.g. data source identifier).",
+      "title": "Subject",
+      "type": "string"
+    },
+    "timestamp": {
+      "description": "ISO-8601 UTC.",
+      "title": "Timestamp",
+      "type": "string"
+    }
+  },
+  "required": [
+    "measurement_id",
+    "timestamp",
+    "subject"
+  ],
+  "title": "MeasurementRecord",
+  "type": "object"
+}

@@ -193,6 +193,26 @@ jobs:
       - name: No cloud-LLM SDK in the runtime requirements (sovereignty)
         run: python scripts/check-no-cloud-llm-sdks.py
 
+  contracts:
+    name: Language-neutral contracts (schema + vector drift)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      # Regenerates the JSON Schemas from the live ski_schemas models and
+      # fails on drift; re-derives every canonical test vector and validates
+      # every envelope vector against the committed schema. Additive; no
+      # existing hash site is touched (spec §7.3; see docs/contracts.md).
+      - name: JSON Schema + test-vector drift
+        run: python spec/contracts/check_drift.py
+      # The committed OpenAPI must still match the live FastAPI app.
+      - name: OpenAPI drift
+        run: python spec/contracts/generate_openapi.py --check
+
   test:
     name: Unit tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
