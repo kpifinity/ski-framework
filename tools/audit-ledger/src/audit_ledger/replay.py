@@ -1,17 +1,27 @@
-"""Deterministic replay of audit ledger entries (v0.2.0).
+"""Deterministic replay of v3 audit ledger entries (spec §8.1).
 
-Given a contiguous range of ledger entries, this module:
+For every entry in a contiguous range that the language model evaluated
+(it has a stored envelope and signed transcript), this module:
 
-  1. Loads the corresponding rows from the telemetry buffer using
-     ``telemetry_hash`` as the lookup key.
-  2. Loads the Knowledge Graph at the entry's recorded version (supplied
-     by the caller via ``--kg-path``; an in-deployment KG store is a
-     future enhancement).
-  3. Re-runs the Symbolic Evaluator (and, for Track 2 entries, refuses
-     to claim determinism — Track 2 is best-effort).
-  4. Compares the replayed verdict to the originally-recorded verdict.
+  1. Recovers the exact measurement and scoped KG snapshot the model was
+     given from the transcript's ``request_canonical`` prompt.
+  2. Loads the telemetry buffer row by ``telemetry_hash`` and checks it
+     holds that measurement (the ledger and the buffer agree).
+  3. Checks the KG supplied with ``--kg-path`` reproduces the recorded
+     ``kg_version_hash`` and, re-scoped as recorded, the same snapshot.
+  4. Re-runs the runtime's own ``V3Evaluator`` with the model call
+     replaced by the transcript's recorded response, with the same risk
+     tier, subject, telemetry time and buffer: the verifier, freshness
+     gate and risk-tier policy are deterministic, so the verdict and the
+     verifier status must come out as recorded.
   5. Emits a structured report and (optionally) exits non-zero on
      divergence.
+
+Re-generating the model output itself is out of scope (spec §8.2: model
+replay is judged by tolerance bounds, not identity). Entries the model did
+not evaluate (no transcript: the clock-skew guard path) and entries that
+pre-date the v3 envelope (schema_version 0.1.0 / v0.2 rows, pre-buffer or
+without a stored envelope) are skipped with a note.
 
 This is the deterministic-replay primitive the SKI Framework Level 3
 conformance suite depends on. See docs/replay.md for the user-facing
@@ -23,7 +33,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from sqlalchemy import create_engine, text
@@ -94,10 +104,9 @@ def replay(
     kg_path: str,
     tenant_id: str = "default",
 ) -> ReplayReport:
-    """Re-evaluate the ledger entries in [from_sequence, to_sequence].
+    """Re-check the ledger entries in [from_sequence, to_sequence].
 
-    Synchronous wrapper around the async Symbolic Evaluator; this is
-    intended to be called from the ``audit-ledger replay`` CLI command.
+    Synchronous wrapper; called from the ``audit-ledger replay`` CLI command.
     """
     import asyncio
 
@@ -112,6 +121,61 @@ def replay(
     )
 
 
+_MEASUREMENT_MARKER = "\nMEASUREMENT:\n"
+_SNAPSHOT_MARKER = "\nKG SNAPSHOT:\n"
+
+
+def recover_prompt_inputs(request_canonical: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    """The ``(measurement, kg_snapshot)`` a transcript's canonical prompt was rendered from.
+
+    The evaluator renders both as one-line JSON after fixed markers
+    (``PROMPT_TEMPLATE``); raises ``ValueError`` when the prompt does not
+    have that shape.
+    """
+    _, sep, rest = request_canonical.partition(_MEASUREMENT_MARKER)
+    measurement_line, sep2, snapshot_text = rest.partition(_SNAPSHOT_MARKER)
+    if not sep or not sep2:
+        raise ValueError("transcript prompt has no MEASUREMENT / KG SNAPSHOT sections")
+    measurement = json.loads(measurement_line.strip())
+    snapshot = json.loads(snapshot_text.strip())
+    if not isinstance(measurement, dict) or not isinstance(snapshot, dict):
+        raise ValueError("transcript prompt MEASUREMENT / KG SNAPSHOT are not JSON objects")
+    return measurement, snapshot
+
+
+class _RecordedResponse:
+    """A V3 backend that answers with the transcript's recorded model output."""
+
+    name = "recorded-transcript"
+
+    def __init__(self, response: dict[str, Any], provenance: dict[str, Any]) -> None:
+        self._response = response
+        self._provenance = provenance
+
+    @property
+    def model_weight_hash(self) -> str:
+        return str(self._provenance.get("model_weight_hash", "sha256:" + "0" * 64))
+
+    @property
+    def prompt_template_id(self) -> str:
+        return str(self._provenance.get("prompt_template_id", ""))
+
+    @property
+    def prompt_template_hash(self) -> str:
+        return str(self._provenance.get("prompt_template_hash", "sha256:" + "0" * 64))
+
+    @property
+    def structured_grammar_hash(self) -> str:
+        return str(self._provenance.get("structured_grammar_hash", "sha256:" + "0" * 64))
+
+    async def evaluate(self, **_: Any) -> dict[str, Any]:
+        return json.loads(json.dumps(self._response))  # a fresh copy each call
+
+
+def _value(enum_or_str: Any) -> str:
+    return str(getattr(enum_or_str, "value", enum_or_str))
+
+
 async def _replay_async(
     *,
     dsn: str,
@@ -120,49 +184,46 @@ async def _replay_async(
     kg_path: str,
     tenant_id: str,
 ) -> ReplayReport:
-    # The Symbolic Evaluator + TelemetryBuffer + KG loader live in the
-    # reference-implementation package. They are imported here lazily so
-    # the audit-ledger tool doesn't take a hard dependency on them at
-    # import time (helpful for offline `audit-ledger verify` use cases).
+    # The evaluator, KG loader and telemetry buffer live in the
+    # reference-implementation package; imported lazily so `audit-ledger
+    # verify` works without them.
     import sys
     from pathlib import Path
 
-    ref_impl_src = Path(__file__).resolve().parents[5] / "reference-implementation" / "src"
+    ref_impl_src = Path(__file__).resolve().parents[4] / "reference-implementation" / "src"
     if str(ref_impl_src) not in sys.path:
         sys.path.insert(0, str(ref_impl_src))
 
     from ski_model.kg_loader import load_signed_kg  # type: ignore
+    from ski_model.server import _compute_kg_version_hash  # type: ignore
+    from ski_model.v3 import V3Evaluator  # type: ignore
     from sqlalchemy.ext.asyncio import create_async_engine
-    from symbolic_evaluator import SymbolicEvaluator  # type: ignore
-    from tag_registry import TagRegistry  # type: ignore
+    from tag_registry import RiskTierGovernor  # type: ignore
     from telemetry_buffer import TelemetryBuffer  # type: ignore
 
-    report = ReplayReport(started_at=datetime.utcnow(), from_sequence=from_sequence, to_sequence=to_sequence)
+    report = ReplayReport(
+        started_at=datetime.now(timezone.utc), from_sequence=from_sequence, to_sequence=to_sequence
+    )
 
-    # 1. Load the KG once. Per-entry KG-version resolution is a v0.3 feature;
-    #    today we replay against the KG supplied on the command line.
     kg = load_signed_kg(Path(kg_path), require_signature=True)
-    registry = TagRegistry.from_knowledge_graph(kg)
-    evaluator = SymbolicEvaluator()
-    report.notes.append(f"Replaying against KG version {kg.version} loaded from {kg_path}")
+    kg_version_hash = _compute_kg_version_hash(kg)
+    report.notes.append(
+        f"Replaying against KG version {kg.version} ({kg_version_hash}) loaded from {kg_path}"
+    )
 
-    # 2. Open the ledger and buffer.
     async_dsn = (
         dsn.replace("postgresql://", "postgresql+psycopg://", 1) if dsn.startswith("postgresql://") else dsn
     )
-    engine = create_async_engine(async_dsn, pool_pre_ping=True, future=True)
+    engine = create_async_engine(async_dsn, pool_pre_ping=True)
     buffer = TelemetryBuffer(engine, tenant_id=tenant_id)
-
     sync_engine = create_engine(dsn)
 
-    # 3. Iterate ledger entries in [from, to].
     with sync_engine.connect() as conn:
         rows = conn.execute(
             text(
                 """
-                SELECT sequence_number, telemetry_id, telemetry_hash, rule_id,
-                       verdict, reasoning, track, knowledge_graph_version,
-                       schema_version
+                SELECT sequence_number, telemetry_id, telemetry_hash, rule_id, verdict, reasoning,
+                       envelope_json::text, transcript_json::text
                 FROM ledger_entries
                 WHERE sequence_number BETWEEN :from_seq AND :to_seq
                 ORDER BY sequence_number ASC
@@ -170,102 +231,133 @@ async def _replay_async(
             ),
             {"from_seq": from_sequence, "to_seq": to_sequence},
         ).all()
-
     report.total_entries = len(rows)
 
-    for row in rows:
-        (
+    def mismatch(
+        entry: tuple[int, str, Optional[str], str, Optional[str]], replayed: str, detail: str, reason: str
+    ) -> None:
+        seq, telemetry_id, rule_id, recorded, recorded_reasoning = entry
+        report.mismatches.append(
+            ReplayMismatch(
+                sequence_number=seq,
+                telemetry_id=telemetry_id,
+                rule_id=rule_id,
+                recorded_verdict=recorded,
+                replayed_verdict=replayed,
+                recorded_reasoning=recorded_reasoning,
+                replayed_reasoning=detail,
+                reason=reason,
+            )
+        )
+
+    try:
+        for (
             seq,
             telemetry_id,
             telemetry_hash,
             rule_id,
             recorded_verdict,
             recorded_reasoning,
-            track,
-            _kg_version,  # read for schema completeness; not used during replay
-            schema_version,
-        ) = row
-
-        # Backwards compatibility: v0.1 entries pre-date the buffer.
-        if schema_version is None or schema_version == "0.1.0":
-            report.skipped_entries += 1
-            report.notes.append(
-                f"seq={seq}: v0.1 entry — pre-buffer; stateful evaluation cannot be replayed."
-            )
-            continue
-
-        if track == "llm":
-            report.skipped_entries += 1
-            report.notes.append(f"seq={seq}: Track 2 (LLM) entry — replay is best-effort only; skipped.")
-            continue
-
-        # Reconstruct telemetry from the buffer.
-        record = await buffer.fetch_at(telemetry_hash=telemetry_hash)
-        if record is None:
-            report.skipped_entries += 1
-            report.notes.append(
-                f"seq={seq}: buffer row not found (telemetry_hash={telemetry_hash[:12]}…); skipped."
-            )
-            continue
-
-        telemetry = {
-            "subject": record["subject"],
-            "telemetry_id": record["telemetry_id"],
-            "timestamp": record["telemetry_ts"].isoformat()
-            if isinstance(record["telemetry_ts"], datetime)
-            else record["telemetry_ts"],
-            "measurement": record["measurement"]
-            if isinstance(record["measurement"], dict)
-            else json.loads(record["measurement"]),
-        }
-
-        # Re-route via the Tag Registry (must produce the same rule_id).
-        rule = registry.resolve(telemetry["subject"])
-        if rule is None or rule.get("id") != rule_id:
+            env_text,
+            tr_text,
+        ) in rows:
+            seq = int(seq)
+            if env_text is None:
+                report.skipped_entries += 1
+                report.notes.append(f"seq={seq}: pre-v3 entry (no stored envelope); skipped.")
+                continue
+            if tr_text is None:
+                report.skipped_entries += 1
+                report.notes.append(f"seq={seq}: not evaluated by the model (no transcript); skipped.")
+                continue
+            envelope = json.loads(env_text)
+            transcript = json.loads(tr_text)
+            recorded_status = str((envelope.get("verifier_result") or {}).get("status"))
             report.replayed_entries += 1
-            report.mismatches.append(
-                ReplayMismatch(
-                    sequence_number=int(seq),
-                    telemetry_id=telemetry_id,
-                    rule_id=rule_id,
-                    recorded_verdict=recorded_verdict,
-                    replayed_verdict="<routing diverged>",
-                    recorded_reasoning=recorded_reasoning,
-                    replayed_reasoning=(
-                        f"Tag Registry now resolves {telemetry['subject']!r} to "
-                        f"{rule.get('id') if rule else None!r}, not {rule_id!r}."
-                    ),
-                    reason="tag_registry_divergence",
+
+            entry = (seq, telemetry_id, rule_id, recorded_verdict, recorded_reasoning)
+
+            provenance = envelope.get("model_provenance") or {}
+            if provenance.get("kg_version_hash") != kg_version_hash:
+                mismatch(
+                    entry,
+                    "<not replayed>",
+                    f"--kg-path hashes to {kg_version_hash}, the entry recorded {provenance.get('kg_version_hash')}.",
+                    "kg_version_mismatch",
                 )
-            )
-            continue
-
-        # Re-evaluate against the buffer state as of telemetry_ts.
-        decision = await evaluator.aevaluate(
-            rule,
-            telemetry,
-            buffer=buffer,
-            as_of=record["telemetry_ts"],
-        )
-
-        report.replayed_entries += 1
-        if decision.verdict == recorded_verdict:
-            report.matched_entries += 1
-        else:
-            report.mismatches.append(
-                ReplayMismatch(
-                    sequence_number=int(seq),
-                    telemetry_id=telemetry_id,
-                    rule_id=rule_id,
-                    recorded_verdict=recorded_verdict,
-                    replayed_verdict=str(decision.verdict),
-                    recorded_reasoning=recorded_reasoning,
-                    replayed_reasoning=decision.reasoning,
-                    reason="verdict_divergence",
+                continue
+            try:
+                measurement, snapshot = recover_prompt_inputs(str(transcript.get("request_canonical", "")))
+            except ValueError as exc:
+                mismatch(
+                    entry,
+                    "<not replayed>",
+                    f"Cannot recover the prompt inputs: {exc}.",
+                    "transcript_unreadable",
                 )
-            )
+                continue
 
-    await engine.dispose()
-    sync_engine.dispose()
-    report.finished_at = datetime.utcnow()
+            record = await buffer.fetch_at(telemetry_hash=telemetry_hash)
+            if record is None:
+                mismatch(
+                    entry,
+                    "<not replayed>",
+                    f"No buffer row for telemetry_hash={telemetry_hash}.",
+                    "buffer_row_missing",
+                )
+                continue
+            buffered = record["measurement"]
+            buffered = buffered if isinstance(buffered, dict) else json.loads(buffered)
+            if buffered != measurement:
+                mismatch(
+                    entry,
+                    "<not replayed>",
+                    "The buffer row's measurement differs from the transcript's.",
+                    "telemetry_divergence",
+                )
+                continue
+            as_of = record["telemetry_ts"]
+
+            scope = snapshot.get("scope") or {}
+            rescoped = kg.scope_to(jurisdiction=scope.get("jurisdiction"), as_of=as_of)
+            if [ob.get("id") for ob in rescoped["obligations"]] != [
+                ob.get("id") for ob in snapshot.get("obligations", [])
+            ]:
+                mismatch(
+                    entry,
+                    "<not replayed>",
+                    "The KG, scoped as recorded, gives a different obligation set.",
+                    "kg_snapshot_divergence",
+                )
+                continue
+
+            evaluator = V3Evaluator(
+                llm=_RecordedResponse(dict(transcript.get("response_canonical") or {}), provenance),
+                kg_version_hash=kg_version_hash,
+                decoder_seed=int(provenance.get("decoder_seed", 0)),
+            )
+            result = await evaluator.aevaluate_with_transcript(
+                measurement=measurement,
+                kg_snapshot=snapshot,
+                risk_tier=RiskTierGovernor.tier_for_snapshot(snapshot),
+                subject=record["subject"],
+                as_of=as_of,
+                buffer=buffer,
+            )
+            replayed_verdict = _value(result.envelope.verdict)
+            replayed_status = _value(result.envelope.verifier_result.status)
+            if replayed_verdict == recorded_verdict and replayed_status == recorded_status:
+                report.matched_entries += 1
+            else:
+                mismatch(
+                    entry,
+                    replayed_verdict,
+                    f"verifier status recorded {recorded_status}, replayed {replayed_status}: "
+                    f"{result.envelope.reasoning}",
+                    "verdict_divergence",
+                )
+    finally:
+        await engine.dispose()
+        sync_engine.dispose()
+    report.finished_at = datetime.now(timezone.utc)
     return report

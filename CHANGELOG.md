@@ -81,6 +81,15 @@ referenced from each release entry.
   surrogate), before anything is buffered, evaluated or ledgered.
 
 ### Fixed
+- **`audit-ledger replay` replays v3 entries.** It could not run from the
+  command line (it looked for the runtime one directory above the
+  repository), queried a `schema_version` column the shipped schema does
+  not have, and replayed through the v2 tag registry and rule evaluator,
+  so no v3 entry could match. It now re-runs each model-evaluated entry
+  from its signed transcript through the runtime's own evaluator, with
+  the recorded model response, and reports `verdict_divergence`,
+  `kg_version_mismatch`, `kg_snapshot_divergence`, `telemetry_divergence`,
+  `buffer_row_missing` or `transcript_unreadable` (docs/replay.md).
 - **The telemetry buffer works in shipped deployments.** The SKI Model image
   did not contain `telemetry_buffer/`, and no compose or Helm path created
   its tables, so every deployment ran without it: stateful predicates were

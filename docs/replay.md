@@ -42,26 +42,42 @@ Exit code:
 - `0` — every replayable entry matched.
 - `1` — at least one divergence (unless `--no-strict` is passed).
 
+## What gets replayed
+
+Every entry the language model evaluated (it has a stored envelope and a
+signed transcript). For each one, replay:
+
+1. recovers the exact measurement and scoped KG snapshot the model was
+   given from the transcript's canonical prompt;
+2. finds the telemetry buffer row by `telemetry_hash` and checks it holds
+   that measurement;
+3. checks `--kg-path` reproduces the recorded `kg_version_hash` and,
+   scoped as recorded, the same obligations;
+4. re-runs the runtime's own evaluator with the model call replaced by the
+   recorded response, with the same risk tier, subject, telemetry time and
+   buffer, and compares the verdict and verifier status.
+
+The model output itself is not regenerated (spec §8.2: model replay is
+judged by tolerance bounds); everything downstream of it (citation checks,
+the Symbolic Verifier, the freshness gate, the risk-tier policy) replays
+exactly.
+
 ## What gets skipped
 
-- **Pre-v0.2 ledger entries.** Pre-buffer; we cannot reconstruct
-  stateful evaluation. The report lists them under `notes`.
-- **LLM-evaluated entries** are replayed as *provenance verification*
-  (transcript signature + recorded hashes), not bit-identical
-  re-generation — defensibility in v3 is reconstructible provenance,
-  not replaying a rule engine. The symbolic-verifier results replay
-  exactly.
-- **Entries whose buffer row has been retention-dropped.** Hot retention
-  is per-tenant; if the buffer no longer holds the row, replay can't
-  reconstruct evaluation. Use longer retention windows when audit
-  defence requires it.
+- **Entries without a stored envelope** (pre-v3). Listed under `notes`.
+- **Entries without a transcript**: the model never saw them (the
+  clock-skew guard routes those to DISCRETIONARY without evaluating).
 
 ## Failure modes and what they mean
 
 | Mismatch reason | Meaning | What to do |
 |---|---|---|
-| `verdict_divergence` | Recorded verdict ≠ replayed verdict | Investigate; either the ledger has been tampered with, or your evaluator has a non-determinism bug |
-| `tag_registry_divergence` | The current Tag Registry routes the subject to a different rule than was recorded | Expected after KG version bumps; supply the correct `--kg-path` for the entry's recorded `knowledge_graph_version` |
+| `verdict_divergence` | Replay gives a different verdict or verifier status | Investigate: the ledger was tampered with, or the evaluator is non-deterministic |
+| `kg_version_mismatch` | `--kg-path` does not hash to the entry's recorded `kg_version_hash` | Supply the KG that was active when the entry was written |
+| `kg_snapshot_divergence` | The KG, scoped as recorded, gives different obligations than the transcript shows | The transcript or the KG does not match what was evaluated |
+| `telemetry_divergence` | The buffer row for `telemetry_hash` holds a different measurement than the transcript | The buffer or the transcript was altered |
+| `buffer_row_missing` | No buffer row has the entry's `telemetry_hash` | Retention dropped it, or the buffer was not provisioned when the entry was written |
+| `transcript_unreadable` | The transcript's prompt does not have the expected sections | Investigate the transcript |
 
 ## Report format
 
@@ -93,6 +109,6 @@ randomly-sampled subset of ledger entries during certification.
 See [docs/RFCs/0001-stateful-evaluation.md](./RFCs/0001-stateful-evaluation.md)
 for the architectural rationale, and
 [tools/audit-ledger/src/audit_ledger/replay.py](../tools/audit-ledger/src/audit_ledger/replay.py)
-for the implementation. The replay logic shares the Symbolic Evaluator
-and TelemetryBuffer with the runtime — there is no second
+for the implementation. Replay runs the runtime's own `V3Evaluator`,
+`SymbolicVerifier` and `TelemetryBuffer` — there is no second
 implementation that could drift from production.
