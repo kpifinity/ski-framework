@@ -81,6 +81,10 @@ referenced from each release entry.
   surrogate), before anything is buffered, evaluated or ledgered.
 
 ### Fixed
+- **`quickstart.py` walkthrough no longer crashes.** The Knowledge Graph
+  overview treated each in-scope obligation (a dict) as an id and raised
+  `TypeError: unhashable type: 'dict'` before the walkthrough started. It
+  now lists the rules with limits read from the KG itself.
 - **The telemetry buffer works in shipped deployments.** The SKI Model image
   did not contain `telemetry_buffer/`, and no compose or Helm path created
   its tables, so every deployment ran without it: stateful predicates were
