@@ -81,6 +81,10 @@ referenced from each release entry.
   surrogate), before anything is buffered, evaluated or ledgered.
 
 ### Fixed
+- **`quickstart.py` walkthrough no longer crashes.** The Knowledge Graph
+  overview treated each in-scope obligation (a dict) as an id and raised
+  `TypeError: unhashable type: 'dict'` before the walkthrough started. It
+  now lists the rules with limits read from the KG itself.
 - **`ski-model-deploy` works outside the test suite.** It looked for the
   runtime's KG loader one directory above the repository, so `load-kg`
   refused every KG when run from the command line, and `init` wrote enum
