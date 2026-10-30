@@ -279,14 +279,51 @@ def _trust_provenance() -> Dict[str, Any]:
     }
 
 
+async def _init_telemetry_buffer(engine: Optional[AsyncEngine], tenant_id: str) -> Optional[Any]:
+    """The telemetry buffer, or None when it is not provisioned (each reason logged).
+
+    Without it, stateful predicates degrade to UNVERIFIABLE and the
+    freshness gate to DISCRETIONARY + human attestation: degraded, never
+    CLEAR. ``telemetry_buffer.sql`` provisions it (docs/migrations.md).
+    """
+    if engine is None:
+        return None
+    try:
+        from telemetry_buffer import TelemetryBuffer
+
+        async with engine.connect() as conn:
+            table = (await conn.execute(text("SELECT to_regclass('telemetry_buffer')"))).scalar()
+            tenant = (
+                (
+                    await conn.execute(text("SELECT 1 FROM tenants WHERE tenant_id = :t"), {"t": tenant_id})
+                ).scalar()
+                if table is not None
+                else None
+            )
+    except Exception as exc:
+        logger.warning("Telemetry buffer not initialised (%r); stateful predicates will degrade.", exc)
+        return None
+    if table is None or tenant is None:
+        logger.warning(
+            "Telemetry buffer not initialised: %s. Stateful predicates degrade to UNVERIFIABLE and the "
+            "freshness gate to DISCRETIONARY until reference-implementation/src/ledger/telemetry_buffer.sql "
+            "is applied as the schema owner (docs/migrations.md).",
+            "no telemetry_buffer table" if table is None else f"no row for tenant {tenant_id!r} in tenants",
+        )
+        return None
+    logger.info("Telemetry buffer ready (tenant=%s).", tenant_id)
+    return TelemetryBuffer(engine, tenant_id=tenant_id)
+
+
 async def _resolve_max_clock_skew_seconds(engine: Optional[AsyncEngine], tenant_id: str) -> int:
     """Resolve the acceptable telemetry clock-skew bound for ``tenant_id``.
 
-    Precedence: the ``tenants.max_clock_skew_seconds`` row (the schema's
-    intended source of truth — see ``reference-implementation/src/ledger/
-    telemetry_buffer.sql``), then ``SKI_MAX_CLOCK_SKEW_SECONDS``, then
-    :data:`_DEFAULT_MAX_CLOCK_SKEW_SECONDS`. A resolved value of ``0``
-    disables the guard entirely (documented operator opt-out).
+    Precedence: the ``tenants.max_clock_skew_seconds`` row when set (the
+    schema's intended source of truth — see ``reference-implementation/src/
+    ledger/telemetry_buffer.sql``), then ``SKI_MAX_CLOCK_SKEW_SECONDS``, then
+    :data:`_DEFAULT_MAX_CLOCK_SKEW_SECONDS`. A NULL column (the seeded
+    ``default`` tenant) is "not set for this tenant". A resolved value of
+    ``0`` disables the guard entirely (documented operator opt-out).
     """
     if engine is not None:
         try:
@@ -297,7 +334,7 @@ async def _resolve_max_clock_skew_seconds(engine: Optional[AsyncEngine], tenant_
                         {"tenant_id": tenant_id},
                     )
                 ).first()
-            if row is not None:
+            if row is not None and row[0] is not None:
                 return int(row[0])
         except Exception as exc:  # pragma: no cover — DB best-effort, same posture as buffer init
             logger.warning(
@@ -485,20 +522,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         state.max_clock_skew_seconds,
         _clock_skew_mode(),
     )
-    try:
-        from telemetry_buffer import TelemetryBuffer
-
-        if state.ledger is not None and state.ledger._engine is not None:
-            state.telemetry_buffer = TelemetryBuffer(
-                state.ledger._engine,
-                tenant_id=state.tenant_id,
-            )
-            logger.info("Telemetry buffer ready (tenant=%s).", state.tenant_id)
-    except Exception as exc:  # pragma: no cover — buffer is best-effort wiring
-        logger.warning(
-            "Telemetry buffer not initialised (%s); stateful predicates will degrade.",
-            exc,
-        )
+    state.telemetry_buffer = await _init_telemetry_buffer(
+        state.ledger._engine if state.ledger is not None else None, state.tenant_id
+    )
 
     # PR 12: neuro-symbolic agreement monitor replaces the v2 determinism
     # canary. Tracks the rolling LLM↔verifier agreement rate across the
