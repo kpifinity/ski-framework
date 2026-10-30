@@ -41,10 +41,10 @@ def test_replay_cli_command_registered() -> None:
 
 
 @pytest.mark.durability
-def test_replay_skips_v01_entries_safely() -> None:
-    """v0.1 entries pre-date the buffer; replay should skip them with a note,
-    not invent state."""
+def test_replay_skips_entries_it_cannot_reconstruct() -> None:
+    """Entries with no stored envelope (pre-v3) or no transcript (never shown to
+    the model) are skipped with a note, not invented. The live behaviour is
+    covered by conformance/sovereignty/test_replay_against_ledger.py."""
     src = (REPO_ROOT / "tools" / "audit-ledger" / "src" / "audit_ledger" / "replay.py").read_text()
-    assert "0.1.0" in src
-    assert "schema_version" in src
-    assert "pre-buffer" in src.lower() or "skipped" in src.lower()
+    assert "if env_text is None" in src and "pre-v3 entry" in src
+    assert "if tr_text is None" in src and "no transcript" in src
