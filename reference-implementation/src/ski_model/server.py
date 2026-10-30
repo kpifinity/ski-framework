@@ -22,7 +22,6 @@ enforcement is preserved from v2.1 (see docs/CONCURRENCY.md).
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 import os
 import secrets
@@ -48,6 +47,7 @@ except ImportError:  # pragma: no cover
     from symbolic_evaluator import SymbolicEvaluator
     from tag_registry import RiskTierGovernor, TagRegistry
 
+from ski_schemas.canonical import CanonicalizationError, canonicalize, sha256_canonical
 from ski_schemas.measurement import MeasurementRecord
 
 from . import metrics
@@ -216,17 +216,17 @@ def _kg_to_v3_snapshot(kg: KnowledgeGraph) -> Dict[str, Any]:
 
 
 def _compute_kg_version_hash(kg: KnowledgeGraph) -> str:
-    """sha256 of the canonical KG payload — recorded in ModelProvenance."""
-    payload = json.dumps(
+    """sha256 of the spec §7.3 canonical KG payload — recorded in ModelProvenance.
+
+    Raises :class:`CanonicalizationError` for a KG that has no canonical form.
+    """
+    return sha256_canonical(
         {
             "version": kg.version,
             "rules": kg.rules,
             "tag_registry": kg.tag_registry,
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return "sha256:" + hashlib.sha256(payload).hexdigest()
+        }
+    )
 
 
 async def _ledger_has_signed_transcripts(engine: Optional[AsyncEngine]) -> bool:
@@ -523,12 +523,13 @@ async def load_kg(kg_data: Dict[str, Any]) -> Dict[str, Any]:
     try:
         policy = state.kg_trust_policy if state.kg_trust_policy is not None else KGTrustPolicy.from_env()
         kg = KnowledgeGraph.from_dict(kg_data, require_signature=True, trust=policy)
+        kg_version_hash = _compute_kg_version_hash(kg)
     except Exception as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"KG invalid: {exc}") from exc
 
     state.knowledge_graph = kg
     state.tag_registry = TagRegistry.from_knowledge_graph(kg)
-    state.kg_version_hash = _compute_kg_version_hash(kg)
+    state.kg_version_hash = kg_version_hash
 
     if state.evaluator is not None:
         state.evaluator.kg_version_hash = state.kg_version_hash
@@ -582,6 +583,17 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     input_errors = measurement_input_errors(measurement.measurement, state.knowledge_graph.rules)
     if input_errors:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "; ".join(input_errors))
+    # The ledger's telemetry_hash and the buffer row's measurement_hash are
+    # this one value, so replay can join them. A record with no canonical
+    # form (an integer a double cannot hold, a lone surrogate) cannot be
+    # hashed into the ledger and is rejected here, before anything runs.
+    try:
+        telemetry_hash = _hash_measurement(measurement)
+    except CanonicalizationError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"measurement has no canonical JSON form (spec §7.3): {exc}",
+        ) from exc
 
     # Clock-skew guard (docs/threat-model.md "Assumption 2"). The telemetry
     # timestamp is authoritative for stateful predicates and freshness
@@ -620,7 +632,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
             envelope=skew_envelope,
             transcript=None,
             telemetry_id=measurement.measurement_id,
-            telemetry_hash=_hash_measurement(measurement),
+            telemetry_hash=telemetry_hash,
             rule_id=None,
             kg_version=state.knowledge_graph.version,
             ski_model_version=_VERSION,
@@ -644,6 +656,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
                 telemetry_id=measurement.measurement_id,
                 telemetry_ts=telemetry_ts,
                 measurement=measurement.measurement,
+                measurement_hash=telemetry_hash,
             )
         except Exception as exc:
             logger.warning("Buffer append failed for %s: %r", measurement.measurement_id, exc)
@@ -687,7 +700,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
         envelope=envelope,
         transcript=result.transcript,
         telemetry_id=measurement.measurement_id,
-        telemetry_hash=_hash_measurement(measurement),
+        telemetry_hash=telemetry_hash,
         rule_id=_first_obligation_id(envelope),
         kg_version=state.knowledge_graph.version,
         ski_model_version=_VERSION,
@@ -834,9 +847,11 @@ def _build_clock_skew_envelope(
 
 
 def _hash_measurement(measurement: MeasurementRecord) -> str:
-    return hashlib.sha256(
-        json.dumps(measurement.model_dump(), sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
+    """``telemetry_hash``: bare-hex sha256 of the spec §7.3 canonical telemetry record.
+
+    Raises :class:`CanonicalizationError` for a record with no canonical form.
+    """
+    return hashlib.sha256(canonicalize(measurement.model_dump())).hexdigest()
 
 
 def _first_obligation_id(envelope: V3VerdictEnvelope) -> Optional[str]:

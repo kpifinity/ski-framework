@@ -12,6 +12,7 @@ construction is lazy and we swap in the fake session factory directly).
 
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -81,6 +82,11 @@ class TestCanonicalHash:
     def test_different_values_hash_differently(self) -> None:
         assert canonical_measurement_hash({"a": 1}) != canonical_measurement_hash({"a": 2})
 
+    def test_is_the_spec_7_3_canonical_digest(self) -> None:
+        # RFC 8785 numbers: 85.0 and 85 are one JSON number.
+        assert canonical_measurement_hash({"so2_ppm": 85.0}) == canonical_measurement_hash({"so2_ppm": 85})
+        assert canonical_measurement_hash({"so2_ppm": 85}) == hashlib.sha256(b'{"so2_ppm":85}').hexdigest()
+
 
 # ---- append ----------------------------------------------------------------------
 
@@ -108,6 +114,22 @@ class TestAppend:
         assert params["subject"] == "emissions"
         assert params["tenant_id"] == "tenant.test"
         assert params["measurement_hash"] == canonical_measurement_hash({"so2_ppm": 50})
+
+    @pytest.mark.asyncio
+    async def test_uses_the_callers_measurement_hash(self) -> None:
+        # The SKI Model passes the ledger's telemetry_hash so replay can join on it.
+        session = _FakeSession([_FakeResult()])
+        buf = _buffer_with_session(session)
+        await buf.append(
+            subject="emissions",
+            telemetry_id="t1",
+            telemetry_ts=_AS_OF,
+            measurement={"so2_ppm": 50},
+            measurement_hash="ab" * 32,
+        )
+        params = session.executed[0][1]
+        assert params is not None
+        assert params["measurement_hash"] == "ab" * 32
 
 
 # ---- window_query ------------------------------------------------------------------
