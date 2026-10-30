@@ -93,6 +93,15 @@ referenced from each release entry.
   canonical JSON (spec §3.1). `scoped_to` and `cited_by` edges now run from
   the Obligation, as spec §3.2 defines them, instead of from the Rule.
   `kg-extractor` now depends on `ski-schemas`.
+- **`audit-ledger replay` replays v3 entries.** It could not run from the
+  command line (it looked for the runtime one directory above the
+  repository), queried a `schema_version` column the shipped schema does
+  not have, and replayed through the v2 tag registry and rule evaluator,
+  so no v3 entry could match. It now re-runs each model-evaluated entry
+  from its signed transcript through the runtime's own evaluator, with
+  the recorded model response, and reports `verdict_divergence`,
+  `kg_version_mismatch`, `kg_snapshot_divergence`, `telemetry_divergence`,
+  `buffer_row_missing` or `transcript_unreadable` (docs/replay.md).
 - **`quickstart.py` walkthrough no longer crashes.** The Knowledge Graph
   overview treated each in-scope obligation (a dict) as an id and raised
   `TypeError: unhashable type: 'dict'` before the walkthrough started. It

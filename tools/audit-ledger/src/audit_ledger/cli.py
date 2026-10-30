@@ -194,12 +194,14 @@ def replay(
     output: Optional[str],
     strict: bool,
 ) -> None:
-    """v0.2.0 — replay ledger entries against the recorded KG and buffer.
+    """Replay v3 ledger entries from their signed transcripts (spec §8.1).
 
-    For every entry in [from-sequence, to-sequence] this command re-runs
-    the Symbolic Evaluator against the telemetry buffer state at the
-    entry's timestamp and compares the produced verdict to what was
-    recorded. v0.1 ledger entries and Track 2 (LLM) entries are skipped
+    For every entry in [from-sequence, to-sequence] that the model
+    evaluated, this command recovers the measurement and KG snapshot from
+    the transcript, checks them against the telemetry buffer and the KG
+    given by --kg-path, re-runs the evaluator with the recorded model
+    response, and compares the verdict and verifier status to what was
+    recorded. Entries without a stored envelope or transcript are skipped
     with a note.
     """
     import json as _json
