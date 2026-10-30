@@ -71,8 +71,11 @@ _GENESIS = "0" * 64
 # obligation is scoped_to a jurisdiction, so both apply everywhere.
 
 
-def _cap(metric: str, gas: str, limit: int) -> Dict[str, List[Dict[str, Any]]]:
+def _cap(
+    metric: str, gas: str, limit: int, *, fresh_within: Optional[int] = None
+) -> Dict[str, List[Dict[str, Any]]]:
     rule_id, ob_id = f"energy.{gas}.cap", f"energy.{gas}.lte_{limit}ppm"
+    freshness = {} if fresh_within is None else {"requires_recent_within_seconds": fresh_within}
     return {
         "subjects": [{"id": f"facility.{metric}", "type": "Subject", "version": "airgap-1", "name": metric}],
         "rules": [
@@ -94,6 +97,7 @@ def _cap(metric: str, gas: str, limit: int) -> Dict[str, List[Dict[str, Any]]]:
                 "value": limit,
                 "unit": "ppm",
                 "effective_date_start": "2026-01-01T00:00:00Z",
+                **freshness,
             }
         ],
         "citations": [
@@ -113,7 +117,14 @@ def _cap(metric: str, gas: str, limit: int) -> Dict[str, List[Dict[str, Any]]]:
     }
 
 
-_CAPS = [_cap("so2_ppm", "so2", 100), _cap("nox_ppm", "nox", 50)]
+# The PM2.5 cap carries a freshness gate: it can only come back CLEAR if the
+# runtime's telemetry buffer recorded the reading (write-before-evaluate);
+# without a working buffer it degrades to DISCRETIONARY.
+_CAPS = [
+    _cap("so2_ppm", "so2", 100),
+    _cap("nox_ppm", "nox", 50),
+    _cap("pm25_ppm", "pm25", 35, fresh_within=600),
+]
 _KG_NODES: Dict[str, List[Dict[str, Any]]] = {
     kind: [node for cap in _CAPS for node in cap[kind]]
     for kind in ("subjects", "rules", "obligations", "citations")
@@ -127,6 +138,7 @@ _WORKLOAD: List[Tuple[str, Dict[str, Any], str]] = [
     ("airgap-003", {"nox_ppm": 12}, "CLEAR"),
     ("airgap-004", {"nox_ppm": 60}, "FLAG"),
     ("airgap-005", {"co2_ppm": 410}, "NULL_UNMAPPED"),
+    ("airgap-006", {"pm25_ppm": 12}, "CLEAR"),
 ]
 
 
@@ -384,6 +396,8 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
             "-v",
             f"{LEDGER_SQL / 'migrations' / '0002_transcript_columns.sql'}"
             ":/docker-entrypoint-initdb.d/03-transcript-columns.sql:ro",
+            "-v",
+            f"{LEDGER_SQL / 'telemetry_buffer.sql'}:/docker-entrypoint-initdb.d/05-telemetry-buffer.sql:ro",
             _PG_IMAGE,
         ]
     )
@@ -552,3 +566,15 @@ def test_sovereignty_attestation_inside_airgap(rig: AirgapRig) -> None:
     public_key = serialization.load_pem_public_key(signature["public_key_pem"].encode("ascii"))
     assert isinstance(public_key, Ed25519PublicKey)
     public_key.verify(bytes.fromhex(signature["value_hex"]), canonicalize(document))
+
+
+def test_telemetry_buffer_records_every_reading_inside_airgap(rig: AirgapRig) -> None:
+    """The image ships the telemetry buffer: every reading is buffered and joins its ledger entry."""
+    rig.replay_workload()
+    assert int(rig.sql("SELECT count(*) FROM telemetry_buffer")) == len(_WORKLOAD)
+    joined = rig.sql(
+        "SELECT count(*) FROM ledger_entries l JOIN telemetry_buffer b ON b.measurement_hash = l.telemetry_hash"
+    )
+    assert int(joined) == len(_WORKLOAD), (
+        "deterministic replay finds a ledger entry's reading by telemetry_hash"
+    )

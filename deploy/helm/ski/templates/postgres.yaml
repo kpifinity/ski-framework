@@ -13,6 +13,8 @@ data:
 {{ .Files.Get "files/0002_transcript_columns.sql" | indent 4 }}
   04-ledger-writer-login.sh: |
 {{ .Files.Get "files/ledger_writer_login.sh" | indent 4 }}
+  05-telemetry-buffer.sql: |
+{{ .Files.Get "files/telemetry_buffer.sql" | indent 4 }}
 ---
 apiVersion: apps/v1
 kind: StatefulSet

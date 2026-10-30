@@ -81,6 +81,19 @@ referenced from each release entry.
   surrogate), before anything is buffered, evaluated or ledgered.
 
 ### Fixed
+- **The telemetry buffer works in shipped deployments.** The SKI Model image
+  did not contain `telemetry_buffer/`, and no compose or Helm path created
+  its tables, so every deployment ran without it: stateful predicates were
+  always UNVERIFIABLE, freshness-gated obligations always DISCRETIONARY,
+  and replay had nothing to read. The image now ships the module; compose,
+  the demo stack and the Helm chart run `telemetry_buffer.sql` on first
+  init, which now also creates a DEFAULT partition (inserts never fail for
+  lack of a monthly partition) and seeds the `default` tenant. The runtime
+  checks on startup that the table and tenant exist and otherwise says how
+  to provision them (docs/migrations.md). `tenants.max_clock_skew_seconds`
+  is now nullable: NULL (the seeded tenant) defers to
+  `SKI_MAX_CLOCK_SKEW_SECONDS`, so seeding the tenant does not silently
+  override the operator's setting.
 - **`ski-model-deploy` works outside the test suite.** It looked for the
   runtime's KG loader one directory above the repository, so `load-kg`
   refused every KG when run from the command line, and `init` wrote enum

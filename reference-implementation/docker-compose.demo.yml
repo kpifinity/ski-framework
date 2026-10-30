@@ -81,6 +81,8 @@ services:
       - ./src/ledger/append_only.sql:/docker-entrypoint-initdb.d/02-append-only.sql:ro
       - ./src/ledger/migrations/0002_transcript_columns.sql:/docker-entrypoint-initdb.d/03-transcript-columns.sql:ro
       - ./src/ledger/ledger_writer_login.sh:/docker-entrypoint-initdb.d/04-ledger-writer-login.sh:ro
+      # Telemetry buffer (stateful predicates, freshness gate, replay).
+      - ./src/ledger/telemetry_buffer.sql:/docker-entrypoint-initdb.d/05-telemetry-buffer.sql:ro
     networks: [ski-demo]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]

@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     tenant_id              TEXT PRIMARY KEY,
     display_name           TEXT NOT NULL,
     buffer_retention_days  INT  NOT NULL CHECK (buffer_retention_days > 0),
-    max_clock_skew_seconds INT  NOT NULL DEFAULT 60 CHECK (max_clock_skew_seconds >= 0),
+    -- NULL: use SKI_MAX_CLOCK_SKEW_SECONDS, else the runtime default (60s).
+    max_clock_skew_seconds INT  CHECK (max_clock_skew_seconds IS NULL OR max_clock_skew_seconds >= 0),
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -63,15 +64,21 @@ CREATE INDEX IF NOT EXISTS idx_buffer_measurement_hash
     ON telemetry_buffer (tenant_id, measurement_hash);
 
 -- ----------------------------------------------------------------------------
--- Default partitions covering the next year, monthly.
--- Operators are expected to add new partitions via the retention/rotation job.
--- (Migration 002 will create today's partition explicitly; this DDL is
---  illustrative of the rotation pattern.)
+-- Partitions.
+-- The DEFAULT partition takes every row no monthly partition covers, so a
+-- fresh deployment is writable at once and a late or clock-skewed
+-- telemetry_ts never fails the insert. Operators who want retention by
+-- partition drop add monthly partitions ahead of time (docs/migrations.md,
+-- "Adding a new partition"); drop_buffer_partitions_older_than() never
+-- drops the DEFAULT partition.
 -- ----------------------------------------------------------------------------
 
--- Example partition for 2026-05 (creation deferred to the migration).
--- CREATE TABLE telemetry_buffer_2026_05 PARTITION OF telemetry_buffer
---     FOR VALUES FROM ('2026-05-01') TO ('2026-06-01');
+CREATE TABLE IF NOT EXISTS telemetry_buffer_default PARTITION OF telemetry_buffer DEFAULT;
+
+-- Single-tenant bootstrap: the runtime's SKI_TENANT_ID defaults to 'default'.
+INSERT INTO tenants (tenant_id, display_name, buffer_retention_days)
+VALUES ('default', 'Default (single-tenant bootstrap)', 30)
+ON CONFLICT (tenant_id) DO NOTHING;
 
 -- ----------------------------------------------------------------------------
 -- Append-only enforcement (same function as ledger_entries).
