@@ -81,6 +81,12 @@ referenced from each release entry.
   surrogate), before anything is buffered, evaluated or ledgered.
 
 ### Fixed
+- **`kg-extractor` emits spec-conformant graphs.** Node `version` was the
+  SHA-256 of Python's `repr` of the sorted fields, which no other
+  implementation can reproduce; it is now the SHA-256 of the node's §7.3
+  canonical JSON (spec §3.1). `scoped_to` and `cited_by` edges now run from
+  the Obligation, as spec §3.2 defines them, instead of from the Rule.
+  `kg-extractor` now depends on `ski-schemas`.
 - **The telemetry buffer works in shipped deployments.** The SKI Model image
   did not contain `telemetry_buffer/`, and no compose or Helm path created
   its tables, so every deployment ran without it: stateful predicates were

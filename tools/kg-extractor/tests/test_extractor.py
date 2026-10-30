@@ -181,6 +181,44 @@ class TestV3Emitter:
             "scoped_to",
         ]
 
+    def test_node_version_is_the_canonical_digest_of_the_node(self):
+        """Spec §3.1: a node's version is the SHA-256 of its §7.3 canonical content."""
+        from ski_schemas.canonical import sha256_canonical
+
+        kg = emit_v3_kg(self._result_with_one_explicit_rule(), jurisdiction="us.federal")
+        for kind, nodes in kg["nodes"].items():
+            for node in nodes:
+                body = {k: v for k, v in node.items() if k != "version"}
+                assert node["version"] == sha256_canonical(body), (kind, node["id"])
+
+    def test_scope_and_citation_edges_run_from_the_obligation(self):
+        """Spec §3.2: scoped_to and cited_by are Obligation -> Jurisdiction / Citation."""
+        kg = emit_v3_kg(self._result_with_one_explicit_rule(), jurisdiction="us.federal")
+        obligation_id = kg["nodes"]["obligations"][0]["id"]
+        for edge in kg["edges"]:
+            if edge["type"] in ("scoped_to", "cited_by"):
+                assert edge["from"] == obligation_id, edge
+
+    def test_extracted_kg_loads_in_the_runtime(self):
+        """What the extractor emits is a graph KG the runtime compiles and scopes."""
+        import sys
+        from datetime import datetime, timezone
+        from pathlib import Path
+
+        sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "reference-implementation" / "src"))
+        from ski_model.kg_loader import KGTrustPolicy, KnowledgeGraph
+
+        kg = KnowledgeGraph.from_dict(
+            emit_v3_kg(self._result_with_one_explicit_rule(), jurisdiction="us.federal"),
+            require_signature=False,
+            trust=KGTrustPolicy(),
+        )
+        (obligation,) = kg.rules
+        assert obligation["predicate"] == "must_not_exceed" and obligation["jurisdiction"] == ["us.federal"]
+        as_of = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        assert kg.scope_to(jurisdiction="us.federal", as_of=as_of)["obligations"]
+        assert not kg.scope_to(jurisdiction="eu", as_of=as_of)["obligations"]
+
     def test_emit_v3_kg_unknown_relation_falls_to_discretionary(self):
         rule = ComplianceRule(
             id="r2",
