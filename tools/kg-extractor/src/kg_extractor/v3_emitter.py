@@ -31,10 +31,11 @@ Defaults applied when the extractor cannot determine the value:
 
 from __future__ import annotations
 
-import hashlib
 import re
 from datetime import datetime, timezone
 from typing import Any, Dict, List
+
+from ski_schemas.canonical import sha256_canonical
 
 from .models import ExtractionQuality, ExtractionResult
 
@@ -59,15 +60,9 @@ _RELATION_TO_OBLIGATION_TYPE: List[tuple[str, str]] = [
 ]
 
 
-def _sha(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-
 def _node_version(payload: Dict[str, Any]) -> str:
-    """Content-address a node by SHA-256 of its canonical body."""
-    body = {k: v for k, v in payload.items() if k != "version"}
-    canonical = repr(sorted(body.items()))
-    return f"sha256:{_sha(canonical)}"
+    """Content-address a node: ``sha256:`` of the spec §7.3 canonical JSON of its body (spec §3.1)."""
+    return sha256_canonical({k: v for k, v in payload.items() if k != "version"})
 
 
 def _slug(s: str) -> str:
@@ -195,8 +190,9 @@ def emit_v3_kg(
             [
                 {"type": "applies_to", "from": rule_id, "to": subj_id},
                 {"type": "consists_of", "from": rule_id, "to": obligation_id},
-                {"type": "scoped_to", "from": rule_id, "to": juris_id},
-                {"type": "cited_by", "from": rule_id, "to": citation_id},
+                # Spec §3.2: scoped_to and cited_by run from the Obligation.
+                {"type": "scoped_to", "from": obligation_id, "to": juris_id},
+                {"type": "cited_by", "from": obligation_id, "to": citation_id},
             ]
         )
 
