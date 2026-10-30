@@ -100,6 +100,10 @@ docs for the migration and every opt-out flag.
   in the same aggregate query). A failed buffer query, an unrecognised
   result, a missing peak, or a non-finite aggregate now degrades the
   assertion to UNVERIFIABLE instead of crashing or guessing.
+- **The SKI Model image boots again on SQLAlchemy 2.1.** SQLAlchemy 2.1
+  no longer installs `greenlet` by default, so the runtime (which uses
+  `sqlalchemy.ext.asyncio`) failed at import. The image now pins
+  `sqlalchemy[asyncio]`.
 
 ### Security
 - **Freshness gate (`NULL_STALE`) enforced on the v3 path.**

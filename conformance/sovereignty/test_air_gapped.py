@@ -63,6 +63,11 @@ _GENESIS = "0" * 64
 # handles) and five measurements with deterministic expected verdicts under
 # the FakeLLM backend. The claim under test is air-gapped *operability*;
 # verdict accuracy is what evals/ measures.
+#
+# Each rule declares its risk_tier explicitly, as v3.2.0 requires of a
+# deployed KG: an undeclared tier now resolves to tier-1, where the
+# UNVERIFIABLE NULL_UNMAPPED path (airgap-005: no assertion to check) is
+# forced to DISCRETIONARY instead of being accepted with a note (spec §5.4).
 
 _KG_RULES: List[Dict[str, Any]] = [
     {
@@ -74,6 +79,7 @@ _KG_RULES: List[Dict[str, Any]] = [
         "unit": "ppm",
         "jurisdiction": "global",
         "effective_date": "2026-01-01T00:00:00Z",
+        "risk_tier": "tier-2",
     },
     {
         "id": "energy.nox.cap",
@@ -84,6 +90,7 @@ _KG_RULES: List[Dict[str, Any]] = [
         "unit": "ppm",
         "jurisdiction": "global",
         "effective_date": "2026-01-01T00:00:00Z",
+        "risk_tier": "tier-2",
     },
 ]
 
