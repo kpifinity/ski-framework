@@ -87,6 +87,10 @@ referenced from each release entry.
   canonical JSON (spec §3.1). `scoped_to` and `cited_by` edges now run from
   the Obligation, as spec §3.2 defines them, instead of from the Rule.
   `kg-extractor` now depends on `ski-schemas`.
+- **`quickstart.py` walkthrough no longer crashes.** The Knowledge Graph
+  overview treated each in-scope obligation (a dict) as an id and raised
+  `TypeError: unhashable type: 'dict'` before the walkthrough started. It
+  now lists the rules with limits read from the KG itself.
 - **The telemetry buffer works in shipped deployments.** The SKI Model image
   did not contain `telemetry_buffer/`, and no compose or Helm path created
   its tables, so every deployment ran without it: stateful predicates were
