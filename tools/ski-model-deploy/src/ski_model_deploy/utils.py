@@ -38,16 +38,17 @@ def save_config(config: DeploymentConfig, output_path: str) -> None:
 # Docker compose template
 # ---------------------------------------------------------------------------
 #
-# Sovereign-by-default: no ANTHROPIC_API_KEY anywhere. Ollama is the
-# inference backend. Operators who want the non-conformant demo backend
-# can override SKI_INFERENCE_BACKEND=anthropic and supply the key out of
-# band, with the caveat that doing so disqualifies the deployment.
+# Sovereign-by-default: no cloud API key anywhere. Ollama is the
+# inference backend; the runtime has no cloud backend. SKI_V3_LLM_BACKEND is
+# the variable the runtime reads (v3.2.0; SKI_INFERENCE_BACKEND is only an
+# alias). Ollama >= 0.5 is required for the JSON-schema `format` the runtime
+# sends; keep the tag in step with reference-implementation/docker-compose.yml.
 
 DOCKER_COMPOSE_TEMPLATE = """version: '3.8'
 
 services:
   ollama:
-    image: ollama/ollama:0.3.12
+    image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
     container_name: ollama-{{ name }}
     volumes:
       - ollama-models:/root/.ollama
@@ -61,7 +62,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      SKI_INFERENCE_BACKEND: {{ ski_model.backend }}
+      SKI_V3_LLM_BACKEND: {{ ski_model.backend }}
       SKI_MODEL_NAME: {{ ski_model.model }}
       SKI_MODEL_TEMPERATURE: "{{ ski_model.temperature }}"
       SKI_MODEL_SEED: "{{ ski_model.seed }}"

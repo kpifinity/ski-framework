@@ -71,3 +71,36 @@ def test_503_maps_to_service_unavailable() -> None:
         pytest.raises(SKIServiceUnavailable),
     ):
         client.health()
+
+
+def test_load_kg_sends_admin_key_header_only_when_given() -> None:
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"status": "success", "kg_trust": "anchored"})
+
+    with _client(handler) as client:
+        assert client.load_kg({"rules": []}, admin_key="adm1n")["kg_trust"] == "anchored"
+        client.load_kg({"rules": []})
+    assert seen[0].headers["x-ski-admin-key"] == "adm1n"
+    assert seen[0].headers["x-api-key"] == "s3cret"
+    assert "x-ski-admin-key" not in seen[1].headers
+
+
+def test_health_exposes_optional_provenance() -> None:
+    body = {
+        "status": "healthy",
+        "kg_loaded": True,
+        "kg_signature_verified": True,
+        "canary_status": "healthy",
+        "verdicts_produced": 0,
+        "timestamp": "2026-10-16T00:00:00Z",
+        "runtime_version": "v3",
+    }
+
+    new_runtime = _client(lambda r: httpx.Response(200, json=dict(body, provenance={"kg_trust": "anchored"})))
+    with new_runtime:
+        assert new_runtime.health().provenance == {"kg_trust": "anchored"}
+    with _client(lambda r: httpx.Response(200, json=body)) as old_runtime:  # pre-3.2.0 runtime
+        assert old_runtime.health().provenance == {}

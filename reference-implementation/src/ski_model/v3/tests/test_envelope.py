@@ -179,6 +179,65 @@ class TestModelProvenance:
             ModelProvenance.model_validate(payload)
 
 
+# ---- Optional KG-trust provenance fields (framework v3.2.0) ----
+
+_KEY_ID = "sha256:" + "b" * 64
+
+
+class TestKGTrustProvenanceCompatibility:
+    """kg_signer_key_id / kg_trust are additive: v3.1 envelopes stay valid and byte-stable."""
+
+    def test_v31_envelope_without_trust_fields_still_validates(self) -> None:
+        env = V3VerdictEnvelope.model_validate(_minimal_envelope_payload())
+        assert env.model_provenance.kg_signer_key_id is None
+        assert env.model_provenance.kg_trust is None
+
+    def test_v31_envelope_reserialises_without_the_new_keys(self) -> None:
+        payload = _minimal_envelope_payload()
+        env = V3VerdictEnvelope.model_validate(payload)
+        dumped = env.model_dump(mode="json")
+        assert dumped["model_provenance"] == payload["model_provenance"]
+        assert "kg_trust" not in env.model_dump_json()
+        assert "kg_signer_key_id" not in env.model_dump_json()
+
+    def test_v31_provenance_json_is_byte_identical(self) -> None:
+        provenance = _minimal_envelope_payload()["model_provenance"]
+        compact = json.dumps(provenance, separators=(",", ":"))
+        assert ModelProvenance.model_validate_json(compact).model_dump_json() == compact
+
+    @pytest.mark.parametrize("trust", ["anchored", "unanchored", "unsigned"])
+    def test_trust_fields_round_trip(self, trust: str) -> None:
+        payload = _minimal_envelope_payload()
+        payload["model_provenance"]["kg_signer_key_id"] = None if trust == "unsigned" else _KEY_ID
+        payload["model_provenance"]["kg_trust"] = trust
+        env = V3VerdictEnvelope.model_validate(payload)
+        reparsed = V3VerdictEnvelope.model_validate(json.loads(env.model_dump_json()))
+        assert reparsed.model_provenance.kg_trust == trust
+        assert reparsed.model_provenance.kg_signer_key_id == (None if trust == "unsigned" else _KEY_ID)
+
+    @pytest.mark.parametrize(
+        "key_id",
+        ["b" * 64, "sha256:" + "B" * 64, "sha256:" + "b" * 63, "md5:" + "b" * 64],
+    )
+    def test_signer_key_id_must_be_sha256_of_raw_key(self, key_id: str) -> None:
+        payload = _minimal_envelope_payload()["model_provenance"]
+        payload["kg_signer_key_id"] = key_id
+        with pytest.raises(ValidationError):
+            ModelProvenance.model_validate(payload)
+
+    def test_unknown_kg_trust_value_is_rejected(self) -> None:
+        payload = _minimal_envelope_payload()["model_provenance"]
+        payload["kg_trust"] = "verified"
+        with pytest.raises(ValidationError):
+            ModelProvenance.model_validate(payload)
+
+    def test_json_schema_lists_the_optional_fields(self) -> None:
+        schema = ModelProvenance.model_json_schema(mode="serialization")
+        assert {"kg_signer_key_id", "kg_trust"} <= set(schema["properties"])
+        assert "kg_trust" not in schema.get("required", [])
+        assert "kg_signer_key_id" not in schema.get("required", [])
+
+
 # ---- Envelope shape (§4.2) ----
 
 

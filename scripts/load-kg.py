@@ -4,6 +4,11 @@
 For the alpha this is a thin wrapper around /api/kg/load. Use
 `ski-model-deploy load-kg` for production deployments — that tool also
 verifies the signature locally before uploading.
+
+Framework v3.2.0: the endpoint is disabled unless the runtime sets
+SKI_ENABLE_KG_HOT_LOAD=true, and then it authenticates with the
+X-SKI-Admin-Key header (the runtime's SKI_ADMIN_API_KEY), never the normal
+API key. The KG must verify against one of the runtime's trust anchors.
 """
 
 from __future__ import annotations
@@ -21,6 +26,11 @@ def main() -> int:
     parser.add_argument("kg_file", help="Knowledge Graph JSON file to load (must be signed).")
     parser.add_argument("--endpoint", "-e", default=os.getenv("SKI_MODEL_ENDPOINT", "https://localhost:8000"))
     parser.add_argument("--api-key", default=os.getenv("SKI_API_KEY", ""))
+    parser.add_argument(
+        "--admin-key",
+        default=os.getenv("SKI_ADMIN_API_KEY", ""),
+        help="KG hot-load admin key (default: $SKI_ADMIN_API_KEY); sent as X-SKI-Admin-Key.",
+    )
     parser.add_argument("--insecure", action="store_true")
     args = parser.parse_args()
 
@@ -50,7 +60,10 @@ def main() -> int:
             return 1
 
         try:
-            resp = client.post(args.endpoint.rstrip("/") + "/api/kg/load", json=kg_data, headers=headers)
+            admin_headers = {"X-SKI-Admin-Key": args.admin_key} if args.admin_key else {}
+            resp = client.post(
+                args.endpoint.rstrip("/") + "/api/kg/load", json=kg_data, headers=admin_headers
+            )
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             print(f"✗ Load failed: {exc}", file=sys.stderr)

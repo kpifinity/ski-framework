@@ -9,6 +9,85 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+## [3.2.0] -- 2026-10-29
+
+Trust-and-safety hardening release. It closes the gap the internal
+gold-standard review found between what the spec and docs claim and what
+the code enforced: the Symbolic Verifier now fails closed against an
+adversarial or faulty model, the Knowledge Graph signature is verified
+against operator-pinned trust anchors (not the key the KG embeds), the
+runtime no longer runs the pattern-matching FakeLLM or an unverified model
+by accident, and it connects to the ledger under a least-privilege role.
+
+**Breaking, by design (all fail closed; each has an explicit opt-out):**
+KG loading now requires `SKI_KG_TRUST_ANCHORS`; a missing, non-string or
+unknown `risk_tier` resolves to **tier-1** (was tier-2); the `fake` backend
+and first-boot transcript-key generation each require an explicit opt-in;
+`POST /api/kg/load` is disabled by default; and `/api/evaluate` rejects
+unusable readings and timestamps with `422`. **3.1.x `ski-schemas` and
+`ski-sdk` reject 3.2.0 envelopes (new optional provenance fields), so
+upgrade clients and runtime together.** See "Upgrading to 3.2.0" in the
+docs for the migration and every opt-out flag.
+
+### Security
+- **The Symbolic Verifier now independently evaluates every mapped,
+  formalizable obligation (finding C1).** It no longer checks only the
+  assertions the model chose to emit. A breached obligation the model
+  omitted is `OMITTED_OBLIGATION`; a CLEAR or NULL_UNMAPPED resting on a
+  breach is `UNFLAGGED_BREACH`; an assertion predicate outside the spec
+  §3.3 enum is `SCHEMA_VIOLATION`. Contradictions now take precedence over
+  UNVERIFIABLE, and a fail-closed floor guarantees that **a mechanically
+  breached obligation never yields CLEAR at any tier.** Previously a model
+  that omitted a breached obligation could return CLEAR at every tier
+  (including tier-1), and one junk out-of-enum assertion could mask a
+  breach as UNVERIFIABLE, which tiers 2–3 accepted as CLEAR. A unit
+  mismatch between an obligation and its reading is now DISCRETIONARY (no
+  conversion is attempted).
+- **KG signatures verify only against operator-pinned trust anchors
+  (finding C2; spec §2.1.2, §3.5).** `SKI_KG_TRUST_ANCHORS` names a PEM
+  bundle of Ed25519 public keys; the key the KG embeds is used only to
+  select an anchor, never as the trust root, so a re-signed KG is refused.
+  With no anchors the runtime refuses to load a KG. Dev-only opt-out:
+  `SKI_KG_ALLOW_UNANCHORED=true`, reported as `kg_trust="unanchored"` on
+  `/api/health` and every verdict. `POST /api/kg/load` is disabled by
+  default; enabling it requires `SKI_ENABLE_KG_HOT_LOAD=true` and a
+  separate `SKI_ADMIN_API_KEY` (never the normal API key), and hot-loaded
+  KGs pass the same anchor check. Each verdict's `model_provenance` now
+  records `kg_signer_key_id` and `kg_trust`.
+- **No accidental FakeLLM or unverified model (finding C4).**
+  `SKI_V3_LLM_BACKEND` is canonical and `SKI_INFERENCE_BACKEND` is accepted
+  as an alias; the two set to different values refuses to start, so the
+  previous silent fallback to FakeLLM (compose set a variable the code did
+  not read) cannot recur. Starting on the `fake` backend requires
+  `SKI_ALLOW_FAKE_LLM=true`. When `SKI_MODEL_FILE_SHA256` is set, the
+  runtime verifies the served weights against it and refuses to start on a
+  mismatch; when it is unset, `/api/health` and every verdict report
+  `model_hash_verified=false` rather than presenting a name commitment as a
+  weight hash. `/api/health` now exposes a `provenance` object (backend,
+  model id, model/KG hashes, signer key id, trust state, transcript key
+  id). The bundled Ollama is pinned to `0.40.5` by digest (0.3.12 predated
+  the JSON-schema `format` the backend sends).
+- **Least privilege and a clean trust path (finding C6).** The runtime
+  connects to the ledger as a new `ski_ledger_writer` role (INSERT and
+  SELECT only; no UPDATE/DELETE/TRUNCATE/ALTER/trigger rights) by default,
+  proven by a real-Postgres conformance test. The unused `anthropic` cloud
+  SDK is removed from the runtime image and a CI check keeps every
+  cloud-LLM SDK out of it. The transcript signing key is never silently
+  regenerated: generation requires `SKI_ALLOW_KEY_GENERATION=true`, and a
+  missing key while the ledger already holds signed transcripts refuses to
+  start.
+- **`/api/evaluate` input validation (finding C1).** Non-finite numbers
+  (NaN, ±Infinity), integers beyond the double range, booleans where a
+  number is expected, and malformed or timezone-less timestamps are
+  rejected with `422`. A malformed timestamp is no longer silently replaced
+  by the wall clock (which bypassed the clock-skew guard).
+- **Conformance suite hardening.** TLS verification is on by default
+  (`--insecure` is now a real opt-in, not an unchangeable default). The
+  live determinism test sends `measurement_id` with a current timestamp and
+  asserts the three runs were not short-circuited by the skew guard. A new
+  implementation-neutral `conformance/adversarial/` package proves the
+  fail-closed verifier behaviour against a scripted adversarial backend.
+
 ### Fixed
 - **v3 stateful predicates no longer crash against the production
   telemetry buffer.** `SymbolicVerifier` iterated `window_query`'s result
@@ -21,6 +100,10 @@ referenced from each release entry.
   in the same aggregate query). A failed buffer query, an unrecognised
   result, a missing peak, or a non-finite aggregate now degrades the
   assertion to UNVERIFIABLE instead of crashing or guessing.
+- **The SKI Model image boots again on SQLAlchemy 2.1.** SQLAlchemy 2.1
+  no longer installs `greenlet` by default, so the runtime (which uses
+  `sqlalchemy.ext.asyncio`) failed at import. The image now pins
+  `sqlalchemy[asyncio]`.
 
 ### Security
 - **Freshness gate (`NULL_STALE`) enforced on the v3 path.**

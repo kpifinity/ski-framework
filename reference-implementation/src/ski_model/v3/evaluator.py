@@ -33,6 +33,7 @@ from typing import Any, Dict, List, Optional, Protocol, Sequence
 
 from pydantic import ValidationError as PydanticValidationError
 
+from ..kg_loader import KGTrust
 from .envelope import (
     FormalizableAssertion,
     KGCitation,
@@ -45,7 +46,7 @@ from .envelope import (
 from .policies import apply_risk_policy
 from .signing import TranscriptSigner
 from .transcript import LLMTranscript, hash_pair, signing_message
-from .verifier import BufferLike, SymbolicVerifier
+from .verifier import BufferLike, SymbolicVerifier, VerificationReport, index_obligations
 
 logger = logging.getLogger(__name__)
 
@@ -208,15 +209,19 @@ def _is_missing_reading(reading: Any, predicate: Optional[str]) -> bool:
     """True when ``reading`` is not a usable sample for ``predicate``.
 
     ``None`` is a silent sensor for every predicate. For numeric predicates
-    a non-numeric reading (a string, a bool) or NaN is equally unusable:
-    nothing about the obligation can be established from it.
+    a non-numeric reading (a string, a bool) or a non-finite one (NaN,
+    ±Infinity -- ``json.loads`` accepts all three) is equally unusable:
+    nothing about the obligation can be established from it. A unit-bearing
+    reading (``{"value": x, "unit": u}``) is judged by its ``value``.
     """
+    if isinstance(reading, dict) and "value" in reading:
+        reading = reading["value"]
     if reading is None:
         return True
     if predicate in _NUMERIC_PREDICATES:
         if isinstance(reading, bool) or not isinstance(reading, (int, float)):
             return True
-        return isinstance(reading, float) and math.isnan(reading)
+        return isinstance(reading, float) and not math.isfinite(reading)
     return False
 
 
@@ -594,6 +599,56 @@ def _apply_freshness(
     return envelope.model_copy(update=update)
 
 
+# ---- Fail-closed floor (framework v3.2.0, finding C1) ---------------------------
+
+
+_BREACH_FLOOR_VERDICTS = frozenset({V3Verdict.CLEAR.value, V3Verdict.NULL_UNMAPPED.value})
+_FAIL_CLOSED_KEEPS = frozenset({V3Verdict.DISCRETIONARY.value, V3Verdict.NULL_STALE.value})
+
+
+def _enforce_fail_closed(envelope: V3VerdictEnvelope, report: VerificationReport) -> V3VerdictEnvelope:
+    """The last word on every envelope the verifier saw: two floors no tier can lower.
+
+    * ``fail_closed`` (``SCHEMA_VIOLATION`` / ``UNIT_MISMATCH``): the
+      response or the reading is not something the verifier can stand
+      behind (spec §3.3: unknown obligation types are DISCRETIONARY), so
+      the verdict is DISCRETIONARY at every tier.
+    * ``breach_floor``: if the verifier itself evaluates a mapped obligation
+      as breached, the verdict is never CLEAR (nor NULL_UNMAPPED -- a
+      breached obligation maps), whatever the risk-tier policy decided.
+      The policy already downgrades the contradiction this implies; the
+      floor makes the invariant independent of it.
+
+    Applied after :func:`apply_risk_policy`; records why in ``notes`` and
+    requires human attestation.
+    """
+    verdict = getattr(envelope.verdict, "value", envelope.verdict)
+    notes: List[str] = []
+    if report.fail_closed and verdict not in _FAIL_CLOSED_KEEPS:
+        notes.append(
+            f"fail_closed: {len(report.fail_closed)} schema/unit violation(s) "
+            f"({', '.join(sorted({d.split(':', 1)[0] for d in report.fail_closed}))}); verdict {verdict} "
+            "routed to DISCRETIONARY at every risk tier."
+        )
+    if report.breached_obligations and verdict in _BREACH_FLOOR_VERDICTS:
+        notes.append(
+            f"breach_floor: the verifier evaluates {sorted(set(report.breached_obligations))!r} as "
+            f"breached; verdict {verdict} can never ship -- routed to DISCRETIONARY."
+        )
+    if not notes:
+        return envelope
+    for note in notes:
+        logger.warning(note)
+    attestation = envelope.human_attestation or {"required": True, "fulfilled": False}
+    return envelope.model_copy(
+        update={
+            "verdict": V3Verdict.DISCRETIONARY.value,
+            "notes": [*envelope.notes, *notes],
+            "human_attestation": attestation,
+        }
+    )
+
+
 # ---- Evaluator ----------------------------------------------------------------
 
 
@@ -639,6 +694,10 @@ class V3Evaluator:
         still produces an envelope but :attr:`EvaluationResult.transcript`
         is ``None``. Production deployments MUST configure a signer per
         spec §6.3.
+    kg_signer_key_id, kg_trust:
+        Which key signed the bound KG and how far it is trusted
+        (``kg_loader.KnowledgeGraph.signer_key_id`` / ``.kg_trust``).
+        Stamped into every envelope's :class:`ModelProvenance`.
     """
 
     llm: V3LLMBackend
@@ -646,6 +705,8 @@ class V3Evaluator:
     decoder_seed: int = 0
     verifier: SymbolicVerifier = field(default_factory=SymbolicVerifier)
     signer: Optional[TranscriptSigner] = None
+    kg_signer_key_id: Optional[str] = None
+    kg_trust: Optional[KGTrust] = None
 
     async def aevaluate(
         self,
@@ -763,12 +824,49 @@ class V3Evaluator:
         cited_node_ids = [c.get("node_id") for c in raw.get("kg_citations", [])]
         invalid = [n for n in cited_node_ids if n not in valid_node_ids]
 
+        # An obligation the id index would hide (no id, or a repeated id) must
+        # not drop out of the verifier's independent enumeration: fail closed.
+        obligations_index, slice_violations = index_obligations(
+            kg_snapshot.get("obligations", []), measurement
+        )
+
         if invalid:
             logger.warning(
                 "Citation enforcement violation: LLM cited nonexistent nodes %r. "
                 "Forcing verdict to NULL_UNMAPPED.",
                 invalid,
             )
+            # The discarded output asserted nothing the verifier can trust,
+            # but the verifier's independent enumeration still runs: a
+            # bogus citation must not hide a mapped breach as a coverage gap.
+            omitted = await self.verifier.averify_report(
+                [],
+                llm_verdict=V3Verdict.NULL_UNMAPPED,
+                subject=subject,
+                as_of=as_of,
+                buffer=buffer,
+                measurement=measurement,
+                obligations=obligations_index,
+            )
+            omitted = omitted.with_fail_closed(slice_violations)
+            invalid_divergences = [f"Invalid citation: {n}" for n in invalid]
+            if omitted.breached_obligations or omitted.fail_closed:
+                citation_result = VerifierResult(
+                    status=(
+                        VerifierStatus.LLM_CONTRADICTION
+                        if omitted.result.status == VerifierStatus.LLM_CONTRADICTION
+                        else VerifierStatus.UNVERIFIABLE
+                    ),
+                    checked_assertions=omitted.result.checked_assertions,
+                    divergences=invalid_divergences
+                    + [d for d in omitted.result.divergences if d != "No formalizable assertions to verify."],
+                )
+            else:
+                citation_result = VerifierResult(
+                    status=VerifierStatus.UNVERIFIABLE,
+                    checked_assertions=0,
+                    divergences=invalid_divergences,
+                )
             envelope = V3VerdictEnvelope(
                 verdict=V3Verdict.NULL_UNMAPPED,
                 reasoning=(
@@ -778,14 +876,11 @@ class V3Evaluator:
                 ),
                 kg_citations=[],
                 formalizable_assertions=[],
-                verifier_result=VerifierResult(
-                    status=VerifierStatus.UNVERIFIABLE,
-                    checked_assertions=0,
-                    divergences=[f"Invalid citation: {n}" for n in invalid],
-                ),
+                verifier_result=citation_result,
                 model_provenance=self._build_provenance(),
                 transcript_ref=effective_transcript_ref,
             )
+            envelope = _enforce_fail_closed(envelope, omitted)
             return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Build envelope from LLM output, then have the Symbolic Verifier
@@ -877,10 +972,6 @@ class V3Evaluator:
             logger.warning(taxonomy_notes[-1])
             llm_verdict = remapped
 
-        obligations_index = {
-            ob["id"]: ob for ob in kg_snapshot.get("obligations", []) if isinstance(ob, dict) and "id" in ob
-        }
-
         # Neuro-symbolic handoff: for any assertion whose predicate is
         # mechanically verifiable, let the Symbolic Verifier compute the
         # correct ``satisfied`` value rather than trusting the LLM's claim.
@@ -898,9 +989,11 @@ class V3Evaluator:
             measurement=measurement,
             obligations=obligations_index,
         )
-        all_notes = taxonomy_notes + normalization_notes
-
-        verifier_result = await self.verifier.averify(
+        # Independent enumeration (v3.2.0, finding C1): besides the LLM's
+        # own assertions, the verifier evaluates every scoped obligation
+        # whose metric is in the measurement -- an omitted breach is a
+        # contradiction, not a silent CLEAR.
+        report = await self.verifier.averify_report(
             assertions,
             llm_verdict=llm_verdict,
             subject=subject,
@@ -909,13 +1002,15 @@ class V3Evaluator:
             measurement=measurement,
             obligations=obligations_index,
         )
+        report = report.with_fail_closed(slice_violations)
+        all_notes = taxonomy_notes + normalization_notes + list(report.notes)
 
         envelope = V3VerdictEnvelope(
             verdict=llm_verdict,
             reasoning=reasoning_text,
             kg_citations=parsed_citations,
             formalizable_assertions=assertions,
-            verifier_result=verifier_result,
+            verifier_result=report.result,
             model_provenance=self._build_provenance(),
             transcript_ref=effective_transcript_ref,
             notes=all_notes,
@@ -929,8 +1024,10 @@ class V3Evaluator:
             return EvaluationResult(envelope=_apply_freshness(envelope, freshness), transcript=transcript)
 
         # Risk-tier policy may downgrade verdict to DISCRETIONARY and / or
-        # flag human attestation as required, per spec §5.4.
+        # flag human attestation as required, per spec §5.4. The fail-closed
+        # floor then has the last word, at every tier.
         final_envelope = apply_risk_policy(envelope, risk_tier=risk_tier)
+        final_envelope = _enforce_fail_closed(final_envelope, report)
         return EvaluationResult(envelope=final_envelope, transcript=transcript)
 
     def _build_provenance(self) -> ModelProvenance:
@@ -941,6 +1038,12 @@ class V3Evaluator:
             prompt_template_hash=self.llm.prompt_template_hash,
             decoder_seed=self.decoder_seed,
             structured_grammar_hash=self.llm.structured_grammar_hash,
+            # v3.2.0 optional provenance; getattr keeps third-party backends
+            # that predate these attributes working (reported unverified).
+            model_hash_verified=getattr(self.llm, "model_hash_verified", False) is True,
+            inference_backend=str(getattr(self.llm, "name", type(self.llm).__name__)),
+            kg_signer_key_id=self.kg_signer_key_id,
+            kg_trust=self.kg_trust,
         )
 
     def _render_canonical_prompt(self, measurement: Dict[str, Any], kg_snapshot: Dict[str, Any]) -> str:

@@ -14,9 +14,12 @@ Differences from the Ollama backend, stated honestly:
     :data:`RESPONSE_GRAMMAR` — stronger than post-hoc validation.
   * **Model weight hash**: vLLM does not expose a weights digest over
     the API. The operator SHOULD set ``$SKI_MODEL_FILE_SHA256`` (the
-    digest of the served weights); the backend records it as the
-    provenance anchor. Without it, the backend falls back to a vendor
-    commitment string — a weaker signal, and flagged as such in logs.
+    digest of the served weights). If the weights file is also mounted
+    into the runtime (``$SKI_MODEL_FILE_PATH``) it is hashed at boot and
+    a mismatch refuses to start (``model_hash_verified=true`` on a
+    match); otherwise the pin is recorded as operator-asserted with
+    ``model_hash_verified=false``. With neither, a name commitment is
+    recorded, labelled as NOT a weight hash. See :mod:`.model_hash`.
   * **Determinism**: ``temperature=0`` and a fixed ``seed`` are sent
     per request. vLLM's batching means bit-determinism is not
     guaranteed across load patterns; the framework's audit story rests
@@ -29,14 +32,27 @@ lives in :mod:`.ollama`.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, Optional
 
 import httpx
 
 from ..evaluator import PROMPT_TEMPLATE, PROMPT_TEMPLATE_ID, RESPONSE_GRAMMAR
+from .model_hash import (
+    MODEL_FILE_PATH_ENV,
+    SOURCE_FILE_DIGEST,
+    SOURCE_NAME_COMMITMENT,
+    SOURCE_OPERATOR_ASSERTED,
+    SOURCE_VERIFIED_FILE_DIGEST,
+    ModelHashError,
+    ModelHashResolution,
+    check_pin,
+    name_commitment,
+    normalize_sha256,
+    sha256_file,
+)
 from .ollama import _discretionary_response, _parse_structured_output
 
 logger = logging.getLogger(__name__)
@@ -57,6 +73,7 @@ class VLLMV3Backend:
         prompt_template_hash: str,
         structured_grammar_hash: str,
         model_file_sha256: Optional[str] = None,
+        model_file_path: Optional[str] = None,
         request_timeout_seconds: float = 120.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
@@ -66,13 +83,27 @@ class VLLMV3Backend:
         self._prompt_template_hash = prompt_template_hash
         self._structured_grammar_hash = structured_grammar_hash
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(request_timeout_seconds))
-        self._model_weight_hash = self._resolve_model_weight_hash(model_file_sha256)
+        self._model_hash = self._resolve_model_weight_hash(model_file_sha256, model_file_path)
 
     # ---- V3LLMBackend protocol -------------------------------------------------
 
     @property
     def model_weight_hash(self) -> str:
-        return self._model_weight_hash
+        return self._model_hash.model_weight_hash
+
+    # ---- Provenance extras (read via getattr; not part of the protocol) --------
+
+    @property
+    def model_id(self) -> str:
+        return self._model_name
+
+    @property
+    def model_hash_verified(self) -> bool:
+        return self._model_hash.verified
+
+    @property
+    def model_hash_source(self) -> str:
+        return self._model_hash.source
 
     @property
     def prompt_template_id(self) -> str:
@@ -148,16 +179,22 @@ class VLLMV3Backend:
             ),
         )
 
-    def _resolve_model_weight_hash(self, model_file_sha256: Optional[str]) -> str:
+    def _resolve_model_weight_hash(
+        self, model_file_sha256: Optional[str], model_file_path: Optional[str]
+    ) -> ModelHashResolution:
         """Strongest available provenance anchor for the served weights.
 
-        Order of preference:
+          1. Pin + mounted weights file: hash the file; a mismatch raises
+             :class:`ModelHashError` (refuse to start), a match is verified.
+          2. Pin only: vLLM exposes no digest, so the pin is recorded as
+             ``operator-asserted`` with ``model_hash_verified=false``.
+          3. File only: its digest is recorded, unverified (nothing to
+             compare it with).
+          4. Neither: ``sha256("vllm:" + model_name)`` name commitment,
+             labelled as NOT a weight hash.
 
-          1. Operator-supplied weights digest (``$SKI_MODEL_FILE_SHA256``)
-             — verified against ``/v1/models`` only in the sense that we
-             confirm the named model is actually being served.
-          2. Vendor commitment ``sha256("vllm:" + model_name)`` — a
-             weaker signal; auditors are warned in the logs.
+        ``/v1/models`` is consulted only to warn when the configured model
+        is not the one being served.
         """
         served = self._list_served_models()
         if served is not None and self._model_name not in served:
@@ -168,14 +205,48 @@ class VLLMV3Backend:
                 self._model_name,
                 served,
             )
-        if model_file_sha256:
-            return "sha256:" + model_file_sha256.lower().removeprefix("sha256:")
+        expected = normalize_sha256(model_file_sha256) if model_file_sha256 else None
+        observed: Optional[str] = None
+        if model_file_path:
+            path = Path(model_file_path)
+            try:
+                observed = sha256_file(path)
+            except OSError as exc:
+                raise ModelHashError(
+                    f"{MODEL_FILE_PATH_ENV}={model_file_path!r} cannot be read ({exc}). "
+                    "Refusing to start rather than record unverifiable weights."
+                ) from exc
+        if expected is not None and observed is not None:
+            check_pin(
+                expected=expected,
+                observed=observed,
+                observed_from=f"the weights file {model_file_path}",
+                model_name=self._model_name,
+            )
+            logger.info("Model weights verified: %s matches the pinned digest.", model_file_path)
+            return ModelHashResolution("sha256:" + expected, True, SOURCE_VERIFIED_FILE_DIGEST)
+        if expected is not None:
+            logger.warning(
+                "vLLM exposes no weights digest and %s is not set, so the pinned digest for %s "
+                "is recorded as operator-asserted (model_hash_verified=false).",
+                MODEL_FILE_PATH_ENV,
+                self._model_name,
+            )
+            return ModelHashResolution("sha256:" + expected, False, SOURCE_OPERATOR_ASSERTED)
+        if observed is not None:
+            logger.warning(
+                "Weights file %s hashes to sha256:%s, but no pin is set to verify it against "
+                "(model_hash_verified=false).",
+                model_file_path,
+                observed,
+            )
+            return ModelHashResolution("sha256:" + observed, False, SOURCE_FILE_DIGEST)
         logger.warning(
-            "No $SKI_MODEL_FILE_SHA256 provided for vLLM model %s; falling back to vendor "
-            "commitment. Auditors should treat this as a weaker provenance signal.",
+            "No weights digest for vLLM model %s: recording a name commitment, which is NOT a "
+            "weight hash (model_hash_verified=false). Set SKI_MODEL_FILE_SHA256.",
             self._model_name,
         )
-        return _vendor_commitment(self._model_name)
+        return ModelHashResolution(name_commitment("vllm", self._model_name), False, SOURCE_NAME_COMMITMENT)
 
     def _list_served_models(self) -> Optional[list[str]]:
         try:
@@ -188,11 +259,6 @@ class VLLMV3Backend:
             return None
         models = data.get("data") or []
         return [m.get("id", "") for m in models if isinstance(m, dict)]
-
-
-def _vendor_commitment(model_name: str) -> str:
-    """sha256 over the ``vllm:<model_name>`` commitment string."""
-    return "sha256:" + hashlib.sha256(f"vllm:{model_name}".encode()).hexdigest()
 
 
 __all__ = ["VLLMV3Backend"]

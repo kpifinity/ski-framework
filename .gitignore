@@ -85,3 +85,4 @@ Thumbs.db
 # Generated, locally-signed demo KG + local keys/certs (scripts/setup.sh, scripts/make-demo-kg.py)
 reference-implementation/examples/knowledge-graphs/kg.json
 reference-implementation/tls/
+reference-implementation/kg-signing/

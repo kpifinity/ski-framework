@@ -131,7 +131,9 @@ async def run_pipeline_benchmark(
     # transcript signing in its measurement without touching a
     # deployment's key path ($SKI_TRANSCRIPT_KEY_PATH).
     keydir = tempfile.mkdtemp(prefix="ski-bench-key-")
-    signer = TranscriptSigner.auto_provision(private_key_path=Path(keydir) / "transcript.ed25519")
+    signer = TranscriptSigner.auto_provision(
+        private_key_path=Path(keydir) / "transcript.ed25519", allow_generation=True
+    )
     evaluator = V3Evaluator(
         llm=backend,
         kg_version_hash=hashes["kg_file_hash"],

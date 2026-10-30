@@ -8,7 +8,9 @@ defined here.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from typing import Any, Dict
+
+from pydantic import BaseModel, ConfigDict, Field
 from ski_schemas import (
     FormalizableAssertion,
     KGCitation,
@@ -36,6 +38,10 @@ class HealthStatus(BaseModel):
     verdicts_produced: int
     timestamp: str
     runtime_version: str
+    # Runtime >= 3.2.0: what the runtime stamps on every verdict's
+    # model_provenance (kg_trust, kg_signer_key_id, transcript_key_id, ...).
+    # Empty when talking to an older runtime.
+    provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
 __all__ = [

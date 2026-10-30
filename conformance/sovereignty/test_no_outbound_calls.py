@@ -21,9 +21,12 @@ BACKENDS = ("reference-implementation", "src", "ski_model", "v3", "backends", "_
 @pytest.mark.sovereignty
 def test_default_backend_is_local_and_hermetic(repo_root: Path) -> None:
     factory = (repo_root.joinpath(*BACKENDS)).read_text()
-    assert 'getenv("SKI_V3_LLM_BACKEND", "fake")' in factory, (
+    assert 'DEFAULT_BACKEND: Final = "fake"' in factory, (
         "default v3 LLM backend is not the hermetic 'fake' backend."
     )
+    # v3.2.0: the hermetic default is still never served silently; the
+    # factory refuses it without the explicit SKI_ALLOW_FAKE_LLM opt-in.
+    assert '"SKI_ALLOW_FAKE_LLM"' in factory, "FakeLLM default is not gated behind SKI_ALLOW_FAKE_LLM."
 
 
 @pytest.mark.sovereignty

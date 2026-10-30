@@ -9,7 +9,8 @@ secrets.
 Endpoints:
 
   POST /api/evaluate      — v3 inference; returns a V3VerdictEnvelope.
-  POST /api/kg/load       — load a signed Knowledge Graph at runtime.
+  POST /api/kg/load       — hot-load a signed Knowledge Graph (disabled unless
+                            SKI_ENABLE_KG_HOT_LOAD=true; needs SKI_ADMIN_API_KEY).
   GET  /api/health        — liveness + readiness.
   GET  /api/verdicts      — paginated verdict ledger (auth required).
   GET  /api/canary        — neuro-symbolic agreement-rate snapshot.
@@ -33,7 +34,7 @@ from typing import Any, AsyncIterator, Dict, Final, List, Optional
 
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -50,7 +51,7 @@ except ImportError:  # pragma: no cover
 from ski_schemas.measurement import MeasurementRecord
 
 from . import metrics
-from .kg_loader import KnowledgeGraph, load_signed_kg
+from .kg_loader import KGTrustPolicy, KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
 from .ledger_migrations import ensure_v3_ledger_schema
 from .v3 import (
@@ -67,6 +68,8 @@ from .v3 import (
 from .v3 import (
     build_backend as build_v3_backend,
 )
+from .v3.signing import TranscriptKeyError, transcript_key_path
+from .v3.verifier import measurement_input_errors
 
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
 logging.basicConfig(
@@ -76,7 +79,7 @@ logging.basicConfig(
 logger = logging.getLogger("ski_model.server")
 
 
-_VERSION = "3.1.0"
+_VERSION = "3.2.0"
 
 # Safe default when no tenant row and no SKI_MAX_CLOCK_SKEW_SECONDS override
 # are available; matches the telemetry_buffer.sql `tenants` column default.
@@ -92,6 +95,8 @@ class _State:
     """Process-local state. Workers MUST be 1 — see docs/CONCURRENCY.md."""
 
     knowledge_graph: Optional[KnowledgeGraph] = None
+    # SKI_KG_TRUST_ANCHORS / SKI_KG_ALLOW_UNANCHORED, resolved once at startup.
+    kg_trust_policy: Optional[KGTrustPolicy] = None
     tag_registry: Optional[TagRegistry] = None
     symbolic_evaluator: Optional[SymbolicEvaluator] = None
     ledger: Optional[LedgerClient] = None
@@ -127,6 +132,11 @@ class HealthStatus(BaseModel):
     verdicts_produced: int
     timestamp: str
     runtime_version: str
+    # v3.2.0: what is actually serving verdicts and under what trust. Keys:
+    # backend provenance (backend, model_id, model_weight_hash,
+    # model_hash_verified, model_hash_source) merged with KG-trust provenance
+    # (kg_version_hash, kg_signer_key_id, kg_trust, transcript_key_id). Additive.
+    provenance: Dict[str, Any] = Field(default_factory=dict)
 
 
 # ============================================================================
@@ -148,6 +158,42 @@ async def require_api_key(x_api_key: Optional[str] = Header(default=None)) -> No
         )
     if not x_api_key or not secrets.compare_digest(x_api_key, _API_KEY):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid or missing API key.")
+
+
+# KG hot-load (framework v3.2.0). Off by default; when on, it is gated by a
+# separate admin key, never API_KEY (which the sidecar holds), and every
+# hot-loaded KG passes the same trust-anchor check as the startup KG.
+_KG_HOT_LOAD_ENV: Final[str] = "SKI_ENABLE_KG_HOT_LOAD"
+_ADMIN_API_KEY_ENV: Final[str] = "SKI_ADMIN_API_KEY"
+_ADMIN_KEY_HEADER: Final[str] = "X-SKI-Admin-Key"
+
+
+def _kg_hot_load_enabled() -> bool:
+    return os.getenv(_KG_HOT_LOAD_ENV, "false").strip().lower() == "true"
+
+
+def _kg_admin_api_key() -> str:
+    """Return the hot-load admin key; raise RuntimeError if it is unusable."""
+    admin_key = os.getenv(_ADMIN_API_KEY_ENV, "")
+    if not admin_key:
+        raise RuntimeError(f"{_KG_HOT_LOAD_ENV}=true requires {_ADMIN_API_KEY_ENV} to be set.")
+    if _API_KEY and secrets.compare_digest(admin_key.encode(), _API_KEY.encode()):
+        raise RuntimeError(f"{_ADMIN_API_KEY_ENV} must differ from API_KEY (the key the sidecar holds).")
+    return admin_key
+
+
+async def require_kg_admin(x_ski_admin_key: Optional[str] = Header(default=None)) -> None:
+    if not _kg_hot_load_enabled():
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"KG hot-load is disabled. Set {_KG_HOT_LOAD_ENV}=true and {_ADMIN_API_KEY_ENV} to enable it.",
+        )
+    try:
+        admin_key = _kg_admin_api_key()
+    except RuntimeError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, f"Server misconfiguration: {exc}") from None
+    if not x_ski_admin_key or not secrets.compare_digest(x_ski_admin_key.encode(), admin_key.encode()):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, f"Invalid or missing {_ADMIN_KEY_HEADER}.")
 
 
 # ============================================================================
@@ -181,6 +227,43 @@ def _compute_kg_version_hash(kg: KnowledgeGraph) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return "sha256:" + hashlib.sha256(payload).hexdigest()
+
+
+async def _ledger_has_signed_transcripts(engine: Optional[AsyncEngine]) -> bool:
+    """True when ``ledger_entries`` already holds a signed transcript.
+
+    Asked only when the transcript key file is missing. If the ledger cannot
+    answer, it is not safe to treat this as a first boot, so this raises.
+    """
+    try:
+        if engine is None:
+            raise RuntimeError("ledger engine not initialised")
+        async with engine.connect() as conn:
+            row = (
+                await conn.execute(
+                    text("SELECT 1 FROM ledger_entries WHERE transcript_signature IS NOT NULL LIMIT 1")
+                )
+            ).first()
+    except Exception as exc:
+        raise TranscriptKeyError(
+            "The transcript signing key is missing and the audit ledger could not be checked "
+            f"for existing signed transcripts ({exc!r}). Refusing to generate a new key."
+        ) from exc
+    return row is not None
+
+
+def _trust_provenance() -> Dict[str, Any]:
+    """The KG-trust and transcript-key half of /api/health ``provenance``."""
+    kg = state.knowledge_graph
+    policy = state.kg_trust_policy
+    signer = state.transcript_signer
+    return {
+        "kg_version_hash": state.kg_version_hash if kg is not None else None,
+        "kg_signer_key_id": kg.signer_key_id if kg is not None else None,
+        "kg_trust": kg.kg_trust if kg is not None else None,
+        "kg_trust_anchors": list(policy.anchor_key_ids) if policy is not None else [],
+        "transcript_key_id": signer.key_id if signer is not None else None,
+    }
 
 
 async def _resolve_max_clock_skew_seconds(engine: Optional[AsyncEngine], tenant_id: str) -> int:
@@ -228,12 +311,35 @@ async def _resolve_max_clock_skew_seconds(engine: Optional[AsyncEngine], tenant_
 def _build_v3_llm_backend() -> V3LLMBackend:
     """Select the v3 LLM backend.
 
-    Delegates to :func:`ski_model.v3.backends.build_v3_backend`. ``SKI_V3_LLM_BACKEND``
-    controls the selection: ``"fake"`` (default), ``"ollama"``, or
-    ``"vllm"``. Additional backends extend the factory without touching
-    the server.
+    Delegates to :func:`ski_model.v3.backends.build_backend`. ``SKI_V3_LLM_BACKEND``
+    (alias ``SKI_INFERENCE_BACKEND``) controls the selection: ``"ollama"``,
+    ``"vllm"`` or ``"fake"`` (the default when unset, refused unless
+    ``SKI_ALLOW_FAKE_LLM=true``). Any configuration error, or a model
+    weight-hash pin that cannot be honoured, raises here so the runtime
+    refuses to start. Additional backends extend the factory without
+    touching the server.
     """
     return build_v3_backend()
+
+
+def _backend_provenance(backend: Optional[V3LLMBackend]) -> Dict[str, Any]:
+    """The backend half of ``/api/health``'s ``provenance`` object."""
+    if backend is None:
+        return {
+            "backend": None,
+            "model_id": None,
+            "model_weight_hash": None,
+            "model_hash_verified": False,
+            "model_hash_source": None,
+        }
+    name = str(getattr(backend, "name", type(backend).__name__))
+    return {
+        "backend": name,
+        "model_id": str(getattr(backend, "model_id", name)),
+        "model_weight_hash": backend.model_weight_hash,
+        "model_hash_verified": getattr(backend, "model_hash_verified", False) is True,
+        "model_hash_source": getattr(backend, "model_hash_source", "unspecified"),
+    }
 
 
 # ============================================================================
@@ -246,16 +352,30 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Replaces deprecated @app.on_event handlers (FastAPI ≥0.93)."""
     logger.info("SKI Model starting (v%s, runtime=v3)", _VERSION)
 
+    # Framework v3.2.0: KG trust anchors (spec §2.1.2, §3.5). An invalid
+    # SKI_KG_TRUST_ANCHORS bundle refuses to start; it never degrades.
+    state.kg_trust_policy = KGTrustPolicy.from_env()
+    logger.info("KG trust policy: %s", state.kg_trust_policy.describe())
+    if _kg_hot_load_enabled():
+        _kg_admin_api_key()  # refuse to start with an unusable admin key
+        logger.warning(
+            "KG hot-load ENABLED (%s=true): POST /api/kg/load accepts anchored KGs.", _KG_HOT_LOAD_ENV
+        )
+
     kg_path = Path(os.getenv("KG_PATH", "/app/kg/kg.json"))
     require_sig = os.getenv("KG_REQUIRE_SIGNATURE", "true").lower() == "true"
     try:
-        state.knowledge_graph = load_signed_kg(kg_path, require_signature=require_sig)
+        state.knowledge_graph = load_signed_kg(
+            kg_path, require_signature=require_sig, trust=state.kg_trust_policy
+        )
         state.kg_version_hash = _compute_kg_version_hash(state.knowledge_graph)
         logger.info(
-            "KG loaded: version=%s rules=%d signature_verified=%s kg_hash=%s",
+            "KG loaded: version=%s rules=%d signature_verified=%s kg_trust=%s signer=%s kg_hash=%s",
             state.knowledge_graph.version,
             len(state.knowledge_graph.rules),
             state.knowledge_graph.signature_verified,
+            state.knowledge_graph.kg_trust,
+            state.knowledge_graph.signer_key_id,
             state.kg_version_hash[:16] + "…",
         )
     except FileNotFoundError:
@@ -270,18 +390,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     state.symbolic_evaluator = SymbolicEvaluator()
     state.llm_backend = _build_v3_llm_backend()
-    state.transcript_signer = TranscriptSigner.auto_provision()
+    backend_prov = _backend_provenance(state.llm_backend)
     logger.info(
-        "Transcript signer ready (key_id=%s)",
-        state.transcript_signer.key_id[:24] + "…",
-    )
-    state.evaluator = V3Evaluator(
-        llm=state.llm_backend,
-        kg_version_hash=state.kg_version_hash,
-        decoder_seed=int(os.getenv("SKI_MODEL_SEED", "0")),
-        signer=state.transcript_signer,
+        "Inference backend: backend=%s model_id=%s model_weight_hash=%s model_hash_verified=%s (source=%s)",
+        backend_prov["backend"],
+        backend_prov["model_id"],
+        backend_prov["model_weight_hash"],
+        backend_prov["model_hash_verified"],
+        backend_prov["model_hash_source"],
     )
 
+    # The ledger comes up before the transcript signer: a missing signing key
+    # is only a first boot if the ledger holds no signed transcripts yet.
     state.ledger = LedgerClient(os.getenv("LEDGER_DSN", ""))
     await state.ledger.initialize()
     # PR 16 (v3.0.2): probe ledger_entries for the v3 audit-trail columns
@@ -292,6 +412,24 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # evaluation time. Set SKI_AUTOMIGRATE=false to opt out.
     if state.ledger._engine is not None:
         await ensure_v3_ledger_schema(state.ledger._engine)
+
+    key_path = transcript_key_path()
+    ledger_has_signed = False
+    if not key_path.exists():
+        ledger_has_signed = await _ledger_has_signed_transcripts(state.ledger._engine)
+    state.transcript_signer = TranscriptSigner.auto_provision(
+        key_path, ledger_has_signed_transcripts=ledger_has_signed
+    )
+    logger.info("Transcript signer ready (key_id=%s)", state.transcript_signer.key_id)
+    kg = state.knowledge_graph
+    state.evaluator = V3Evaluator(
+        llm=state.llm_backend,
+        kg_version_hash=state.kg_version_hash,
+        decoder_seed=int(os.getenv("SKI_MODEL_SEED", "0")),
+        signer=state.transcript_signer,
+        kg_signer_key_id=kg.signer_key_id if kg is not None else None,
+        kg_trust=kg.kg_trust if kg is not None else None,
+    )
 
     state.tenant_id = os.getenv("SKI_TENANT_ID", "default")
     state.max_clock_skew_seconds = await _resolve_max_clock_skew_seconds(
@@ -367,16 +505,24 @@ async def health_check() -> HealthStatus:
         verdicts_produced=state.verdicts_produced,
         timestamp=_now_iso(),
         runtime_version="v3",
+        provenance={**_backend_provenance(state.llm_backend), **_trust_provenance()},
     )
 
 
-@app.post("/api/kg/load", dependencies=[Depends(require_api_key)])
+@app.post("/api/kg/load", dependencies=[Depends(require_kg_admin)])
 async def load_kg(kg_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Load a Knowledge Graph supplied via API. Signature is REQUIRED."""
+    """Hot-load a Knowledge Graph supplied via API.
+
+    Disabled unless ``SKI_ENABLE_KG_HOT_LOAD=true``; then requires the
+    ``X-SKI-Admin-Key`` header to match ``SKI_ADMIN_API_KEY``. Signature is
+    REQUIRED and must verify against a configured trust anchor (or, with no
+    anchors, the explicit ``SKI_KG_ALLOW_UNANCHORED=true`` dev mode).
+    """
     if "signature" not in kg_data:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "KG missing signature block.")
     try:
-        kg = KnowledgeGraph.from_dict(kg_data, require_signature=True)
+        policy = state.kg_trust_policy if state.kg_trust_policy is not None else KGTrustPolicy.from_env()
+        kg = KnowledgeGraph.from_dict(kg_data, require_signature=True, trust=policy)
     except Exception as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"KG invalid: {exc}") from exc
 
@@ -386,10 +532,24 @@ async def load_kg(kg_data: Dict[str, Any]) -> Dict[str, Any]:
 
     if state.evaluator is not None:
         state.evaluator.kg_version_hash = state.kg_version_hash
+        state.evaluator.kg_signer_key_id = kg.signer_key_id
+        state.evaluator.kg_trust = kg.kg_trust
 
     metrics.KG_SIGNATURE_VERIFIED.set(1 if kg.signature_verified else 0)
-    logger.info("KG (re)loaded: version=%s, rules=%d", kg.version, len(kg.rules))
-    return {"status": "success", "rules_loaded": len(kg.rules), "version": kg.version}
+    logger.warning(
+        "KG hot-loaded via /api/kg/load: version=%s, rules=%d, kg_trust=%s, signer=%s",
+        kg.version,
+        len(kg.rules),
+        kg.kg_trust,
+        kg.signer_key_id,
+    )
+    return {
+        "status": "success",
+        "rules_loaded": len(kg.rules),
+        "version": kg.version,
+        "kg_signer_key_id": kg.signer_key_id,
+        "kg_trust": kg.kg_trust,
+    }
 
 
 @app.post(
@@ -416,6 +576,12 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     _eval_started = datetime.now(timezone.utc)
     metrics.LAST_TELEMETRY_TS.set(_eval_started.timestamp())
     telemetry_ts = _parse_telemetry_ts(measurement.timestamp)
+    # v3.2.0 (finding C1): non-finite numbers anywhere, and booleans where a
+    # KG obligation expects a number, are rejected before anything is
+    # buffered, scoped or evaluated.
+    input_errors = measurement_input_errors(measurement.measurement, state.knowledge_graph.rules)
+    if input_errors:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "; ".join(input_errors))
 
     # Clock-skew guard (docs/threat-model.md "Assumption 2"). The telemetry
     # timestamp is authoritative for stateful predicates and freshness
@@ -448,6 +614,7 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
         skew_envelope = _build_clock_skew_envelope(
             skew_note=skew_note,
             kg_version_hash=state.kg_version_hash,
+            kg=state.knowledge_graph,
         )
         await state.ledger.append_v3(
             envelope=skew_envelope,
@@ -586,17 +753,27 @@ def _now_iso() -> str:
 
 
 def _parse_telemetry_ts(value: str) -> datetime:
-    """Parse telemetry timestamp; fall back to now() only if parsing fails.
+    """Parse the telemetry timestamp; HTTP 422 if it is malformed or has no timezone.
 
     Telemetry timestamps are the authoritative clock for stateful evaluation
-    (see docs/RFCs/0001-stateful-evaluation.md). A malformed timestamp is a
-    producer bug; we log and degrade rather than crash.
+    (see docs/RFCs/0001-stateful-evaluation.md), KG scoping and the clock-skew
+    guard. Before v3.2.0 a malformed timestamp was silently replaced by the
+    wall clock -- which also defeated the skew guard -- and a timezone-less
+    one raised ``TypeError`` (HTTP 500). Neither is ever substituted now.
     """
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except (TypeError, ValueError):
-        logger.warning("Malformed telemetry timestamp %r; falling back to wall clock.", value)
-        return datetime.now(timezone.utc)
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"timestamp {value!r} is not an ISO-8601 date-time.",
+        ) from None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"timestamp {value!r} has no timezone; send UTC ('Z') or an explicit offset.",
+        )
+    return parsed
 
 
 def _clock_skew_mode() -> str:
@@ -613,7 +790,9 @@ def _clock_skew_delta_seconds(telemetry_ts: datetime, arrival_ts: datetime) -> f
     return abs((arrival_ts - telemetry_ts).total_seconds())
 
 
-def _build_clock_skew_envelope(*, skew_note: str, kg_version_hash: str) -> V3VerdictEnvelope:
+def _build_clock_skew_envelope(
+    *, skew_note: str, kg_version_hash: str, kg: Optional[KnowledgeGraph] = None
+) -> V3VerdictEnvelope:
     """Build the short-circuit DISCRETIONARY envelope for an over-skew record.
 
     No LLM ran and no formalizable assertions were checked — the record
@@ -645,6 +824,8 @@ def _build_clock_skew_envelope(*, skew_note: str, kg_version_hash: str) -> V3Ver
             prompt_template_hash=sentinel_hash,
             decoder_seed=0,
             structured_grammar_hash=sentinel_hash,
+            kg_signer_key_id=kg.signer_key_id if kg is not None else None,
+            kg_trust=kg.kg_trust if kg is not None else None,
         ),
         transcript_ref="transcript:none-clock-skew-guard",
         human_attestation={"required": True, "fulfilled": False},

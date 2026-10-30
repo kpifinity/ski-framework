@@ -80,8 +80,14 @@ class RiskTierGovernor:
     what is the strictest tier among them?"*
 
     The strictest tier wins. ``tier-1`` is strictest; ``tier-3`` is the
-    most permissive. Rules with no ``risk_tier`` field default to
-    ``tier-2`` (the standard tier).
+    most permissive. Spec §5.4 requires every rule to declare a
+    ``risk_tier`` (``low`` / ``medium`` / ``high``, or ``tier-3`` /
+    ``tier-2`` / ``tier-1``). A rule with no ``risk_tier``, a non-string
+    one, or an unrecognised one (e.g. ``"critical"``, a typo) resolves to
+    ``tier-1``: unknown criticality is never assumed to be low-risk
+    (framework v3.2.0, finding C1; before v3.2.0 it silently became
+    ``tier-2``, so such rules never reached the tier-1 fail-safe). The
+    opt-out is to declare the intended tier on every rule.
 
     Strictness:
 
@@ -92,7 +98,7 @@ class RiskTierGovernor:
     jurisdiction cannot send ``risk_tier=tier-3`` to evade the policy.
     """
 
-    DEFAULT_TIER: ClassVar[str] = "tier-2"
+    DEFAULT_TIER: ClassVar[str] = "tier-1"
     _TIER_RANK: ClassVar[dict[str, int]] = {"tier-1": 1, "tier-2": 2, "tier-3": 3}
     _ALIASES: ClassVar[dict[str, str]] = {
         "tier-1": "tier-1",
@@ -103,6 +109,7 @@ class RiskTierGovernor:
         "tier2": "tier-2",
         "standard": "tier-2",
         "default": "tier-2",
+        "medium": "tier-2",
         "tier-3": "tier-3",
         "tier3": "tier-3",
         "low": "tier-3",
@@ -114,8 +121,9 @@ class RiskTierGovernor:
         """Normalise a tier string to ``tier-1`` / ``tier-2`` / ``tier-3``.
 
         Unknown / missing / non-string inputs collapse to
-        :attr:`DEFAULT_TIER`. The aliases ``"high"``, ``"standard"``,
-        ``"low"``, etc. are recognised.
+        :attr:`DEFAULT_TIER` (``tier-1``, the strictest). The aliases
+        ``"high"``, ``"medium"``, ``"standard"``, ``"low"``, etc. are
+        recognised.
         """
         if not isinstance(raw, str):
             return cls.DEFAULT_TIER
@@ -127,9 +135,10 @@ class RiskTierGovernor:
         """The strictest tier across ``rules``; ``DEFAULT_TIER`` when empty.
 
         Each rule's ``risk_tier`` field (if any) is canonicalised; the
-        minimum rank (i.e. the strictest tier) wins. Empty input yields
-        the default tier so a runtime with zero applicable obligations
-        defaults to the standard policy rather than the permissive one.
+        minimum rank (i.e. the strictest tier) wins, so one undeclared or
+        mistyped tier makes the whole slice ``tier-1``. Empty input yields
+        the default (strictest) tier too: nothing about the measurement's
+        criticality is known.
         """
         ranks = [cls._TIER_RANK[cls.canonicalise(r.get("risk_tier"))] for r in rules]
         if not ranks:

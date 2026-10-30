@@ -15,16 +15,24 @@ image:
   # clusters: mirror this image into your internal registry and point
   # repository at the mirror.
   repository: ghcr.io/kpifinity/ski-model
-  tag: "3.1.0"
+  tag: "3.2.0"
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
 # REQUIRED. Name of a v1 Secret in the release namespace providing:
 #   api-key     — the SKI Model API key (openssl rand -hex 32)
-#   ledger-dsn  — full PostgreSQL DSN for the audit ledger
-# When postgres.bundled=true the DSN should point at
-# <release>-ski-postgres:5432 and the Secret must also provide:
-#   postgres-password
+# With postgres.bundled=true and postgres.useWriterRole=true (the default):
+#   postgres-password       — the bundled Postgres owner/superuser password
+#   ledger-writer-password  — URL-safe password (openssl rand -hex 24) for
+#                             the least-privilege ski_ledger_writer role; the
+#                             chart builds the SKI Model's LEDGER_DSN from it
+# Otherwise:
+#   ledger-dsn  — full PostgreSQL DSN for the audit ledger. It MUST use a
+#                 role with only ski_ledger_writer's privileges (INSERT +
+#                 SELECT; see files/append_only.sql), never the owner.
+#   (+ postgres-password when postgres.bundled=true)
+#   admin-api-key — only with kg.hotLoad.enabled: the KG hot-load admin
+#                 key (openssl rand -hex 32); must differ from api-key
 # Manage it with your secret manager (ExternalSecrets, Vault, CSI) —
 # not with values files.
 existingSecret: ""
@@ -36,15 +44,46 @@ kg:
   configMapName: ""
   fromSecret: false
   requireSignature: true
+  # REQUIRED (framework >= 3.2.0; spec §2.1.2, §3.5). Operator trust
+  # anchors: the KG loads only if its signature verifies against one of
+  # the Ed25519 public keys in this PEM bundle, never against the key the
+  # KG embeds. Name of a ConfigMap (or Secret, see fromSecret) holding the
+  # bundle as key kg-trust-anchors.pem, e.g.
+  #   kubectl create configmap ski-kg-trust-anchors \
+  #     --from-file=kg-trust-anchors.pem=./kg-owner-public.pem
+  # Several keys in one bundle = key rotation. It must be a DIFFERENT
+  # object from kg.configMapName: whoever can change the KG must not also
+  # be able to change who may sign it (the render fails otherwise).
+  trustAnchors:
+    configMapName: ""
+    fromSecret: false
+  # DEV ONLY, non-conformant. With no trust anchors, load a KG checked
+  # only against its own embedded key; /api/health and every verdict then
+  # report kg_trust="unanchored". Cannot be combined with trustAnchors.
+  allowUnanchored: false
+  # POST /api/kg/load (runtime KG hot-swap). Disabled by default. When
+  # enabled, existingSecret must also provide admin-api-key, which must
+  # differ from api-key (the runtime refuses to start otherwise); hot-
+  # loaded KGs pass the same trust-anchor check as the startup KG.
+  hotLoad:
+    enabled: false
 
 skiModel:
   # fake | ollama | vllm
   backend: ollama
+  # backend=fake (the pattern-matching FakeLLM) is NOT conformant; since
+  # v3.2.0 the runtime refuses to start on it without this explicit opt-in
+  # (rendered as SKI_ALLOW_FAKE_LLM=true). Demos/CI only.
+  allowFakeLlm: false
   modelName: "qwen2.5:7b-instruct"
   seed: 42
   maxTokens: 1536
-  # Strongly recommended for vllm: digest of the served weights,
-  # recorded as the model_weight_hash provenance anchor.
+  # Expected SHA-256 of the model weights (SKI_MODEL_FILE_SHA256). When set,
+  # the runtime refuses to start unless it verifies the served weights
+  # against it (ollama: the weights blob named by /api/show). Empty =>
+  # /api/health and every verdict report model_hash_verified=false.
+  # vllm exposes no digest: the value is then recorded operator-asserted
+  # (unverified) unless the weights file is mounted and SKI_MODEL_FILE_PATH set.
   modelFileSha256: ""
   # Used when the corresponding bundled service is disabled.
   externalOllamaUrl: ""
@@ -63,6 +102,17 @@ skiModel:
     enabled: true
     size: 1Gi
     storageClass: ""
+  # Transcript signing key (framework >= 3.2.0). The runtime never
+  # silently regenerates a missing key: generation needs
+  # SKI_ALLOW_KEY_GENERATION=true, and a missing key while the ledger
+  # already holds signed transcripts ALWAYS refuses to start.
+  transcriptKey:
+    # Generate the key on first boot (onto the persistence PVC).
+    allowGeneration: true
+    # Optional: name of a Secret holding a pre-provisioned raw 32-byte
+    # Ed25519 private key as key transcript.ed25519. Takes precedence over
+    # the PVC and disables generation. Required when persistence is off.
+    existingSecret: ""
 
 tls:
   enabled: true
@@ -83,6 +133,14 @@ postgres:
   # byte-identical copies of reference-implementation/src/ledger/,
   # enforced by CI).
   bundled: true
+  # v3.2.0: the SKI Model connects to the bundled ledger as ski_ledger_writer
+  # (INSERT + SELECT only; no UPDATE/DELETE/TRUNCATE/ALTER/trigger rights).
+  # The role is created by files/append_only.sql and its password set on first
+  # init from the Secret's ledger-writer-password. Upgrading a release whose
+  # volume predates 3.2.0: run append_only.sql + ALTER ROLE as the owner first
+  # (see CHANGELOG). Opt-out (not recommended): false => use the Secret's
+  # ledger-dsn as before.
+  useWriterRole: true
   image: postgres:16-alpine
   database: ski_ledger
   username: postgres
@@ -98,7 +156,10 @@ ollama:
   # the PVC for air-gapped clusters (kubectl cp, or an init job from a
   # private mirror).
   bundled: true
-  image: ollama/ollama:0.3.12
+  # >= 0.5.0 required (JSON-schema `format`). Pinned by multi-arch index
+  # digest; keep in step with reference-implementation/docker-compose.yml.
+  # Air-gapped clusters: mirror this exact digest and point image at it.
+  image: ollama/ollama:0.40.5@sha256:5d3a2f25f9825628daba94dc0b1d421c7d57d6c03ae5faa9ba050e058bab8241
   persistence:
     size: 30Gi
     storageClass: ""

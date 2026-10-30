@@ -193,7 +193,7 @@ async def test_null_reading_never_clears_at_any_tier(tier: str) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("reading", ["n/a", "", True])
+@pytest.mark.parametrize("reading", ["n/a", ""])
 async def test_non_numeric_reading_for_numeric_predicate_is_stale(reading: Any) -> None:
     envelope = await _evaluate_stale(_so2_clear(reading), {"so2_ppm": reading})
     assert _verdict(envelope) == "NULL_STALE"
@@ -201,10 +201,23 @@ async def test_non_numeric_reading_for_numeric_predicate_is_stale(reading: Any) 
 
 
 @pytest.mark.asyncio
+async def test_bool_reading_for_numeric_predicate_never_clears() -> None:
+    """A bool is remapped as missing telemetry too; since v3.2.0 grounding
+    also refuses to let the model's ``observed`` (pydantic coerces ``true``
+    to ``1.0``) stand for a boolean reading, so tier-2 routes it to a
+    human. Never CLEAR either way."""
+    envelope = await _evaluate_stale(_so2_clear(True), {"so2_ppm": True})
+    assert _verdict(envelope) == "DISCRETIONARY"
+    assert _stale_note(envelope)
+    assert str(envelope.verifier_result.status) == "LLM_CONTRADICTION"
+
+
+@pytest.mark.asyncio
 async def test_nan_reading_never_clears() -> None:
-    """NaN is remapped too; observation grounding then sees nan != nan as a
-    mismatch, so tier-2 routes it to a human rather than NULL_STALE. Either
-    way it is never CLEAR."""
+    """NaN is remapped too. Since v3.2.0 a faithfully copied NaN is grounded
+    (not "fabricated"), the predicate handlers find it UNVERIFIABLE, and the
+    verdict stays NULL_STALE. Either way it is never CLEAR (and the API now
+    rejects non-finite readings with HTTP 422 before evaluation)."""
     nan = float("nan")
     envelope = await _evaluate_stale(_so2_clear(nan), {"so2_ppm": nan})
     assert _verdict(envelope) != "CLEAR"

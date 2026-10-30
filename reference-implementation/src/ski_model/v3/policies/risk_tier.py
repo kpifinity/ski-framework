@@ -63,6 +63,7 @@ _ALIAS_MAP = {
     "tier2": RiskTier.TIER_2,
     "standard": RiskTier.TIER_2,
     "default": RiskTier.TIER_2,
+    "medium": RiskTier.TIER_2,
     "tier-3": RiskTier.TIER_3,
     "tier3": RiskTier.TIER_3,
     "low": RiskTier.TIER_3,
@@ -70,7 +71,7 @@ _ALIAS_MAP = {
 }
 
 
-def _normalise_tier(tier: Optional[str]) -> Tuple[RiskTier, Optional[str]]:
+def _normalise_tier(tier: Any) -> Tuple[RiskTier, Optional[str]]:
     """Resolve a caller-declared risk tier, failing safe on the unknown.
 
     Returns ``(resolved_tier, coercion_note)``. ``coercion_note`` is
@@ -79,7 +80,7 @@ def _normalise_tier(tier: Optional[str]) -> Tuple[RiskTier, Optional[str]]:
     ``tier-1`` default was applied, for the caller to record in the
     envelope's audit trail.
     """
-    if tier is None or not tier.strip():
+    if not isinstance(tier, str) or not tier.strip():
         return RiskTier.TIER_1, (
             "risk_tier not declared; defaulting to tier-1 (fail-safe: unknown criticality "
             "is never assumed low-risk)."

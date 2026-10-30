@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Optional
 
 import click
 
@@ -40,7 +41,13 @@ def init(name: str, sector: str, mode: str, output: str) -> None:
 @main.command(name="load-kg")
 @click.option("--config", "-c", required=True, help="Deployment configuration file")
 @click.option("--kg", "-k", required=True, help="Knowledge Graph JSON file (MUST be signed)")
-def load_kg(config: str, kg: str) -> None:
+@click.option(
+    "--trust-anchors",
+    envvar="SKI_KG_TRUST_ANCHORS",
+    default=None,
+    help="PEM bundle of Ed25519 public keys allowed to sign the KG (default: $SKI_KG_TRUST_ANCHORS).",
+)
+def load_kg(config: str, kg: str, trust_anchors: Optional[str]) -> None:
     """Verify a signed Knowledge Graph and register it with a deployment.
 
     Signature verification is MANDATORY. There is no override flag here.
@@ -52,7 +59,7 @@ def load_kg(config: str, kg: str) -> None:
         deployer = Deployer(config)
         if not deployer.config:
             deployer.config = load_config(config)
-        deployer.load_knowledge_graph(kg_path=kg)
+        deployer.load_knowledge_graph(kg_path=kg, trust_anchors=trust_anchors)
         save_config(deployer.config, config)
         click.echo("✓ Knowledge Graph signature verified and registered.")
         click.echo(f"  Version: {deployer.config.knowledge_graph.version}")

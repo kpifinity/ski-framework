@@ -118,3 +118,39 @@ class TestAutomigrate:
         with pytest.raises(LedgerSchemaError, match="still missing"):
             await ensure_v3_ledger_schema(engine)  # type: ignore[arg-type]
         assert len(engine.executed) == 3
+
+
+class _DeniedDDLEngine(_FakeEngine):
+    """``begin()`` fails like Postgres does for a role without DDL rights."""
+
+    def begin(self) -> _FakeConn:
+        from sqlalchemy.exc import ProgrammingError
+
+        class _Denied(_FakeConn):
+            async def execute(self, stmt: Any) -> _ColumnResult:
+                raise ProgrammingError(str(stmt), {}, Exception("permission denied for table ledger_entries"))
+
+        return _Denied([], self.executed)
+
+
+class TestLeastPrivilegeRuntimeRole:
+    @pytest.mark.asyncio
+    async def test_writer_role_without_ddl_fails_closed_with_owner_instructions(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """v3.2.0: the runtime connects as ski_ledger_writer, which cannot
+        ALTER the ledger. An old schema must refuse to start with the fix
+        (apply 0002 as the owner), not a raw driver error."""
+        monkeypatch.setenv("SKI_AUTOMIGRATE", "true")
+        engine = _DeniedDDLEngine([_MISSING_SOME])
+        with pytest.raises(LedgerSchemaError, match="as the schema OWNER"):
+            await ensure_v3_ledger_schema(engine)  # type: ignore[arg-type]
+
+    @pytest.mark.asyncio
+    async def test_manual_instructions_name_the_owner_not_the_runtime_dsn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("SKI_AUTOMIGRATE", "false")
+        with pytest.raises(LedgerSchemaError, match="schema OWNER") as excinfo:
+            await ensure_v3_ledger_schema(_FakeEngine([_MISSING_SOME]))  # type: ignore[arg-type]
+        assert '"$LEDGER_DSN"' not in str(excinfo.value)

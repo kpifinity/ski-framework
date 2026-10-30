@@ -51,6 +51,16 @@ def _headers(api_key: Optional[str]) -> Dict[str, str]:
     return {"x-api-key": api_key} if api_key else {}
 
 
+# Framework v3.2.0: POST /api/kg/load is disabled unless the runtime sets
+# SKI_ENABLE_KG_HOT_LOAD=true, and then it authenticates with this header
+# (the runtime's SKI_ADMIN_API_KEY), never with the normal API key.
+ADMIN_KEY_HEADER = "X-SKI-Admin-Key"
+
+
+def _admin_headers(admin_key: Optional[str]) -> Optional[Dict[str, str]]:
+    return {ADMIN_KEY_HEADER: admin_key} if admin_key else None
+
+
 class _Base:
     def __init__(
         self,
@@ -117,9 +127,11 @@ class SKIClient(_Base):
             time.sleep(0.25 * (2**attempt))
             attempt += 1
 
-    def _post(self, path: str, json_body: Dict[str, Any]) -> httpx.Response:
+    def _post(
+        self, path: str, json_body: Dict[str, Any], headers: Optional[Dict[str, str]] = None
+    ) -> httpx.Response:
         try:
-            resp = self._client.post(path, json=json_body)
+            resp = self._client.post(path, json=json_body, headers=headers)
         except httpx.RequestError as exc:
             raise SKITransportError(str(exc)) from exc
         _raise_for_status(resp)
@@ -149,8 +161,9 @@ class SKIClient(_Base):
     def list_verdicts(self, *, limit: int = 100, offset: int = 0) -> Dict[str, Any]:
         return dict(self._get("/api/verdicts", params={"limit": limit, "offset": offset}).json())
 
-    def load_kg(self, signed_kg: Dict[str, Any]) -> Dict[str, Any]:
-        return dict(self._post("/api/kg/load", signed_kg).json())
+    def load_kg(self, signed_kg: Dict[str, Any], *, admin_key: Optional[str] = None) -> Dict[str, Any]:
+        """Hot-load a signed KG (runtime >= 3.2.0 needs ``admin_key``; see ADMIN_KEY_HEADER)."""
+        return dict(self._post("/api/kg/load", signed_kg, _admin_headers(admin_key)).json())
 
 
 class AsyncSKIClient(_Base):
@@ -199,9 +212,11 @@ class AsyncSKIClient(_Base):
             await asyncio.sleep(0.25 * (2**attempt))
             attempt += 1
 
-    async def _post(self, path: str, json_body: Dict[str, Any]) -> httpx.Response:
+    async def _post(
+        self, path: str, json_body: Dict[str, Any], headers: Optional[Dict[str, str]] = None
+    ) -> httpx.Response:
         try:
-            resp = await self._client.post(path, json=json_body)
+            resp = await self._client.post(path, json=json_body, headers=headers)
         except httpx.RequestError as exc:
             raise SKITransportError(str(exc)) from exc
         _raise_for_status(resp)
@@ -234,8 +249,9 @@ class AsyncSKIClient(_Base):
         resp = await self._get("/api/verdicts", params={"limit": limit, "offset": offset})
         return dict(resp.json())
 
-    async def load_kg(self, signed_kg: Dict[str, Any]) -> Dict[str, Any]:
-        resp = await self._post("/api/kg/load", signed_kg)
+    async def load_kg(self, signed_kg: Dict[str, Any], *, admin_key: Optional[str] = None) -> Dict[str, Any]:
+        """Hot-load a signed KG (runtime >= 3.2.0 needs ``admin_key``; see ADMIN_KEY_HEADER)."""
+        resp = await self._post("/api/kg/load", signed_kg, _admin_headers(admin_key))
         return dict(resp.json())
 
 

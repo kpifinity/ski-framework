@@ -4,16 +4,18 @@ Ollama is the reference local-weights backend because it satisfies the
 **Sovereign** part of "Sovereign Knowledge Intelligence":
 
   * Weights live on the operator's hardware. The :attr:`model_weight_hash`
-    field of :class:`ModelProvenance` is the actual model digest reported
-    by Ollama's ``/api/show`` endpoint — auditors can independently
-    verify the exact weights that produced any historical verdict.
+    field of :class:`ModelProvenance` is the SHA-256 of the weights blob
+    named in Ollama's ``/api/show`` modelfile, checked against
+    ``$SKI_MODEL_FILE_SHA256`` when the operator pins it (mismatch =>
+    refuse to start; see :mod:`.model_hash`).
   * No data leaves the deployment perimeter. The HTTP call goes to a
     local-network Ollama instance.
   * Determinism: ``temperature=0``, fixed ``seed``, ``top_p=1.0``,
     ``top_k=1``, ``num_predict`` bounded. Same input → same output
     bit-for-bit (per Ollama's documented determinism guarantees).
-  * Structured output: ``format="json"`` plus the framework prompt
-    explicitly demands the :data:`RESPONSE_GRAMMAR` shape. Malformed
+  * Structured output: ``format`` carries the :data:`RESPONSE_GRAMMAR`
+    JSON schema (schema-constrained decoding, Ollama >= 0.5.0; 0.3.x/0.4.x
+    accept only the string ``"json"`` and reject the request). Malformed
     output is mapped to ``DISCRETIONARY`` rather than guessed at.
 
 The backend renders the canonical prompt itself from the measurement +
@@ -25,7 +27,6 @@ form, which is what an auditor replays.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from typing import Any, Dict, Optional
@@ -33,6 +34,18 @@ from typing import Any, Dict, Optional
 import httpx
 
 from ..evaluator import PROMPT_TEMPLATE, PROMPT_TEMPLATE_ID, RESPONSE_GRAMMAR
+from .model_hash import (
+    EXPECTED_HASH_ENV,
+    SOURCE_BACKEND_DIGEST,
+    SOURCE_NAME_COMMITMENT,
+    SOURCE_VERIFIED_BACKEND_DIGEST,
+    ModelHashError,
+    ModelHashResolution,
+    RemoteModelError,
+    check_pin,
+    name_commitment,
+    weights_digest_from_modelfile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +65,7 @@ class OllamaV3Backend:
         prompt_template_hash: str,
         structured_grammar_hash: str,
         request_timeout_seconds: float = 60.0,
+        expected_model_hash: Optional[str] = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._model_name = model_name
@@ -60,13 +74,27 @@ class OllamaV3Backend:
         self._prompt_template_hash = prompt_template_hash
         self._structured_grammar_hash = structured_grammar_hash
         self._client = httpx.AsyncClient(timeout=httpx.Timeout(request_timeout_seconds))
-        self._model_weight_hash = self._discover_model_weight_hash()
+        self._model_hash = self._resolve_model_hash(expected_model_hash)
 
     # ---- V3LLMBackend protocol -------------------------------------------------
 
     @property
     def model_weight_hash(self) -> str:
-        return self._model_weight_hash
+        return self._model_hash.model_weight_hash
+
+    # ---- Provenance extras (read via getattr; not part of the protocol) --------
+
+    @property
+    def model_id(self) -> str:
+        return self._model_name
+
+    @property
+    def model_hash_verified(self) -> bool:
+        return self._model_hash.verified
+
+    @property
+    def model_hash_source(self) -> str:
+        return self._model_hash.source
 
     @property
     def prompt_template_id(self) -> str:
@@ -140,61 +168,88 @@ class OllamaV3Backend:
             ),
         )
 
-    def _discover_model_weight_hash(self) -> str:
-        """Resolve the model weight hash from Ollama's ``/api/show`` digest.
+    def _resolve_model_hash(self, expected: Optional[str]) -> ModelHashResolution:
+        """Resolve ``model_weight_hash`` from the weights blob named by ``/api/show``.
 
-        Falls back to ``sha256("ollama:" + model_name)`` if Ollama is not
-        reachable or doesn't expose a digest. The fallback is a vendor
-        commitment string — auditors should treat it as a weaker
-        provenance signal than the actual digest.
+        With ``expected`` (``$SKI_MODEL_FILE_SHA256``, normalised hex) set,
+        anything short of a matching blob digest raises
+        :class:`ModelHashError`: Ollama unreachable, no blob digest, or a
+        different digest. Without it, the observed blob digest is recorded
+        unverified, and the ``sha256("ollama:<name>")`` name commitment is
+        used only when Ollama cannot be queried or exposes no blob.
+        A remote model always raises :class:`RemoteModelError`.
         """
         url = f"{self._base_url}/api/show"
         try:
             with httpx.Client(timeout=httpx.Timeout(5.0)) as client:
-                resp = client.post(url, json={"name": self._model_name})
+                resp = client.post(url, json={"model": self._model_name})
                 resp.raise_for_status()
                 data = resp.json()
-        except httpx.HTTPError as exc:
+        except (httpx.HTTPError, ValueError) as exc:
+            if expected is not None:
+                raise ModelHashError(
+                    f"Could not query Ollama /api/show for {self._model_name!r} ({exc}), so "
+                    f"{EXPECTED_HASH_ENV} cannot be verified. Refusing to start."
+                ) from exc
             logger.warning(
-                "Could not query Ollama /api/show for %s (%s); falling back to vendor commitment.",
+                "Could not query Ollama /api/show for %s (%s). Recording a name commitment, "
+                "which is NOT a weight hash (model_hash_verified=false).",
                 self._model_name,
                 exc,
             )
-            return _vendor_commitment(self._model_name)
-
-        digest = _extract_digest(data)
-        if digest is None:
-            logger.warning(
-                "Ollama /api/show for %s did not expose a digest; falling back to vendor commitment.",
-                self._model_name,
+            return ModelHashResolution(
+                name_commitment("ollama", self._model_name), False, SOURCE_NAME_COMMITMENT
             )
-            return _vendor_commitment(self._model_name)
-        return "sha256:" + digest.lower().removeprefix("sha256:")
+
+        show = data if isinstance(data, dict) else {}
+        remote = show.get("remote_host") or show.get("remote_model")
+        if remote:
+            raise RemoteModelError(
+                f"Ollama serves {self._model_name!r} from a remote host ({remote!r}). Inference "
+                "would leave the sovereign boundary and there are no local weights to verify. "
+                "Refusing to start: pull the model weights locally."
+            )
+
+        observed = weights_digest_from_modelfile(show.get("modelfile"))
+        if expected is not None:
+            if observed is None:
+                raise ModelHashError(
+                    f"Ollama /api/show for {self._model_name!r} names no content-addressed "
+                    f"weights blob, so {EXPECTED_HASH_ENV} cannot be verified. Refusing to start."
+                )
+            check_pin(
+                expected=expected,
+                observed=observed,
+                observed_from="the Ollama weights blob (/api/show modelfile)",
+                model_name=self._model_name,
+            )
+            logger.info(
+                "Model weights verified: %s blob sha256:%s matches %s.",
+                self._model_name,
+                observed,
+                EXPECTED_HASH_ENV,
+            )
+            return ModelHashResolution("sha256:" + observed, True, SOURCE_VERIFIED_BACKEND_DIGEST)
+
+        if observed is not None:
+            logger.warning(
+                "Model weights for %s are sha256:%s per Ollama, but no %s pin is set, so they "
+                "are NOT verified (model_hash_verified=false). Pin the digest to verify it.",
+                self._model_name,
+                observed,
+                EXPECTED_HASH_ENV,
+            )
+            return ModelHashResolution("sha256:" + observed, False, SOURCE_BACKEND_DIGEST)
+
+        logger.warning(
+            "Ollama /api/show for %s names no weights blob. Recording a name commitment, which "
+            "is NOT a weight hash (model_hash_verified=false).",
+            self._model_name,
+        )
+        return ModelHashResolution(name_commitment("ollama", self._model_name), False, SOURCE_NAME_COMMITMENT)
 
 
 # ---- Helpers ------------------------------------------------------------------
-
-
-def _vendor_commitment(model_name: str) -> str:
-    """sha256 over the ``ollama:<model_name>`` commitment string."""
-    return "sha256:" + hashlib.sha256(f"ollama:{model_name}".encode()).hexdigest()
-
-
-def _extract_digest(show_response: Dict[str, Any]) -> Optional[str]:
-    """Best-effort extraction of the model digest from /api/show.
-
-    Ollama's response shape has shifted across versions; we look in the
-    documented locations and fall back to None.
-    """
-    details = show_response.get("details") or {}
-    for key in ("digest", "parent_model"):
-        value = details.get(key)
-        if isinstance(value, str) and value:
-            return value
-    direct = show_response.get("digest")
-    if isinstance(direct, str) and direct:
-        return direct
-    return None
 
 
 _REQUIRED_RESPONSE_KEYS = {"verdict", "reasoning", "kg_citations", "formalizable_assertions"}

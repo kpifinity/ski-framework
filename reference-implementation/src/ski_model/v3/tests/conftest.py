@@ -12,3 +12,8 @@ import os
 
 os.environ.setdefault("API_KEY_REQUIRED", "false")
 os.environ.setdefault("SKI_V3_LLM_BACKEND", "fake")
+# v3.2.0: the runtime refuses to start on FakeLLM without this explicit opt-in.
+os.environ.setdefault("SKI_ALLOW_FAKE_LLM", "true")
+# Tests provision throwaway transcript keys under tmp_path. The fail-closed
+# default (no generation without this flag) is covered in test_signing.py.
+os.environ.setdefault("SKI_ALLOW_KEY_GENERATION", "true")

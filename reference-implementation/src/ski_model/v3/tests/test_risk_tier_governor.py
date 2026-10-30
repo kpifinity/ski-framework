@@ -29,6 +29,7 @@ from tag_registry import RiskTierGovernor
         ("tier2", "tier-2"),
         ("standard", "tier-2"),
         ("default", "tier-2"),
+        ("medium", "tier-2"),  # spec §5.4 vocabulary (v3.2.0)
         ("tier-3", "tier-3"),
         ("tier3", "tier-3"),
         ("low", "tier-3"),
@@ -45,7 +46,8 @@ def test_canonicalise_recognised_inputs(raw: str, expected: str) -> None:
 )
 def test_canonicalise_unknown_collapses_to_default(raw: Any) -> None:
     assert RiskTierGovernor.canonicalise(raw) == RiskTierGovernor.DEFAULT_TIER
-    assert RiskTierGovernor.DEFAULT_TIER == "tier-2"
+    # v3.2.0 (finding C1): unknown criticality is the strictest tier, not tier-2.
+    assert RiskTierGovernor.DEFAULT_TIER == "tier-1"
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +56,7 @@ def test_canonicalise_unknown_collapses_to_default(raw: Any) -> None:
 
 
 def test_strictest_tier_empty_input_returns_default() -> None:
-    assert RiskTierGovernor.strictest_tier([]) == "tier-2"
+    assert RiskTierGovernor.strictest_tier([]) == "tier-1"
 
 
 def test_strictest_tier_picks_minimum_rank() -> None:
@@ -67,18 +69,18 @@ def test_strictest_tier_picks_minimum_rank() -> None:
 
 
 def test_strictest_tier_ignores_unknown_values_as_default() -> None:
-    # An unknown tier ("nonsense") collapses to tier-2 (DEFAULT_TIER), so
-    # the strictest across the set is still tier-2 — not tier-3.
+    # An unknown tier ("nonsense") collapses to tier-1 (DEFAULT_TIER, v3.2.0),
+    # so one mistyped rule makes the whole set tier-1 -- never tier-3.
     rules = [
         {"id": "a", "risk_tier": "nonsense"},
         {"id": "b", "risk_tier": "tier-3"},
     ]
-    assert RiskTierGovernor.strictest_tier(rules) == "tier-2"
+    assert RiskTierGovernor.strictest_tier(rules) == "tier-1"
 
 
-def test_strictest_tier_missing_field_defaults_to_tier_2() -> None:
+def test_strictest_tier_missing_field_defaults_to_tier_1() -> None:
     rules = [{"id": "a"}, {"id": "b"}]
-    assert RiskTierGovernor.strictest_tier(rules) == "tier-2"
+    assert RiskTierGovernor.strictest_tier(rules) == "tier-1"
 
 
 def test_strictest_tier_all_tier_3() -> None:
@@ -105,12 +107,12 @@ def test_tier_for_snapshot_reads_obligations_list() -> None:
 
 def test_tier_for_snapshot_empty_obligations_returns_default() -> None:
     snapshot: dict[str, Any] = {"version": "test-001", "obligations": [], "scope": {}}
-    assert RiskTierGovernor.tier_for_snapshot(snapshot) == "tier-2"
+    assert RiskTierGovernor.tier_for_snapshot(snapshot) == "tier-1"
 
 
 def test_tier_for_snapshot_missing_obligations_key_returns_default() -> None:
     # A pathological / partial snapshot should not crash — it defaults.
-    assert RiskTierGovernor.tier_for_snapshot({}) == "tier-2"
+    assert RiskTierGovernor.tier_for_snapshot({}) == "tier-1"
 
 
 # ---------------------------------------------------------------------------

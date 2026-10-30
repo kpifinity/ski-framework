@@ -62,12 +62,20 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: pip install -e tools/ski-schemas -e tools/audit-ledger -e tools/ski-model-deploy
-      # Builds the runtime image, boots Postgres + SKI Model in one
+      - name: Build the runtime image
+        run: docker build -q -t ski-model:ci -f reference-implementation/Dockerfile.ski-model .
+      - name: No cloud-LLM SDK installed in the runtime image (sovereignty)
+        run: |
+          docker run --rm --network=none --entrypoint python ski-model:ci -c \
+            "import importlib.metadata as m; print('\n'.join(d.metadata['Name'] for d in m.distributions()))" \
+            | python scripts/check-no-cloud-llm-sdks.py --names -
+      # Boots Postgres + SKI Model (the image built above) in one
       # loopback-only network namespace (--network=none), replays the
       # fixed workload, and verifies ledger persistence from inside.
       - run: pytest conformance/sovereignty/test_air_gapped.py -q --tb=short
         env:
           SKI_L3_AIRGAP: "1"
+          SKI_L3_IMAGE: ski-model:ci
 
   benchmarks:
     name: Benchmarks (framework overhead budget)
@@ -87,6 +95,10 @@ jobs:
           python -m benchmarks.run --mode pipeline --n 2000 --warmup 200 \
             --max-framework-p99-ms 100 \
             --md-out benchmark-report.md --json-out benchmark-report.json
+        env:
+          # FakeLLM is legitimate here (it isolates framework overhead).
+          # Explicit since v3.2.0, which refuses FakeLLM without opt-in.
+          SKI_ALLOW_FAKE_LLM: "true"
       - uses: actions/upload-artifact@v4
         with:
           name: benchmark-report
@@ -106,22 +118,28 @@ jobs:
           diff deploy/helm/ski/files/schema.sql reference-implementation/src/ledger/schema.sql
           diff deploy/helm/ski/files/append_only.sql reference-implementation/src/ledger/append_only.sql
           diff deploy/helm/ski/files/0002_transcript_columns.sql reference-implementation/src/ledger/migrations/0002_transcript_columns.sql
+          diff deploy/helm/ski/files/ledger_writer_login.sh reference-implementation/src/ledger/ledger_writer_login.sh
       - run: helm lint deploy/helm/ski
       - name: Render — default (bundled postgres + ollama, TLS)
         run: |
           helm template ski deploy/helm/ski \
             --set existingSecret=ski-secrets \
             --set kg.configMapName=ski-kg \
+            --set kg.trustAnchors.configMapName=ski-kg-trust-anchors \
             --set tls.secretName=ski-tls > /tmp/render-default.yaml
+          grep -q "SKI_KG_TRUST_ANCHORS" /tmp/render-default.yaml
           grep -q "ghcr.io/kpifinity/ski-model" /tmp/render-default.yaml
           grep -q "SKI_MODEL_WORKERS" /tmp/render-default.yaml
           grep -q "replicas: 1" /tmp/render-default.yaml
           grep -q "NetworkPolicy" /tmp/render-default.yaml
+          grep -q "postgresql://ski_ledger_writer:" /tmp/render-default.yaml
+          grep -q "04-ledger-writer-login.sh" /tmp/render-default.yaml
       - name: Render — air-gap + vllm external
         run: |
           helm template ski deploy/helm/ski \
             --set existingSecret=ski-secrets \
             --set kg.configMapName=ski-kg \
+            --set kg.trustAnchors.configMapName=ski-kg-trust-anchors \
             --set tls.secretName=ski-tls \
             --set networkPolicy.airgap=true \
             --set skiModel.backend=vllm \
@@ -135,6 +153,9 @@ jobs:
             --set replicaCount=3 2>/dev/null
           ! helm template ski deploy/helm/ski \
             --set kg.configMapName=k --set tls.secretName=t 2>/dev/null
+          # SKI >= 3.2.0: no KG trust anchors (and no explicit dev opt-out) fails the render.
+          ! helm template ski deploy/helm/ski \
+            --set existingSecret=s --set kg.configMapName=k --set tls.secretName=t 2>/dev/null
 
 
 
@@ -169,6 +190,8 @@ jobs:
       - run: ruff check .
       - run: ruff format --check .
       - run: mypy
+      - name: No cloud-LLM SDK in the runtime requirements (sovereignty)
+        run: python scripts/check-no-cloud-llm-sdks.py
 
   test:
     name: Unit tests (Python ${{ matrix.python }})

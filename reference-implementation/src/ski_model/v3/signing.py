@@ -11,7 +11,15 @@ Key lifecycle (spec v3.0 §6.3):
 
   * On first start, if no keypair exists at ``SKI_TRANSCRIPT_KEY_PATH``
     (default ``/app/keys/transcript.ed25519``), a fresh ed25519 keypair is
-    generated and persisted with mode ``0600``.
+    generated and persisted with mode ``0600`` -- but only when the
+    operator set ``SKI_ALLOW_KEY_GENERATION=true`` (framework v3.2.0).
+    Without it, a missing key is a refusal to start, never a silent new
+    identity.
+  * A missing key while the audit ledger already holds signed transcripts
+    is ALWAYS a refusal, even with ``SKI_ALLOW_KEY_GENERATION=true``: that
+    is a lost key or a wrong path, not a first boot. Restore the key, or
+    rotate deliberately by provisioning a new raw 32-byte private key at
+    the path.
   * The public key is written alongside as ``<name>.pub`` and exposed
     over the API for auditors.
   * The ``signing_key_id`` is the sha256 of the public-key bytes,
@@ -41,9 +49,20 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 
 logger = logging.getLogger(__name__)
 
+ALLOW_KEY_GENERATION_ENV = "SKI_ALLOW_KEY_GENERATION"
+
+
+class TranscriptKeyError(RuntimeError):
+    """The transcript signing key is missing and must not be (re)generated."""
+
 
 def _default_key_path() -> Path:
     return Path(os.getenv("SKI_TRANSCRIPT_KEY_PATH", "/app/keys/transcript.ed25519"))
+
+
+def transcript_key_path() -> Path:
+    """The configured private-key path (``SKI_TRANSCRIPT_KEY_PATH``)."""
+    return _default_key_path()
 
 
 def _pub_path(private_path: Path) -> Path:
@@ -84,20 +103,51 @@ class TranscriptSigner:
         return pem_bytes.decode("ascii")
 
     @classmethod
-    def auto_provision(cls, private_key_path: Optional[Path] = None) -> TranscriptSigner:
-        """First-run-friendly provisioning.
+    def auto_provision(
+        cls,
+        private_key_path: Optional[Path] = None,
+        *,
+        allow_generation: Optional[bool] = None,
+        ledger_has_signed_transcripts: bool = False,
+    ) -> TranscriptSigner:
+        """Load the transcript key, or generate it on an explicit first boot.
 
         If a private key exists at ``private_key_path`` (or the default
-        ``$SKI_TRANSCRIPT_KEY_PATH``), load it. Otherwise generate a fresh
-        keypair and persist it with restrictive permissions, plus the
-        matching public key alongside.
+        ``$SKI_TRANSCRIPT_KEY_PATH``), load it. Otherwise, fail closed:
+
+        * ``ledger_has_signed_transcripts`` -> :class:`TranscriptKeyError`
+          regardless of ``allow_generation`` (a lost key, not a first boot).
+        * generation not allowed -> :class:`TranscriptKeyError`.
+          ``allow_generation=None`` reads ``SKI_ALLOW_KEY_GENERATION``.
+        * otherwise generate a fresh keypair and persist it with
+          restrictive permissions, plus the matching public key alongside.
         """
         path = private_key_path or _default_key_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
 
         if path.exists():
             return cls.from_private_key_path(path)
 
+        provision_hint = (
+            "Provision a raw 32-byte Ed25519 private key there, e.g. "
+            f"`openssl genpkey -algorithm ed25519 -outform DER | tail -c 32 > {path}` (mode 0600)."
+        )
+        if ledger_has_signed_transcripts:
+            raise TranscriptKeyError(
+                f"Transcript signing key {path} is missing, but the audit ledger already holds "
+                "signed transcripts. Refusing to start rather than silently minting a new signing "
+                "identity. Restore the key from backup (check SKI_TRANSCRIPT_KEY_PATH and the "
+                "volume it lives on), or rotate deliberately: " + provision_hint + " Past "
+                "transcripts stay verifiable by the signing_key_id recorded on each ledger entry."
+            )
+        if allow_generation is None:
+            allow_generation = os.getenv(ALLOW_KEY_GENERATION_ENV, "").strip().lower() == "true"
+        if not allow_generation:
+            raise TranscriptKeyError(
+                f"No transcript signing key at {path} (SKI_TRANSCRIPT_KEY_PATH). Set "
+                f"{ALLOW_KEY_GENERATION_ENV}=true to generate one on first boot, or " + provision_hint
+            )
+
+        path.parent.mkdir(parents=True, exist_ok=True)
         private_key = Ed25519PrivateKey.generate()
         public_key = private_key.public_key()
 
@@ -127,10 +177,11 @@ class TranscriptSigner:
         )
 
         signer = cls(private_key, public_key)
-        logger.info(
-            "Generated new transcript signing keypair at %s (key_id=%s)",
+        logger.warning(
+            "Generated NEW transcript signing keypair at %s (key_id=%s, %s=true). Back it up.",
             path,
-            signer.key_id[:24] + "…",
+            signer.key_id,
+            ALLOW_KEY_GENERATION_ENV,
         )
         return signer
 
@@ -178,4 +229,4 @@ class suppress_oserror:
         return exc_type is not None and issubclass(exc_type, OSError)
 
 
-__all__ = ["TranscriptSigner", "verify_signature"]
+__all__ = ["TranscriptKeyError", "TranscriptSigner", "transcript_key_path", "verify_signature"]

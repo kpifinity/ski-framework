@@ -9,8 +9,18 @@ Next steps:
 1. Verify health (TLS {{ .Values.tls.enabled | ternary "on" "OFF — non-default" }}):
      kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ski.fullname" . }}-model {{ .Values.service.port }}
      curl {{ .Values.tls.enabled | ternary "https" "http" }}://localhost:{{ .Values.service.port }}/api/health
-   Expect kg_loaded=true and kg_signature_verified=true. A conformant
-   deployment never runs with an unverified KG.
+   Expect kg_loaded=true, kg_signature_verified=true and
+   provenance.kg_trust="anchored" with provenance.kg_signer_key_id one of
+   your trust anchors. A conformant deployment never runs with an
+   unverified or unanchored KG.
+{{- if .Values.kg.allowUnanchored }}
+   WARNING: kg.allowUnanchored=true - KG trust is "unanchored" (dev only,
+   NOT conformant). Configure kg.trustAnchors.configMapName.
+{{- end }}
+{{- if .Values.kg.hotLoad.enabled }}
+   KG hot-load is ENABLED: POST /api/kg/load with header X-SKI-Admin-Key
+   (Secret key admin-api-key); hot-loaded KGs must verify against an anchor.
+{{- end }}
 
 {{- if and .Values.ollama.bundled (eq .Values.skiModel.backend "ollama") }}
 2. Stage the model weights (first install only):

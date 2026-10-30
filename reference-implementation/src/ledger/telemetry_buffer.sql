@@ -148,6 +148,17 @@ GRANT EXECUTE ON FUNCTION drop_buffer_partitions_older_than(TIMESTAMPTZ) TO ski_
 GRANT SELECT ON tenants, telemetry_buffer TO ski_audit_reader;
 
 -- ----------------------------------------------------------------------------
+-- Least-privilege runtime role (ski_ledger_writer, created in append_only.sql):
+-- reads tenant config, appends to and reads the buffer. No UPDATE/DELETE/
+-- TRUNCATE/TRIGGER; partition rotation stays with ski_buffer_admin / the owner.
+-- ----------------------------------------------------------------------------
+
+REVOKE ALL ON tenants, telemetry_buffer FROM ski_ledger_writer;
+GRANT SELECT ON tenants TO ski_ledger_writer;
+GRANT SELECT, INSERT ON telemetry_buffer TO ski_ledger_writer;
+GRANT USAGE ON SEQUENCE telemetry_buffer_id_seq TO ski_ledger_writer;
+
+-- ----------------------------------------------------------------------------
 -- View: per-tenant buffer summary for dashboards.
 -- ----------------------------------------------------------------------------
 
