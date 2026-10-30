@@ -45,6 +45,12 @@ spec:
             - name: SKI_ALLOW_FAKE_LLM
               value: "true"
             {{- end }}
+            - name: SKI_SOVEREIGNTY
+              value: {{ .Values.skiModel.sovereignty.mode | quote }}
+            {{- with .Values.skiModel.sovereignty.localDomains }}
+            - name: SKI_SOVEREIGN_LOCAL_DOMAINS
+              value: {{ . | quote }}
+            {{- end }}
             - name: SKI_MODEL_NAME
               value: {{ .Values.skiModel.modelName | quote }}
             - name: SKI_MODEL_SEED

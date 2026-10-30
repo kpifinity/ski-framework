@@ -33,6 +33,10 @@ services:
       # explicit opt-in (so a production stack that forgets to pick a
       # backend cannot silently serve pattern-matched verdicts).
       SKI_ALLOW_FAKE_LLM: "true"
+      # FakeLLM is not a sovereign backend (spec §6.2), so the demo runs in
+      # advisory mode: unmet requirements are logged, not fatal. Never in
+      # production.
+      SKI_SOVEREIGNTY: advisory
       KG_PATH: /app/kg/kg.json
       # Even the demo boots conformantly: setup.sh generates and SIGNS
       # the demo KG locally (scripts/make-demo-kg.py).

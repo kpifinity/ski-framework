@@ -430,6 +430,9 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
             # v3.2.0: FakeLLM needs an explicit opt-in to start.
             "-e",
             "SKI_ALLOW_FAKE_LLM=true",
+            # FakeLLM is not a sovereign backend: advisory mode (spec §6.1).
+            "-e",
+            "SKI_SOVEREIGNTY=advisory",
             "-e",
             "TLS_ENABLED=false",
             # The fixed workload below is pinned to a fixed 2026-06-15
@@ -531,3 +534,21 @@ def test_ledger_persists_chained_entries_inside_airgap(rig: AirgapRig) -> None:
         " WHERE l.previous_hash <> p.entry_hash"
     )
     assert int(broken_links) == 0, "ledger hash chain must link every entry to its predecessor"
+
+
+def test_sovereignty_attestation_inside_airgap(rig: AirgapRig) -> None:
+    """Spec §6.4: the runtime attests itself, signed, and reports no egress after the workload."""
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from ski_schemas.canonical import canonicalize
+
+    rig.replay_workload()
+    status, body = rig.api("GET", "/api/sovereignty")
+    assert status == 200, body
+    document, signature = body["document"], body["signature"]
+    assert document["sovereignty_mode"] == "advisory"  # the rig runs FakeLLM
+    assert document["egress_attempts_total"] == 0
+    assert {c["id"] for c in document["checks"]} >= {"sovereign_backend", "kg_trust_anchor", "ledger_local"}
+    public_key = serialization.load_pem_public_key(signature["public_key_pem"].encode("ascii"))
+    assert isinstance(public_key, Ed25519PublicKey)
+    public_key.verify(bytes.fromhex(signature["value_hex"]), canonicalize(document))

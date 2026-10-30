@@ -75,6 +75,14 @@ skiModel:
   # v3.2.0 the runtime refuses to start on it without this explicit opt-in
   # (rendered as SKI_ALLOW_FAKE_LLM=true). Demos/CI only.
   allowFakeLlm: false
+  sovereignty:
+    # Spec §6. strict (default) refuses to start unless the backend is
+    # ollama/vllm, modelFileSha256 is pinned, KG trust anchors are set, and
+    # the ledger and model are inside the cluster; it also stops evaluating
+    # after any egress attempt. advisory only logs: demos/CI (backend=fake).
+    mode: strict
+    # Extra domain suffixes treated as inside the deployment, comma-separated.
+    localDomains: ""
   modelName: "qwen2.5:7b-instruct"
   seed: 42
   maxTokens: 1536

@@ -96,6 +96,37 @@ The v0.2 migration:
 No existing data is modified. The migration is safe to run on a live
 ledger with concurrent writers (Postgres handles the locking).
 
+### Upgrading to strict sovereignty mode (spec §6)
+
+From this release the runtime starts in `SKI_SOVEREIGNTY=strict` unless told
+otherwise, and refuses to start until every spec §6.2 requirement holds. The
+startup log names each unmet one, with the fix:
+
+| Check | Requirement | How to meet it |
+|---|---|---|
+| `sovereign_backend` | the model runs on Ollama or vLLM | `SKI_V3_LLM_BACKEND=ollama` or `vllm` |
+| `model_weight_registered` | the weight hash is pinned | set `SKI_MODEL_FILE_SHA256` to the model's weight digest |
+| `kg_trust_anchor` | KG signers are operator-pinned keys | set `SKI_KG_TRUST_ANCHORS` to your own PEM bundle |
+| `ledger_local` | the ledger is inside the deployment | `LEDGER_DSN` host is a service name, private IP or internal domain |
+| `egress_allowlist_local` | the model and ledger are inside the deployment | as above, for `OLLAMA_BASE_URL` / `VLLM_BASE_URL` |
+
+Hosts count as inside the deployment when they are loopback, private or
+link-local IPs, single-label service names, or end in `.local`,
+`.localhost`, `.internal`, `.svc` or `.cluster.local`. Add your own internal
+domains with `SKI_SOVEREIGN_LOCAL_DOMAINS` (comma-separated, e.g.
+`.corp.example`; Kubernetes `service.namespace` short names need their
+namespace listed, or use the `.svc.cluster.local` form). In Helm, set
+`skiModel.sovereignty.mode` and `skiModel.sovereignty.localDomains`.
+
+In strict mode the runtime also stops evaluating, until restarted, after any
+network call leaving the deployment during an evaluation; watch
+`ski_egress_attempts_total`. `GET /api/sovereignty` returns the signed check
+report and the running model, KG and commit.
+
+`SKI_SOVEREIGNTY=advisory` logs unmet requirements instead of refusing to
+start. It is for demos and CI (the demo stack and FakeLLM use it), never
+production.
+
 ## Rolling back
 
 ```bash

@@ -68,6 +68,10 @@ services:
       SKI_MODEL_MAX_TOKENS: ${SKI_MODEL_MAX_TOKENS:-512}
       SKI_MODEL_FILE_SHA256: ${SKI_MODEL_FILE_SHA256:-}
       OLLAMA_BASE_URL: http://ollama:11434
+      # Spec §6: strict refuses to start unless every sovereignty check
+      # passes, including a pinned SKI_MODEL_FILE_SHA256.
+      SKI_SOVEREIGNTY: ${SKI_SOVEREIGNTY:-strict}
+      SKI_SOVEREIGN_LOCAL_DOMAINS: ${SKI_SOVEREIGN_LOCAL_DOMAINS:-}
       KG_PATH: /app/kg/kg.json
       KG_REQUIRE_SIGNATURE: ${KG_REQUIRE_SIGNATURE:-true}
       # v3.2.0: least-privilege ledger role (INSERT + SELECT only), never the

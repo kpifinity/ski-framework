@@ -44,7 +44,28 @@ referenced from each release entry.
   the `window_seconds` / `requires_recent_within_seconds` obligation
   fields the runtime needs for stateful predicates.
 
+- **Sovereignty mode (spec §6).** `SKI_SOVEREIGNTY` is `strict` (default)
+  or `advisory`. On startup the runtime checks the five §6.2 requirements: a
+  sovereign backend (Ollama or vLLM), a pinned model weight hash, operator KG
+  trust anchors, a ledger inside the deployment, and no evaluation-path
+  destination outside it. The checks that need only configuration run
+  before the model or ledger is contacted. Strict refuses to start on any
+  failure, with a structured report naming each check and its fix;
+  advisory logs them. During an evaluation an audit-hook egress guard
+  counts every network call leaving the deployment in
+  `ski_egress_attempts_total`; in strict mode it refuses the call and the
+  runtime refuses further evaluation (`503`) until restarted (§6.3).
+  `GET /api/sovereignty` returns a document signed with the transcript key:
+  the mode and check results, model weight hash, KG version hash and signer,
+  build commit (`SKI_BUILD_COMMIT`, set at image build), build provenance
+  (`SKI_BUILD_PROVENANCE`), egress attempts and time (§6.4).
+
 ### Changed
+- **Breaking: deployments start in strict sovereignty mode.** A deployment
+  that fails a §6.2 check no longer starts. The stock production compose
+  stack needs `SKI_MODEL_FILE_SHA256` pinned; the demo stack, CI and tests
+  set `SKI_SOVEREIGNTY=advisory`. See "Upgrading to strict sovereignty
+  mode" in `docs/migrations.md`.
 - **Runtime fingerprints use the spec §7.3 canonicalizer.** `kg_version_hash`,
   `structured_grammar_hash` and the ledger's `telemetry_hash` are now digests of
   `ski_schemas.canonical` output, so another implementation reproduces them from
