@@ -1,109 +1,288 @@
 {
- "metadata": {
-  "version": "ski-evals-energy-1.0.0",
-  "name": "SKI Evals - energy golden-dataset KG",
-  "description": "Evaluation KG for the SKI Evals verdict-accuracy suite. Runtime flat-rule shape (the post-Phase-1 artifact kg_loader consumes). Unsigned: evals load it with require_signature=False. All thresholds are illustrative, not regulatory citations."
- },
- "rules": [
-  {
-   "id": "energy.so2.cap",
-   "name": "SO2 emissions cap",
-   "metric": "so2_ppm",
-   "predicate": "must_not_exceed",
-   "value": 100,
-   "unit": "ppm",
-   "jurisdiction": "us.federal",
-   "effective_date": "2026-01-01T00:00:00Z"
+  "metadata": {
+    "version": "ski-evals-energy-1.0.0",
+    "name": "SKI Evals - energy golden-dataset KG",
+    "description": "Evaluation KG for the SKI Evals verdict-accuracy suite, in the spec §3 graph shape (converted from the flat rule list by scripts/flat-kg-to-graph.py; verdicts unchanged). Unsigned: evals load it with require_signature=False. All thresholds are illustrative, not regulatory citations.",
+    "schema_version": "3.0"
   },
-  {
-   "id": "energy.ph.range",
-   "name": "Wastewater pH range",
-   "metric": "ph",
-   "predicate": "must_be_within",
-   "value": [
-    6.0,
-    8.5
-   ],
-   "unit": "pH",
-   "jurisdiction": "global"
+  "nodes": {
+    "subjects": [],
+    "rules": [
+      {
+        "id": "rule.energy.so2.cap",
+        "type": "Rule",
+        "name": "SO2 emissions cap",
+        "version": "sha256:b6158d2c9dc16af77bdc1a900d8bb3a9704fe5230b83473d1be1cd058205e9dd"
+      },
+      {
+        "id": "rule.energy.ph.range",
+        "type": "Rule",
+        "name": "Wastewater pH range",
+        "version": "sha256:f2622eac8d4ffeb8eb3665f58beb21f326af74dbaf6781bdefc3cf7b34069e94"
+      },
+      {
+        "id": "rule.energy.nox.cap",
+        "type": "Rule",
+        "name": "NOx emissions cap",
+        "version": "sha256:8ba04e889a6ebc0746d5d38fe6e9804f204a51007b8b02b9404dc9ecb8571cf1"
+      },
+      {
+        "id": "rule.energy.flow.min",
+        "type": "Rule",
+        "name": "Scrubber minimum flow",
+        "version": "sha256:4cfeaf7dd79e9492dbabc2cab20284e456757aa9e924b280fc1c04d9138d38f4"
+      },
+      {
+        "id": "rule.energy.temp.range",
+        "type": "Rule",
+        "name": "Effluent temperature range",
+        "version": "sha256:7dfb784908a16d5e8d1c4a65cee8424ac399202cac8cd4688fb461a19a7a64c9"
+      },
+      {
+        "id": "rule.energy.opacity.cap.ab",
+        "type": "Rule",
+        "name": "Stack opacity cap (Alberta)",
+        "version": "sha256:25c0c8778a948ac057dea8990e872b07dc872cfad64db9da750d8184ac617ed9"
+      },
+      {
+        "id": "rule.energy.co.cap.future",
+        "type": "Rule",
+        "name": "CO cap (future rule)",
+        "version": "sha256:9b29de8b8bd59f0700c263e4acc69c942c73c591a2b2378e03ffd1f38b6eb051"
+      },
+      {
+        "id": "rule.energy.benzene.cap.sunset",
+        "type": "Rule",
+        "name": "Benzene cap (sunset)",
+        "version": "sha256:d2b574be7e057dc35e16056451a37814b8f053244613d891295b7301dc26af3c"
+      },
+      {
+        "id": "rule.energy.methane.cap",
+        "type": "Rule",
+        "name": "Methane leak cap",
+        "version": "sha256:bea71e45f71b14c54c85f16c5b4084efaa84f01a4d4b7e670dba015c4abbcf8f"
+      },
+      {
+        "id": "rule.energy.turbidity.cap",
+        "type": "Rule",
+        "name": "Discharge turbidity cap",
+        "version": "sha256:e7878195ae00394074017d42f3b08bcb766455258ece46c0ba768cdf75de505d"
+      }
+    ],
+    "obligations": [
+      {
+        "id": "energy.so2.cap",
+        "type": "Obligation",
+        "obligation_type": "must_not_exceed",
+        "metric": "so2_ppm",
+        "value": 100,
+        "unit": "ppm",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "SO2 emissions cap",
+        "version": "sha256:0774b2bfd100824518dc0dd986330dc73992fb066df409eac71ae71e2e01f3d3"
+      },
+      {
+        "id": "energy.ph.range",
+        "type": "Obligation",
+        "obligation_type": "must_be_within",
+        "metric": "ph",
+        "value": [
+          6.0,
+          8.5
+        ],
+        "unit": "pH",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "Wastewater pH range",
+        "version": "sha256:6c5bb115d555ea3f2711cc96933c2d620a5d39c5130d527adc0bb457329afd9c"
+      },
+      {
+        "id": "energy.nox.cap",
+        "type": "Obligation",
+        "obligation_type": "must_not_exceed",
+        "metric": "nox_ppm",
+        "value": 75,
+        "unit": "ppm",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "NOx emissions cap",
+        "version": "sha256:70c4511e49e8b2169176517387eaba64ce88bbaebd0f9150f682fa2a69cebf4a"
+      },
+      {
+        "id": "energy.flow.min",
+        "type": "Obligation",
+        "obligation_type": "must_be_at_least",
+        "metric": "flow_m3h",
+        "value": 10,
+        "unit": "m3/h",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "Scrubber minimum flow",
+        "version": "sha256:990ff17642b20d7e0980814e70eb0f73759da52ee48d3edce7ac3cc119c7e503"
+      },
+      {
+        "id": "energy.temp.range",
+        "type": "Obligation",
+        "obligation_type": "must_be_within",
+        "metric": "temp_c",
+        "value": [
+          5,
+          40
+        ],
+        "unit": "C",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "Effluent temperature range",
+        "version": "sha256:e5818f4849cb287e9bea299ca0324202367cc7565888627ab1252cd396177514"
+      },
+      {
+        "id": "energy.opacity.cap.ab",
+        "type": "Obligation",
+        "obligation_type": "must_not_exceed",
+        "metric": "opacity_pct",
+        "value": 20,
+        "unit": "%",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "Stack opacity cap (Alberta)",
+        "version": "sha256:21b62427a567d3fd1c445909da7a0687f624dfb7ed2285ef8f0362aae6440ed4"
+      },
+      {
+        "id": "energy.co.cap.future",
+        "type": "Obligation",
+        "obligation_type": "must_not_exceed",
+        "metric": "co_ppm",
+        "value": 50,
+        "unit": "ppm",
+        "effective_date_start": "2026-09-01T00:00:00Z",
+        "summary": "CO cap (future rule)",
+        "version": "sha256:56f6989835376e10dca495854ae126330cc0fa0ce4db80c81e077b8c7b5605e5"
+      },
+      {
+        "id": "energy.benzene.cap.sunset",
+        "type": "Obligation",
+        "obligation_type": "must_not_exceed",
+        "metric": "benzene_ppb",
+        "value": 5,
+        "unit": "ppb",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "effective_date_end": "2026-03-31T00:00:00Z",
+        "summary": "Benzene cap (sunset)",
+        "version": "sha256:e1c816eb53b4ed13d7935ec1db349a6ea1a7cfec6fe933c4c573db6e6c261901"
+      },
+      {
+        "id": "energy.methane.cap",
+        "type": "Obligation",
+        "obligation_type": "must_not_exceed",
+        "metric": "methane_kg_h",
+        "value": 12,
+        "unit": "kg/h",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "Methane leak cap",
+        "version": "sha256:56a2703ed3d230bb0b9f3abe69a0337d8ae9a103f25381f18e1a2e03ab6fd52c"
+      },
+      {
+        "id": "energy.turbidity.cap",
+        "type": "Obligation",
+        "obligation_type": "must_not_exceed",
+        "metric": "turbidity_ntu",
+        "value": 1,
+        "unit": "NTU",
+        "effective_date_start": "2026-01-01T00:00:00Z",
+        "summary": "Discharge turbidity cap",
+        "version": "sha256:602d2c238bd2c318ec6853f2bb1bf2f6c7456ac727a7eb1fa4099040f09e9b5a"
+      }
+    ],
+    "jurisdictions": [
+      {
+        "id": "ca.alberta",
+        "type": "Jurisdiction",
+        "name": "ca.alberta",
+        "version": "sha256:97016b908a84ab52b36e125c14a4278edeebf74c827c013951b0d3478f2b05b8"
+      },
+      {
+        "id": "us.federal",
+        "type": "Jurisdiction",
+        "name": "us.federal",
+        "version": "sha256:7b2804c36208ad995da9fb30613f147a43ead4350830d589ce8394cab1b4fdab"
+      }
+    ]
   },
-  {
-   "id": "energy.nox.cap",
-   "name": "NOx emissions cap",
-   "metric": "nox_ppm",
-   "predicate": "must_not_exceed",
-   "value": 75,
-   "unit": "ppm",
-   "jurisdiction": "us.federal"
-  },
-  {
-   "id": "energy.flow.min",
-   "name": "Scrubber minimum flow",
-   "metric": "flow_m3h",
-   "predicate": "must_be_at_least",
-   "value": 10,
-   "unit": "m3/h",
-   "jurisdiction": "global"
-  },
-  {
-   "id": "energy.temp.range",
-   "name": "Effluent temperature range",
-   "metric": "temp_c",
-   "predicate": "must_be_within",
-   "value": [
-    5,
-    40
-   ],
-   "unit": "C",
-   "jurisdiction": "global"
-  },
-  {
-   "id": "energy.opacity.cap.ab",
-   "name": "Stack opacity cap (Alberta)",
-   "metric": "opacity_pct",
-   "predicate": "must_not_exceed",
-   "value": 20,
-   "unit": "%",
-   "jurisdiction": "ca.alberta"
-  },
-  {
-   "id": "energy.co.cap.future",
-   "name": "CO cap (future rule)",
-   "metric": "co_ppm",
-   "predicate": "must_not_exceed",
-   "value": 50,
-   "unit": "ppm",
-   "jurisdiction": "us.federal",
-   "effective_date": "2026-09-01T00:00:00Z"
-  },
-  {
-   "id": "energy.benzene.cap.sunset",
-   "name": "Benzene cap (sunset)",
-   "metric": "benzene_ppb",
-   "predicate": "must_not_exceed",
-   "value": 5,
-   "unit": "ppb",
-   "jurisdiction": "us.federal",
-   "sunset_date": "2026-03-31T00:00:00Z"
-  },
-  {
-   "id": "energy.methane.cap",
-   "name": "Methane leak cap",
-   "metric": "methane_kg_h",
-   "predicate": "must_not_exceed",
-   "value": 12,
-   "unit": "kg/h",
-   "jurisdiction": "us.federal"
-  },
-  {
-   "id": "energy.turbidity.cap",
-   "name": "Discharge turbidity cap",
-   "metric": "turbidity_ntu",
-   "predicate": "must_not_exceed",
-   "value": 1,
-   "unit": "NTU",
-   "jurisdiction": "global"
-  }
- ],
- "tag_registry": {}
+  "edges": [
+    {
+      "type": "consists_of",
+      "from": "rule.energy.so2.cap",
+      "to": "energy.so2.cap"
+    },
+    {
+      "type": "scoped_to",
+      "from": "energy.so2.cap",
+      "to": "us.federal"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.ph.range",
+      "to": "energy.ph.range"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.nox.cap",
+      "to": "energy.nox.cap"
+    },
+    {
+      "type": "scoped_to",
+      "from": "energy.nox.cap",
+      "to": "us.federal"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.flow.min",
+      "to": "energy.flow.min"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.temp.range",
+      "to": "energy.temp.range"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.opacity.cap.ab",
+      "to": "energy.opacity.cap.ab"
+    },
+    {
+      "type": "scoped_to",
+      "from": "energy.opacity.cap.ab",
+      "to": "ca.alberta"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.co.cap.future",
+      "to": "energy.co.cap.future"
+    },
+    {
+      "type": "scoped_to",
+      "from": "energy.co.cap.future",
+      "to": "us.federal"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.benzene.cap.sunset",
+      "to": "energy.benzene.cap.sunset"
+    },
+    {
+      "type": "scoped_to",
+      "from": "energy.benzene.cap.sunset",
+      "to": "us.federal"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.methane.cap",
+      "to": "energy.methane.cap"
+    },
+    {
+      "type": "scoped_to",
+      "from": "energy.methane.cap",
+      "to": "us.federal"
+    },
+    {
+      "type": "consists_of",
+      "from": "rule.energy.turbidity.cap",
+      "to": "energy.turbidity.cap"
+    }
+  ]
 }
