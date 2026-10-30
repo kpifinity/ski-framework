@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Optional
 
+from ski_schemas.canonical import canonicalize
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -52,16 +53,14 @@ class WindowQueryResult:
 
 
 def canonical_measurement_hash(measurement: dict[str, Any]) -> str:
-    """SHA-256 of the canonical JSON of the measurement object.
+    """Bare-hex SHA-256 of the spec §7.3 canonical JSON of the measurement object.
 
-    Matches the canonicalisation used elsewhere in the codebase
-    (sort_keys, no whitespace, ensure_ascii=False, UTF-8). This is the
-    same value stored in ``ledger_entries.telemetry_hash``, which lets
-    operators cross-reference buffer rows against ledger entries.
+    The fallback ``measurement_hash`` for callers of :meth:`TelemetryBuffer.append`
+    that hold only the measurement. The SKI Model passes the ledger's
+    ``telemetry_hash`` (the hash of the whole telemetry record) instead, so
+    replay can find a ledger entry's buffer row by that value.
     """
-    return hashlib.sha256(
-        json.dumps(measurement, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(canonicalize(measurement)).hexdigest()
 
 
 class TelemetryBuffer:
@@ -92,8 +91,13 @@ class TelemetryBuffer:
         telemetry_id: str,
         telemetry_ts: datetime,
         measurement: dict[str, Any],
+        measurement_hash: Optional[str] = None,
     ) -> None:
         """Append one telemetry record to the buffer.
+
+        ``measurement_hash`` is the key :meth:`fetch_at` finds the row by;
+        the SKI Model passes the ledger entry's ``telemetry_hash``. It
+        defaults to :func:`canonical_measurement_hash` of ``measurement``.
 
         Called by the SKI Model service after the record is accepted but
         before evaluation runs. Idempotency is not enforced here — if
@@ -101,7 +105,8 @@ class TelemetryBuffer:
         copies. (The ledger entry hash will catch the duplicate at the
         verdict layer.)
         """
-        measurement_hash = canonical_measurement_hash(measurement)
+        if measurement_hash is None:
+            measurement_hash = canonical_measurement_hash(measurement)
         async with self._sessions() as session, session.begin():
             await session.execute(
                 text(

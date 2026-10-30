@@ -28,6 +28,29 @@ referenced from each release entry.
   unchanged in this slice; switching them onto the canonicalizer changes stored
   hashes and lands with the ledger-v4 / spec-3.1 (RFC 0004) work.
 
+### Changed
+- **Runtime fingerprints use the spec §7.3 canonicalizer.** `kg_version_hash`,
+  `structured_grammar_hash` and the ledger's `telemetry_hash` are now digests of
+  `ski_schemas.canonical` output, so another implementation reproduces them from
+  the published contracts. `structured_grammar_hash` is unchanged.
+  `kg_version_hash` and `telemetry_hash` change for content holding floats
+  (`85.0` is now hashed as `85`) or non-ASCII text (`telemetry_hash` previously
+  escaped it). No verifier recomputes either value from stored data, so existing
+  ledgers still verify. Hashes that are re-verified later (ledger chain,
+  `envelope_hash`, transcript hashes, KG signature bytes) still use the 3.2.0
+  serialization and move with ledger v4.
+- `/api/evaluate` rejects with `422` a measurement that has no canonical JSON
+  form (an integer a double cannot hold exactly, or a string with a lone
+  surrogate), before anything is buffered, evaluated or ledgered.
+
+### Fixed
+- **Deterministic replay can find its telemetry again.** The ledger's
+  `telemetry_hash` hashed the whole telemetry record while the buffer's
+  `measurement_hash` hashed only the `measurement` object (with different
+  escaping), so `audit-ledger replay` never matched a buffer row and skipped
+  every entry. The runtime now computes `telemetry_hash` once and writes that
+  value to both.
+
 ## [3.2.0] -- 2026-10-29
 
 Trust-and-safety hardening release. It closes the gap the internal

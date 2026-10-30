@@ -7,9 +7,8 @@ the produced :class:`V3VerdictEnvelope` provenance fields are accurate:
     :data:`PROMPT_TEMPLATE` text. If the template is edited the hash
     changes; auditors notice and can flag verdicts produced under an
     older template.
-  * :data:`STRUCTURED_GRAMMAR_HASH` — sha256 of the canonical JSON
-    serialisation (sort_keys, compact separators) of
-    :data:`RESPONSE_GRAMMAR`. Same reasoning.
+  * :data:`STRUCTURED_GRAMMAR_HASH` — sha256 of the spec §7.3 canonical
+    JSON of :data:`RESPONSE_GRAMMAR`. Same reasoning.
 
 These are deliberately computed once at import time so every backend in
 the same process reports identical values.
@@ -18,7 +17,8 @@ the same process reports identical values.
 from __future__ import annotations
 
 import hashlib
-import json
+
+from ski_schemas.canonical import sha256_canonical
 
 from ..evaluator import PROMPT_TEMPLATE, RESPONSE_GRAMMAR
 
@@ -31,10 +31,8 @@ PROMPT_TEMPLATE_HASH: str = _sha256_prefixed(PROMPT_TEMPLATE.encode("utf-8"))
 """sha256 of :data:`PROMPT_TEMPLATE` as UTF-8 bytes."""
 
 
-STRUCTURED_GRAMMAR_HASH: str = _sha256_prefixed(
-    json.dumps(RESPONSE_GRAMMAR, sort_keys=True, separators=(",", ":")).encode("utf-8")
-)
-"""sha256 of canonical JSON of :data:`RESPONSE_GRAMMAR`."""
+STRUCTURED_GRAMMAR_HASH: str = sha256_canonical(RESPONSE_GRAMMAR)
+"""sha256 of the spec §7.3 canonical JSON of :data:`RESPONSE_GRAMMAR`."""
 
 
 __all__ = ["PROMPT_TEMPLATE_HASH", "STRUCTURED_GRAMMAR_HASH"]
