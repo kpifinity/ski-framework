@@ -61,6 +61,12 @@ referenced from each release entry.
   (`SKI_BUILD_PROVENANCE`), egress attempts and time (§6.4).
 
 ### Changed
+- **The evals / quickstart / benchmarks KG is a spec §3 graph.**
+  `evals/datasets/energy/eval-kg.json` was the last flat KG in the repo; it
+  is converted with the new `scripts/flat-kg-to-graph.py`, and all 55 eval
+  cases give the same verdicts, verifier statuses and metrics as before.
+  `scripts/make-demo-kg.py` signs the graph with the runtime's
+  `signing_bytes`. `kg-validator` validates it with no issues.
 - **Breaking: deployments start in strict sovereignty mode.** A deployment
   that fails a §6.2 check no longer starts. The stock production compose
   stack needs `SKI_MODEL_FILE_SHA256` pinned; the demo stack, CI and tests

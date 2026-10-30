@@ -150,7 +150,18 @@ Signature verification at load time is **mandatory** — there is no
 runtime's `KG_REQUIRE_SIGNATURE=false` knob exists only so the unsigned
 demo KGs can load; it is non-conformant by definition (the Durability
 conformance suite asserts signed-KG-required). The earlier flat format
-(`rules` + `tag_registry`) still loads, as a compatibility mode.
+(`rules` + `tag_registry`) still loads, as a compatibility mode. To move a
+flat KG to the graph format (then validate and sign it):
+
+```bash
+python scripts/flat-kg-to-graph.py kg-flat.json kg.json --default-effective-date 2026-01-01T00:00:00Z
+kg-validator validate -i kg.json
+ski-model-deploy sign --kg kg.json --key signer.pem -o kg.signed.json
+```
+
+Each flat rule becomes an Obligation with the same id (recorded citations
+keep resolving) owned by a Rule `rule.<id>`; `--default-effective-date`
+fills `effective_date_start` (spec §3.4) for rules that had none.
 
 ## Lifecycle
 
