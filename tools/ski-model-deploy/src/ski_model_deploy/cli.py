@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Optional
 
 import click
 
-from .deployer import Deployer, UnsignedKGError
+from .deployer import Deployer, UnsignedKGError, sign_kg
 from .utils import load_config, save_config
 
 
@@ -36,6 +37,26 @@ def init(name: str, sector: str, mode: str, output: str) -> None:
     click.echo(f"  1. Review:           cat {output}")
     click.echo(f"  2. Load signed KG:   ski-model-deploy load-kg --config {output} --kg signed-kg.json")
     click.echo(f"  3. Start the stack:  ski-model-deploy start --config {output}")
+
+
+@main.command()
+@click.option("--kg", "-k", required=True, help="Knowledge Graph JSON file to sign")
+@click.option("--key", required=True, help="Ed25519 private key (PEM, unencrypted) of the KG signer")
+@click.option("--output", "-o", required=True, help="Where to write the signed KG")
+def sign(kg: str, key: str, output: str) -> None:
+    """Sign a Knowledge Graph with an Ed25519 key (spec §3.5).
+
+    The runtime loads the result only if this key's public half is one of
+    its trust anchors (SKI_KG_TRUST_ANCHORS).
+    """
+    try:
+        kg_data = json.loads(Path(kg).read_text(encoding="utf-8"))
+        signed = sign_kg(kg_data, Path(key).read_bytes())
+        Path(output).write_text(json.dumps(signed, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        click.echo(f"✓ Signed {kg} -> {output}")
+    except Exception as exc:
+        click.echo(f"Error: {exc}", err=True)
+        raise SystemExit(1)
 
 
 @main.command(name="load-kg")

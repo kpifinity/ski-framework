@@ -74,6 +74,10 @@ class KnowledgeGraphV3(BaseModel):
     metadata: KGV3Metadata
     nodes: KGV3Nodes = Field(default_factory=KGV3Nodes)
     edges: List[Edge] = Field(default_factory=list)
+    # The Ed25519 signature block (spec §3.5). The validator checks structure,
+    # not the signature: the runtime and `ski-model-deploy load-kg` verify it
+    # against the operator's trust anchors.
+    signature: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(extra="forbid")
 

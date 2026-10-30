@@ -395,3 +395,16 @@ def test_demo_kg_file_is_valid_json() -> None:
     assert raw["metadata"]["schema_version"] == "3.0"
     assert "nodes" in raw
     assert "edges" in raw
+
+
+def test_signed_graph_with_window_fields_validates() -> None:
+    """The validator accepts what the runtime loads: a signature block and window fields."""
+    data = json.loads(DEMO_KG_PATH.read_text(encoding="utf-8"))
+    data["nodes"]["obligations"][0].update(window_seconds=3600, requires_recent_within_seconds=300)
+    data["signature"] = {
+        "algorithm": "ed25519",
+        "public_key_pem": "-----BEGIN PUBLIC KEY-----",
+        "value_hex": "00",
+    }
+    kg = KnowledgeGraphV3.model_validate(data)
+    assert kg.nodes.obligations[0].window_seconds == 3600

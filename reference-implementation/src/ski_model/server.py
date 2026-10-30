@@ -218,8 +218,13 @@ def _kg_to_v3_snapshot(kg: KnowledgeGraph) -> Dict[str, Any]:
 def _compute_kg_version_hash(kg: KnowledgeGraph) -> str:
     """sha256 of the spec §7.3 canonical KG payload — recorded in ModelProvenance.
 
-    Raises :class:`CanonicalizationError` for a KG that has no canonical form.
+    A graph KG hashes its signed ``{metadata, nodes, edges}`` content, so an
+    auditor recomputes the value from the KG file; a flat (compatibility)
+    KG hashes ``{version, rules, tag_registry}``. Raises
+    :class:`CanonicalizationError` for a KG that has no canonical form.
     """
+    if kg.graph is not None:
+        return sha256_canonical(kg.graph)
     return sha256_canonical(
         {
             "version": kg.version,

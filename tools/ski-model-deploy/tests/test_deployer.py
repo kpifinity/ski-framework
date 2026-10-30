@@ -118,5 +118,66 @@ class TestLoadKnowledgeGraphTrustAnchors:
             deployer.load_knowledge_graph(str(kg_path))
 
 
+class TestSignKnowledgeGraph:
+    """`ski-model-deploy sign` produces a KG the runtime and `load-kg` accept."""
+
+    @pytest.fixture(autouse=True)
+    def _no_env_trust(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("SKI_KG_TRUST_ANCHORS", raising=False)
+        monkeypatch.delenv("SKI_KG_ALLOW_UNANCHORED", raising=False)
+
+    def test_signed_demo_graph_round_trips_through_load_kg(self, tmp_path: Path) -> None:
+        from click.testing import CliRunner
+        from ski_model_deploy.cli import main
+
+        key = Ed25519PrivateKey.generate()
+        key_path = tmp_path / "kg.key"
+        key_path.write_bytes(
+            key.private_bytes(
+                serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+            )
+        )
+        anchors = tmp_path / "anchors.pem"
+        anchors.write_bytes(
+            key.public_key().public_bytes(
+                serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+        )
+        demo = Path(__file__).resolve().parents[3] / "examples/energy/knowledge-graphs/kg-energy-v3-demo.json"
+        signed = tmp_path / "signed.json"
+        config = tmp_path / "deployment.yaml"
+        runner = CliRunner()
+
+        result = runner.invoke(main, ["sign", "--kg", str(demo), "--key", str(key_path), "-o", str(signed)])
+        assert result.exit_code == 0, result.output
+        assert runner.invoke(main, ["init", "-n", "t", "-s", "energy", "-o", str(config)]).exit_code == 0
+        result = runner.invoke(
+            main, ["load-kg", "-c", str(config), "-k", str(signed), "--trust-anchors", str(anchors)]
+        )
+        assert result.exit_code == 0, result.output
+        assert "signature verified" in result.output
+
+    def test_sign_refuses_a_non_ed25519_key(self, tmp_path: Path) -> None:
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from ski_model_deploy.deployer import sign_kg
+
+        other = ec.generate_private_key(ec.SECP256R1()).private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+        )
+        with pytest.raises(ValueError, match="Ed25519"):
+            sign_kg({"metadata": {}, "nodes": {}, "edges": []}, other)
+
+    def test_deployer_finds_the_runtime_loader_without_help(self) -> None:
+        # The deployer resolves reference-implementation/src itself (the CLI
+        # has no pytest path setup); a wrong path left KnowledgeGraph = None.
+        import subprocess
+        import sys
+
+        code = (
+            "import ski_model_deploy.deployer as d; assert d.KnowledgeGraph is not None and d.signing_bytes"
+        )
+        subprocess.run([sys.executable, "-I", "-c", code], check=True)
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__])

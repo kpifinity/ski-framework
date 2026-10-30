@@ -1,16 +1,23 @@
 """Knowledge Graph loader with signature verification.
 
-A SKI v2.1 Knowledge Graph is a signed JSON document with shape:
+A SKI Knowledge Graph is a signed JSON document in the spec §3 graph shape:
 
   {
-    "metadata": { "version": "...", "compiled_at": "...", "model_file_sha256": "...", ... },
-    "rules": [ {...}, ... ],
-    "tag_registry": { "<subject>": "<rule_id>", ... },
+    "metadata": { "name": "...", "schema_version": "3.0", ... },
+    "nodes": { "subjects": [...], "rules": [...], "obligations": [...], ... },
+    "edges": [ { "type": "consists_of", "from": "<rule id>", "to": "<obligation id>" }, ... ],
     "signature": { "algorithm": "ed25519", "public_key_pem": "...", "value_hex": "..." }
   }
 
-The signature is computed over the SHA-256 of the canonicalised JSON of the
-`metadata` + `rules` + `tag_registry` blocks (signature itself excluded).
+The Ed25519 signature is over the spec §7.3 canonical JSON of
+``{"metadata", "nodes", "edges"}`` (spec §3.5: the entire KG, signature
+excluded); :func:`signing_bytes` produces those bytes. The graph is compiled
+to the evaluator's obligation list by :mod:`ski_model.kg_graph`.
+
+Compatibility mode (spec §11.2): the earlier flat shape,
+``{"metadata", "rules": [...], "tag_registry": {...}, "signature"}``, still
+loads. Its signature is over ``json.dumps(sort_keys=True, compact,
+ensure_ascii=False)`` of ``{"metadata", "rules", "tag_registry"}``, as before.
 
 Signature verification is REQUIRED at runtime per Phase 1 → Phase 2 boundary
 rules. The reference implementation will refuse to operate on an unsigned KG
@@ -70,6 +77,9 @@ from typing import Any, Final, Literal, Optional
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from ski_schemas.canonical import canonicalize
+
+from .kg_graph import compile_graph, is_graph_kg
 
 logger = logging.getLogger(__name__)
 
@@ -275,6 +285,11 @@ class KnowledgeGraph:
     # through signature verification.
     signer_key_id: Optional[str] = None
     kg_trust: Optional[KGTrust] = None
+    # Graph-shape KGs: the signed ``{metadata, nodes, edges}`` content, and
+    # the Definition nodes. None for flat KGs, whose definitions (if any)
+    # live in ``metadata["definitions"]``.
+    graph: Optional[dict[str, Any]] = None
+    definitions: Optional[list[dict[str, Any]]] = None
 
     @classmethod
     def from_dict(
@@ -294,22 +309,34 @@ class KnowledgeGraph:
         """
         policy = trust if trust is not None else KGTrustPolicy.from_env()
         metadata = data.get("metadata") or {}
-        rules = data.get("rules") or []
-        tag_registry = data.get("tag_registry") or {}
         signature = data.get("signature")
-
-        if not isinstance(rules, list) or not rules:
-            raise ValueError("KG must contain a non-empty 'rules' array.")
-        if not isinstance(tag_registry, dict):
-            raise ValueError("KG must contain a 'tag_registry' object.")
+        if not isinstance(metadata, dict):
+            raise ValueError("KG 'metadata' must be an object.")
         if signature is not None and not isinstance(signature, dict):
             raise ValueError("KG 'signature' must be an object.")
+
+        graph: Optional[dict[str, Any]] = None
+        definitions: Optional[list[dict[str, Any]]] = None
+        tag_registry: dict[str, str] = {}
+        if is_graph_kg(data):
+            # Compile before verifying so a malformed graph is refused either way.
+            rules, definitions = compile_graph(data.get("nodes"), data.get("edges"))
+            graph = {"metadata": metadata, "nodes": data["nodes"], "edges": data["edges"]}
+            version = str(metadata.get("version") or metadata.get("name") or "unknown")
+        else:
+            rules = data.get("rules") or []
+            tag_registry = data.get("tag_registry") or {}
+            if not isinstance(rules, list) or not rules:
+                raise ValueError("KG must contain a non-empty 'rules' array (or the spec §3 'nodes' graph).")
+            if not isinstance(tag_registry, dict):
+                raise ValueError("KG must contain a 'tag_registry' object.")
+            version = str(metadata.get("version", "unknown"))
 
         signature_verified = False
         signer_key_id: Optional[str] = None
         kg_trust: KGTrust
         if signature:
-            signer_key_id, kg_trust = _verify_signature(metadata, rules, tag_registry, signature, policy)
+            signer_key_id, kg_trust = _verify_signature(signing_bytes(data), signature, policy)
             signature_verified = kg_trust == KG_TRUST_ANCHORED
         elif require_signature:
             raise ValueError(
@@ -328,17 +355,19 @@ class KnowledgeGraph:
             logger.warning(
                 "Loaded an UNSIGNED Knowledge Graph (version=%s, kg_trust=unsigned). Signature "
                 "verification is disabled for this load (KG_REQUIRE_SIGNATURE=false); NOT conformant.",
-                metadata.get("version", "unknown"),
+                version,
             )
 
         return cls(
-            version=str(metadata.get("version", "unknown")),
+            version=version,
             rules=rules,
             tag_registry=tag_registry,
             metadata=metadata,
             signature_verified=signature_verified,
             signer_key_id=signer_key_id,
             kg_trust=kg_trust,
+            graph=graph,
+            definitions=definitions,
         )
 
     def scope_to(
@@ -373,7 +402,9 @@ class KnowledgeGraph:
         snapshot: dict[str, Any] = {
             "version": self.version,
             "obligations": kept,
-            "definitions": self.metadata.get("definitions", []),
+            "definitions": self.definitions
+            if self.definitions is not None
+            else self.metadata.get("definitions", []),
             "scope": {
                 "jurisdiction": jurisdiction,
                 "as_of": as_of.isoformat(),
@@ -452,14 +483,25 @@ def load_signed_kg(
     return KnowledgeGraph.from_dict(data, require_signature=require_signature, trust=trust)
 
 
+def signing_bytes(data: Mapping[str, Any]) -> bytes:
+    """The bytes a KG's Ed25519 signature is over (the ``signature`` block itself excluded).
+
+    Graph shape: the spec §7.3 canonical JSON of ``{metadata, nodes, edges}``.
+    Flat (compatibility) shape: the pre-graph serialization of
+    ``{metadata, rules, tag_registry}``, so KGs signed before still verify.
+    """
+    metadata = data.get("metadata") or {}
+    if is_graph_kg(data):
+        return canonicalize({"metadata": metadata, "nodes": data.get("nodes"), "edges": data.get("edges")})
+    return _canonical_bytes(metadata, data.get("rules") or [], data.get("tag_registry") or {})
+
+
 def _verify_signature(
-    metadata: dict[str, Any],
-    rules: list[dict[str, Any]],
-    tag_registry: dict[str, str],
+    canonical: bytes,
     signature: dict[str, Any],
     policy: KGTrustPolicy,
 ) -> tuple[str, KGTrust]:
-    """Verify the KG signature under ``policy``; return ``(signer_key_id, kg_trust)``.
+    """Verify the KG signature over ``canonical`` under ``policy``; return ``(signer_key_id, kg_trust)``.
 
     The embedded ``public_key_pem`` only selects which anchor to use. The
     signature is verified with the anchor's own key, never with a key the
@@ -490,7 +532,6 @@ def _verify_signature(
         raise ValueError("Signature value_hex is not valid hex.") from exc
 
     embedded_key_id = ed25519_key_id(embedded)
-    canonical = _canonical_bytes(metadata, rules, tag_registry)
 
     if policy.anchors:
         anchor = policy.anchor_for(embedded_key_id)
@@ -528,12 +569,9 @@ def _canonical_bytes(
     rules: list[dict[str, Any]],
     tag_registry: dict[str, str],
 ) -> bytes:
-    """Canonical serialization used for signing AND ledger hashing.
+    """Signed bytes of a flat (compatibility-mode) KG: sort_keys=True, no whitespace, UTF-8.
 
-    Documented here so third parties can verify ledger and KG integrity
-    using standard JSON canonicalization (RFC 8785-compatible subset:
-    sort_keys=True, no whitespace, UTF-8). Floats are not used in KGs;
-    if added, switch to RFC 8785 number rendering.
+    Graph KGs are signed over §7.3 canonical JSON instead (:func:`signing_bytes`).
     """
     payload = {"metadata": metadata, "rules": rules, "tag_registry": tag_registry}
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")

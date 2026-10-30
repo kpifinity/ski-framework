@@ -17,7 +17,10 @@ import os
 import subprocess
 import time
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
+
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from .models import DeploymentConfig, DeploymentMode, DeploymentStatus, HealthCheck
 from .utils import generate_docker_compose, load_config, save_config
@@ -29,17 +32,49 @@ try:
 
     sys.path.insert(
         0,
-        str(Path(__file__).resolve().parents[5] / "reference-implementation" / "src"),
+        str(Path(__file__).resolve().parents[4] / "reference-implementation" / "src"),
     )
-    from ski_model.kg_loader import KGTrustPolicy, KnowledgeGraph, load_trust_anchors  # type: ignore
+    from ski_model.kg_loader import (  # type: ignore
+        KGTrustPolicy,
+        KnowledgeGraph,
+        load_trust_anchors,
+        signing_bytes,
+    )
 except Exception:  # pragma: no cover — fall back when run as installed package
     KnowledgeGraph = None  # type: ignore
     KGTrustPolicy = None  # type: ignore
     load_trust_anchors = None  # type: ignore
+    signing_bytes = None  # type: ignore
 
 
 class UnsignedKGError(RuntimeError):
     """Raised if signature verification fails or is missing."""
+
+
+def sign_kg(kg_data: Dict[str, Any], private_key_pem: bytes) -> Dict[str, Any]:
+    """Return ``kg_data`` with an Ed25519 ``signature`` block over its signing bytes.
+
+    Any existing signature is replaced. The bytes are the runtime's own
+    :func:`ski_model.kg_loader.signing_bytes` (spec §3.5), so what this signs
+    is exactly what the runtime verifies.
+    """
+    if signing_bytes is None:
+        raise RuntimeError("The runtime KG loader is unavailable; cannot compute the KG signing bytes.")
+    key = serialization.load_pem_private_key(private_key_pem, password=None)
+    if not isinstance(key, Ed25519PrivateKey):
+        raise ValueError("The signing key must be an Ed25519 private key (PEM, unencrypted).")
+    unsigned = {k: v for k, v in kg_data.items() if k != "signature"}
+    public_pem = key.public_key().public_bytes(
+        serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return {
+        **unsigned,
+        "signature": {
+            "algorithm": "ed25519",
+            "public_key_pem": public_pem.decode("ascii"),
+            "value_hex": key.sign(signing_bytes(unsigned)).hex(),
+        },
+    }
 
 
 class Deployer:
