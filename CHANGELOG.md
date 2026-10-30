@@ -9,12 +9,29 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+## [3.2.0] -- 2026-10-30
+
+The gold-standard release, in two parts. **Phase 0 (trust and safety)** makes the
+runtime fail closed where the spec says it must: a fail-closed Symbolic Verifier,
+KG trust anchors, honest backend provenance, and a least-privilege ledger role.
+**Phase 1 (one contract)** makes the framework implementable from its published
+contracts: an RFC 8785 canonicalizer with JSON Schema, OpenAPI and test vectors;
+ledger v4, whose hash chain covers the stored evidence; the spec §3 graph
+Knowledge Graph as the one KG format; and the spec §6 strict sovereignty mode.
+
+**Breaking, by design (each fails closed and has an explicit opt-out):** everything
+listed under Phase 0 below, plus: the runtime now starts in `SKI_SOVEREIGNTY=strict`
+and refuses to start unless the spec §6.2 checks pass (pin `SKI_MODEL_FILE_SHA256`;
+`advisory` is for demos and CI). Existing ledgers, flat-format KGs and pre-v4
+ledger entries keep working. See `docs/migrations.md` for the upgrade steps,
+including adding the telemetry buffer to an existing database.
+
 ### Added
 - **Language-neutral contracts (Phase 1).** The wire protocol is now published
   independently of the Python implementation so a second implementation can be
   built and certified against it:
   - an RFC 8785 (JCS) canonicalizer with spec §7.3 NFC normalization
-    (`ski_schemas.canonical`), additive — no existing hash output changed;
+    (`ski_schemas.canonical`);
   - JSON Schema (draft 2020-12) for `MeasurementRecord`, `V3VerdictEnvelope`,
     `ModelProvenance` and the flat KG obligation, generated from the models;
   - an OpenAPI 3.1 description of `/api/evaluate`, `/api/health`, `/api/kg/load`,
@@ -24,9 +41,8 @@ referenced from each release entry.
     covering the fail-closed cases) that any implementation must reproduce;
   - a CI **drift check** that fails if the published schemas or OpenAPI fall out
     of sync with the models, and validates the vectors.
-  The ~15 existing ad-hoc canonical-JSON hashing sites are deliberately left
-  unchanged in this slice; switching them onto the canonicalizer changes stored
-  hashes and lands with the ledger-v4 / spec-3.1 (RFC 0004) work.
+  The runtime's hash sites move onto the canonicalizer as described under
+  Changed (fingerprints) and Security (ledger v4).
 - **The runtime loads the spec §3 graph Knowledge Graph.** The spec,
   `kg-validator`, `kg-extractor` and the sector demo KGs all use the typed
   graph (`metadata` / `nodes` / `edges`), but the runtime loaded only a
@@ -148,7 +164,7 @@ referenced from each release entry.
   depends on `ski-schemas`. Vectors: `spec/test-vectors/ledger/`, checked
   by the contracts drift job.
 
-## [3.2.0] -- 2026-10-29
+### Phase 0: trust-and-safety hardening
 
 Trust-and-safety hardening release. It closes the gap the internal
 gold-standard review found between what the spec and docs claim and what
@@ -168,7 +184,7 @@ unusable readings and timestamps with `422`. **3.1.x `ski-schemas` and
 upgrade clients and runtime together.** See "Upgrading to 3.2.0" in the
 docs for the migration and every opt-out flag.
 
-### Security
+#### Security
 - **The Symbolic Verifier now independently evaluates every mapped,
   formalizable obligation (finding C1).** It no longer checks only the
   assertions the model chose to emit. A breached obligation the model
@@ -227,7 +243,7 @@ docs for the migration and every opt-out flag.
   implementation-neutral `conformance/adversarial/` package proves the
   fail-closed verifier behaviour against a scripted adversarial backend.
 
-### Fixed
+#### Fixed
 - **v3 stateful predicates no longer crash against the production
   telemetry buffer.** `SymbolicVerifier` iterated `window_query`'s result
   as a list of samples, but `TelemetryBuffer.window_query` returns a single
@@ -244,7 +260,7 @@ docs for the migration and every opt-out flag.
   `sqlalchemy.ext.asyncio`) failed at import. The image now pins
   `sqlalchemy[asyncio]`.
 
-### Security
+#### Security
 - **Freshness gate (`NULL_STALE`) enforced on the v3 path.**
   `V3Evaluator` now applies `requires_recent_within_seconds`: for every
   scoped obligation that maps to the measurement and carries the
@@ -272,7 +288,7 @@ docs for the migration and every opt-out flag.
   cases and the eval report gains *Silent sensors CLEARed* (must be 0)
   and *NULL_STALE recall*.
 
-### CI
+#### CI
 - **Commit signature verification now checks GitHub's verification and
   gates.** The `commit-signatures` job lists the PR's commits via the
   compare API (`base...head`) and fails if any has
