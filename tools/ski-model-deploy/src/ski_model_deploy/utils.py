@@ -25,7 +25,7 @@ def load_config(config_path: str) -> DeploymentConfig:
 
 
 def save_config(config: DeploymentConfig, output_path: str) -> None:
-    data = config.model_dump()
+    data = config.model_dump(mode="json")
     if output_path.endswith((".yaml", ".yml")):
         with open(output_path, "w") as f:
             yaml.dump(data, f, default_flow_style=False, sort_keys=True)

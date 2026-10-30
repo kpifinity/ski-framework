@@ -27,6 +27,22 @@ referenced from each release entry.
   The ~15 existing ad-hoc canonical-JSON hashing sites are deliberately left
   unchanged in this slice; switching them onto the canonicalizer changes stored
   hashes and lands with the ledger-v4 / spec-3.1 (RFC 0004) work.
+- **The runtime loads the spec §3 graph Knowledge Graph.** The spec,
+  `kg-validator`, `kg-extractor` and the sector demo KGs all use the typed
+  graph (`metadata` / `nodes` / `edges`), but the runtime loaded only a
+  flat `rules` + `tag_registry` document, so none of them could be
+  deployed. A graph KG is now signed over the §7.3 canonical JSON of
+  `{metadata, nodes, edges}` (spec §3.5) and compiled to the evaluator's
+  obligations: `obligation_type` is the predicate, `scoped_to` edges give
+  the jurisdictions (with their descendants by `parent`), and the
+  strictest `risk_tier` of the owning Rules gives the tier.
+  `kg_version_hash` of a graph KG is the §7.3 digest of that signed
+  content. The flat format still loads, with its original signing bytes
+  (compatibility mode, spec §11.2).
+- **`ski-model-deploy sign`**: signs a KG with an Ed25519 key, using the
+  runtime's own signing bytes. `kg-validator` accepts a signed graph and
+  the `window_seconds` / `requires_recent_within_seconds` obligation
+  fields the runtime needs for stateful predicates.
 
 ### Changed
 - **Runtime fingerprints use the spec §7.3 canonicalizer.** `kg_version_hash`,
@@ -44,6 +60,10 @@ referenced from each release entry.
   surrogate), before anything is buffered, evaluated or ledgered.
 
 ### Fixed
+- **`ski-model-deploy` works outside the test suite.** It looked for the
+  runtime's KG loader one directory above the repository, so `load-kg`
+  refused every KG when run from the command line, and `init` wrote enum
+  values as Python-object YAML tags that `load-kg` then could not read.
 - **Deterministic replay can find its telemetry again.** The ledger's
   `telemetry_hash` hashed the whole telemetry record while the buffer's
   `measurement_hash` hashed only the `measurement` object (with different

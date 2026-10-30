@@ -64,40 +64,61 @@ _GENESIS = "0" * 64
 # the FakeLLM backend. The claim under test is air-gapped *operability*;
 # verdict accuracy is what evals/ measures.
 #
-# Each rule declares its risk_tier explicitly, as v3.2.0 requires of a
-# deployed KG: an undeclared tier now resolves to tier-1, where the
+# The KG is in the spec §3 graph shape. Each Rule declares its risk_tier
+# explicitly (spec §5.4): an undeclared tier resolves to tier-1, where the
 # UNVERIFIABLE NULL_UNMAPPED path (airgap-005: no assertion to check) is
-# forced to DISCRETIONARY instead of being accepted with a note (spec §5.4).
+# forced to DISCRETIONARY instead of being accepted with a note. No
+# obligation is scoped_to a jurisdiction, so both apply everywhere.
 
-_KG_RULES: List[Dict[str, Any]] = [
-    {
-        "id": "energy.so2.cap",
-        "name": "SO2 emissions cap",
-        "metric": "so2_ppm",
-        "predicate": "must_not_exceed",
-        "value": 100,
-        "unit": "ppm",
-        "jurisdiction": "global",
-        "effective_date": "2026-01-01T00:00:00Z",
-        "risk_tier": "tier-2",
-    },
-    {
-        "id": "energy.nox.cap",
-        "name": "NOx emissions cap",
-        "metric": "nox_ppm",
-        "predicate": "must_not_exceed",
-        "value": 50,
-        "unit": "ppm",
-        "jurisdiction": "global",
-        "effective_date": "2026-01-01T00:00:00Z",
-        "risk_tier": "tier-2",
-    },
-]
 
-_KG_TAG_REGISTRY: Dict[str, str] = {
-    "facility.so2_ppm": "energy.so2.cap",
-    "facility.nox_ppm": "energy.nox.cap",
+def _cap(metric: str, gas: str, limit: int) -> Dict[str, List[Dict[str, Any]]]:
+    rule_id, ob_id = f"energy.{gas}.cap", f"energy.{gas}.lte_{limit}ppm"
+    return {
+        "subjects": [{"id": f"facility.{metric}", "type": "Subject", "version": "airgap-1", "name": metric}],
+        "rules": [
+            {
+                "id": rule_id,
+                "type": "Rule",
+                "version": "airgap-1",
+                "name": f"{gas.upper()} emissions cap",
+                "risk_tier": "medium",
+            }
+        ],
+        "obligations": [
+            {
+                "id": ob_id,
+                "type": "Obligation",
+                "version": "airgap-1",
+                "obligation_type": "must_not_exceed",
+                "metric": metric,
+                "value": limit,
+                "unit": "ppm",
+                "effective_date_start": "2026-01-01T00:00:00Z",
+            }
+        ],
+        "citations": [
+            {
+                "id": f"cite.{gas}",
+                "type": "Citation",
+                "version": "airgap-1",
+                "source_document": "Conformance fixture (not a real legal citation)",
+                "source_clause": gas,
+            }
+        ],
+        "edges": [
+            {"type": "applies_to", "from": rule_id, "to": f"facility.{metric}"},
+            {"type": "consists_of", "from": rule_id, "to": ob_id},
+            {"type": "cited_by", "from": ob_id, "to": f"cite.{gas}"},
+        ],
+    }
+
+
+_CAPS = [_cap("so2_ppm", "so2", 100), _cap("nox_ppm", "nox", 50)]
+_KG_NODES: Dict[str, List[Dict[str, Any]]] = {
+    kind: [node for cap in _CAPS for node in cap[kind]]
+    for kind in ("subjects", "rules", "obligations", "citations")
 }
+_KG_EDGES: List[Dict[str, Any]] = [edge for cap in _CAPS for edge in cap["edges"]]
 
 # (measurement_id, measurement payload, expected verdict)
 _WORKLOAD: List[Tuple[str, Dict[str, Any], str]] = [
@@ -121,10 +142,8 @@ class SignedFixtureKG:
 def _signed_fixture_kg() -> SignedFixtureKG:
     """Build the workload KG and sign it with an ephemeral ed25519 key.
 
-    The signature scheme is the one the spec documents (and
-    ``kg_loader._canonical_bytes`` implements): ed25519 over the
-    RFC 8785-compatible canonical JSON of ``{metadata, rules,
-    tag_registry}`` — sorted keys, no whitespace, UTF-8. The throwaway
+    The signature scheme is the one the spec documents (§3.5): ed25519
+    over the §7.3 canonical JSON of ``{metadata, nodes, edges}``. The throwaway
     key is conformant only because the rig PINS it as the runtime's trust
     anchor (``SKI_KG_TRUST_ANCHORS``, spec §2.1.2/§3.5): a KG loads only if
     its signature verifies against an operator-pinned anchor, never against
@@ -132,18 +151,16 @@ def _signed_fixture_kg() -> SignedFixtureKG:
     """
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from ski_schemas.canonical import canonicalize
 
     metadata = {
+        "name": "L3 air-gap conformance KG",
+        "schema_version": "3.0",
         "version": "airgap-fixture-1",
         "compiled_at": "2026-06-01T00:00:00Z",
         "description": "L3 air-gapped boot conformance workload KG.",
     }
-    canonical = json.dumps(
-        {"metadata": metadata, "rules": _KG_RULES, "tag_registry": _KG_TAG_REGISTRY},
-        sort_keys=True,
-        separators=(",", ":"),
-        ensure_ascii=False,
-    ).encode("utf-8")
+    canonical = canonicalize({"metadata": metadata, "nodes": _KG_NODES, "edges": _KG_EDGES})
 
     key = Ed25519PrivateKey.generate()
     public_pem = key.public_key().public_bytes(
@@ -153,8 +170,8 @@ def _signed_fixture_kg() -> SignedFixtureKG:
     raw_public = key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
     kg = {
         "metadata": metadata,
-        "rules": _KG_RULES,
-        "tag_registry": _KG_TAG_REGISTRY,
+        "nodes": _KG_NODES,
+        "edges": _KG_EDGES,
         "signature": {
             "algorithm": "ed25519",
             "public_key_pem": public_pem.decode("ascii"),

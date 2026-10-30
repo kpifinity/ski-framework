@@ -130,13 +130,27 @@ what the model saw.
 
 ## Signing
 
-The KG is signed with Ed25519 by a designated Phase-1 signing key
-(`ski-model-deploy sign`). Signature verification at load time is
-**mandatory** — there is no `verify_signature=False` escape hatch in
-the deploy tool. The reference runtime's `KG_REQUIRE_SIGNATURE=false`
-knob exists only so the unsigned demo KGs can load; it is
-non-conformant by definition (the Durability conformance suite asserts
-signed-KG-required).
+The KG is signed with Ed25519 by a designated Phase-1 signing key. The
+signature covers the spec §7.3 canonical JSON of `{metadata, nodes,
+edges}` (spec §3.5):
+
+```bash
+ski-model-deploy sign --kg kg.json --key signer.pem -o kg.signed.json
+```
+
+The runtime loads the signed graph only if the signer's public key is in
+its trust-anchor bundle (`SKI_KG_TRUST_ANCHORS`). It compiles each
+`Obligation` node into what the evaluator checks: `obligation_type`
+becomes the predicate, `scoped_to` edges give the jurisdictions (with
+their descendants by `parent`), and the strictest `risk_tier` of the
+Rules that `consist_of` it gives the tier.
+
+Signature verification at load time is **mandatory** — there is no
+`verify_signature=False` escape hatch in the deploy tool. The reference
+runtime's `KG_REQUIRE_SIGNATURE=false` knob exists only so the unsigned
+demo KGs can load; it is non-conformant by definition (the Durability
+conformance suite asserts signed-KG-required). The earlier flat format
+(`rules` + `tag_registry`) still loads, as a compatibility mode.
 
 ## Lifecycle
 

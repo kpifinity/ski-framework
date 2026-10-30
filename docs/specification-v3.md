@@ -225,8 +225,9 @@ and typed.
 
 ### 3.3 Typed obligations
 
-An `Obligation` node MUST carry a `type` field drawn from the following
-closed enumeration:
+An `Obligation` node MUST carry an `obligation_type` field drawn from the
+following closed enumeration (the node's own `type` is `Obligation`, as
+for every node kind in [§3.1](#31-node-types)):
 
 - `must` — the subject MUST satisfy the predicate.
 - `must_not` — the subject MUST NOT satisfy the predicate.
@@ -290,6 +291,13 @@ signing scheme is Ed25519.
 The signature MUST cover the canonical serialization of the entire KG
 including all nodes, edges, and embedded metadata. The canonical
 serialization scheme is defined in [§7.3](#73-prompt-template-and-kg-canonical-hashing).
+
+A KG document is the JSON object `{"metadata", "nodes", "edges",
+"signature"}`. `signature` is `{"algorithm": "ed25519", "public_key_pem",
+"value_hex"}`: `value_hex` is the hex Ed25519 signature over the §7.3
+canonical serialization of `{"metadata", "nodes", "edges"}`, and
+`public_key_pem` identifies the signing key, which the implementation
+MUST match against its trust anchors rather than trust.
 
 An implementation in `SKI_SOVEREIGNTY=strict` mode MUST refuse to load
 a KG whose signature does not verify against an operator-configured
@@ -847,7 +855,9 @@ preserved as a separate code path.
 ### 11.2 v2.x Knowledge Graphs
 
 A v3 implementation MUST accept v2.x KGs in a backwards-compatibility
-mode for at least one minor version. v2.x KGs that omit typed
+mode for at least one minor version. The reference implementation's
+compatibility mode loads the earlier flat document, `{"metadata",
+"rules", "tag_registry", "signature"}`, with its original signing bytes. v2.x KGs that omit typed
 obligations MUST be treated as `DISCRETIONARY`-only and the absence of
 typed obligations MUST be reported by `kg-validator --schema=v3
 --suggest-upgrades`.

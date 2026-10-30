@@ -139,6 +139,16 @@ class Obligation(_NodeBase):
     )
     effective_date_end: Optional[datetime] = None
     summary: Optional[str] = None
+    window_seconds: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Window length for must_average_within / must_not_exceed_in_window.",
+    )
+    requires_recent_within_seconds: Optional[int] = Field(
+        default=None,
+        ge=1,
+        description="Freshness gate: no sample this recent routes the verdict to NULL_STALE.",
+    )
 
 
 class Definition(_NodeBase):
