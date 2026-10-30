@@ -11,7 +11,8 @@ the **latest tagged release** receives security fixes.
 
 | Version | Status | Security fixes |
 |---|---|---|
-| `3.1.x` | latest stable (GA) | yes |
+| `3.2.x` | latest stable | yes |
+| `3.1.x` | previous stable (GA) | yes |
 | `3.0.x` | latest stable | yes |
 | `< 3.0` | unsupported (superseded by 3.0.x) | no |
 
