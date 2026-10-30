@@ -212,6 +212,8 @@ jobs:
       # The committed OpenAPI must still match the live FastAPI app.
       - name: OpenAPI drift
         run: python spec/contracts/generate_openapi.py --check
+
+  test:
     name: Unit tests (Python ${{ matrix.python }})
     runs-on: ubuntu-latest
     strategy:
