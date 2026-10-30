@@ -127,6 +127,25 @@ report and the running model, KG and commit.
 start. It is for demos and CI (the demo stack and FakeLLM use it), never
 production.
 
+### Adding the telemetry buffer to an existing database
+
+Fresh compose and Helm deployments create the telemetry buffer on first
+init (`05-telemetry-buffer.sql`). A database created before this release
+does not have it: the runtime then logs `Telemetry buffer not initialised`
+and runs degraded (stateful predicates UNVERIFIABLE, freshness-gated
+obligations DISCRETIONARY + human attestation, no replay). Apply it once,
+as the schema owner, not with the runtime's `ski_ledger_writer` DSN:
+
+```bash
+psql "<owner DSN>" -f reference-implementation/src/ledger/telemetry_buffer.sql
+```
+
+It is idempotent. It creates the `tenants` table (seeded with the
+`default` tenant), the partitioned `telemetry_buffer` with a DEFAULT
+partition, and the writer role's grants. Restart the runtime; it logs
+`Telemetry buffer ready`. A tenant's `max_clock_skew_seconds` is NULL
+unless you set it, which defers to `SKI_MAX_CLOCK_SKEW_SECONDS`.
+
 ## Rolling back
 
 ```bash

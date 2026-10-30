@@ -38,7 +38,8 @@ CREATE TABLE IF NOT EXISTS tenants (
     tenant_id              TEXT PRIMARY KEY,
     display_name           TEXT NOT NULL,
     buffer_retention_days  INT  NOT NULL CHECK (buffer_retention_days > 0),
-    max_clock_skew_seconds INT  NOT NULL DEFAULT 60 CHECK (max_clock_skew_seconds >= 0),
+    -- NULL: use SKI_MAX_CLOCK_SKEW_SECONDS, else the runtime default (60s).
+    max_clock_skew_seconds INT  CHECK (max_clock_skew_seconds IS NULL OR max_clock_skew_seconds >= 0),
     created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -159,6 +160,7 @@ def upgrade() -> None:
     op.execute(LEDGER_SCHEMA_VERSION_DDL)
     op.execute(BOOTSTRAP_DML)
     op.execute(_bootstrap_partition_today())
+    op.execute("CREATE TABLE IF NOT EXISTS telemetry_buffer_default PARTITION OF telemetry_buffer DEFAULT;")
 
 
 def downgrade() -> None:

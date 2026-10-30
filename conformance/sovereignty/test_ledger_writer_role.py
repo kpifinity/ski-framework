@@ -73,11 +73,8 @@ def ledger() -> Iterator[dict[str, str]]:
             LEDGER_SQL / "telemetry_buffer.sql",
         ):
             cx.execute(path.read_text(encoding="utf-8"))  # no params => simple protocol
-        cx.execute("CREATE TABLE telemetry_buffer_default PARTITION OF telemetry_buffer DEFAULT")
-        cx.execute(
-            "INSERT INTO tenants (tenant_id, display_name, buffer_retention_days, max_clock_skew_seconds)"
-            " VALUES ('default', 'Default', 30, 60)"
-        )
+        # telemetry_buffer.sql itself provides the DEFAULT partition and the
+        # 'default' tenant (max_clock_skew_seconds NULL: not set per tenant).
         # What ledger_writer_login.sh does on first init in compose/Helm.
         cx.execute(f"ALTER ROLE {WRITER} WITH LOGIN PASSWORD '{password}'")
     writer_url = owner_url.set(username=WRITER, password=password)
@@ -222,7 +219,7 @@ def test_runtime_reads_tenant_config_and_appends_to_buffer(ledger: dict[str, str
 
     with psycopg.connect(ledger["writer"], autocommit=True) as cx:
         skew = cx.execute("SELECT max_clock_skew_seconds FROM tenants WHERE tenant_id = 'default'").fetchone()
-        assert skew == (60,)
+        assert skew == (None,)
         cx.execute(
             "INSERT INTO telemetry_buffer (tenant_id, subject, telemetry_id, telemetry_ts,"
             " measurement, measurement_hash) VALUES ('default', 'stack-1', 'tel-1', NOW(),"
@@ -270,3 +267,42 @@ def test_runtime_ledger_client_appends_as_writer(ledger: dict[str, str]) -> None
         )
         == before + 2
     )
+
+
+def test_runtime_initialises_and_uses_the_buffer_as_writer(
+    ledger: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With only the shipped SQL, the runtime finds the buffer, writes and reads it, and the
+    seeded tenant leaves SKI_MAX_CLOCK_SKEW_SECONDS in force."""
+    from ski_model import server
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    url = ledger["writer"].replace("postgresql://", "postgresql+psycopg://", 1)
+    monkeypatch.setenv("SKI_MAX_CLOCK_SKEW_SECONDS", "0")
+
+    async def _run() -> tuple[Any, int, Any]:
+        engine = create_async_engine(url)
+        try:
+            buffer = await server._init_telemetry_buffer(engine, "default")
+            assert buffer is not None
+            as_of = datetime.now(timezone.utc)
+            await buffer.append(
+                subject="stack-2",
+                telemetry_id="tel-buf",
+                telemetry_ts=as_of,
+                measurement={"so2_ppm": {"value": 42.5}},
+                measurement_hash="b" * 64,
+            )
+            window = await buffer.window_query(
+                subject="stack-2", as_of=as_of, window_seconds=60, metric_path="so2_ppm"
+            )
+            skew = await server._resolve_max_clock_skew_seconds(engine, "default")
+            missing = await server._init_telemetry_buffer(engine, "no-such-tenant")
+            return window, skew, missing
+        finally:
+            await engine.dispose()
+
+    window, skew, missing = asyncio.run(_run())
+    assert window.count == 1
+    assert skew == 0, "a NULL tenant column must defer to SKI_MAX_CLOCK_SKEW_SECONDS"
+    assert missing is None, "an unknown tenant cannot write the buffer (FK); the runtime must not try"
