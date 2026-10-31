@@ -30,7 +30,11 @@ spec:
       securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
         - name: ski-model
+          {{- if .Values.image.digest }}
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          {{- else }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          {{- end }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext: {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           ports:
@@ -60,6 +64,16 @@ spec:
             {{- if .Values.skiModel.modelFileSha256 }}
             - name: SKI_MODEL_FILE_SHA256
               value: {{ .Values.skiModel.modelFileSha256 | quote }}
+            {{- end }}
+            {{- with .Values.skiModel.modelWeights }}
+            {{- if and .existingClaim .file }}
+            - name: SKI_MODEL_FILE_PATH
+              value: {{ printf "/models/%s" (.file | trimPrefix "/") | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.image.digest }}
+            - name: SKI_IMAGE_DIGEST
+              value: {{ . | quote }}
             {{- end }}
             {{- if eq .Values.skiModel.backend "ollama" }}
             - name: OLLAMA_BASE_URL
@@ -137,6 +151,9 @@ spec:
             {{- if .Values.skiModel.persistence.enabled }}
             - {name: data, mountPath: /data}
             {{- end }}
+            {{- if and .Values.skiModel.modelWeights.existingClaim .Values.skiModel.modelWeights.file }}
+            - {name: model-weights, mountPath: /models, readOnly: true}
+            {{- end }}
           {{- $scheme := .Values.tls.enabled | ternary "HTTPS" "HTTP" }}
           startupProbe:
             httpGet: {path: /api/health, port: api, scheme: {{ $scheme }}}
@@ -150,6 +167,10 @@ spec:
             periodSeconds: 10
           resources: {{- toYaml .Values.skiModel.resources | nindent 12 }}
       volumes:
+        {{- if and .Values.skiModel.modelWeights.existingClaim .Values.skiModel.modelWeights.file }}
+        - name: model-weights
+          persistentVolumeClaim: {claimName: {{ .Values.skiModel.modelWeights.existingClaim | quote }}, readOnly: true}
+        {{- end }}
         - name: kg
           {{- if .Values.kg.fromSecret }}
           secret: {secretName: {{ .Values.kg.configMapName | quote }}}

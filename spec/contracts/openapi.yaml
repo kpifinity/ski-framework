@@ -400,9 +400,9 @@ paths:
         ``DISCRETIONARY``.
 
 
-        Evaluation runs under the spec §6.3 egress guard: in strict sovereignty
+        The process runs under the spec §6.3 egress guard: in strict sovereignty
 
-        mode one network call leaving the deployment stops all further
+        mode one network call outside the egress allowlist stops all further
 
         evaluation (``503``) until the runtime is restarted.'
       operationId: evaluate_api_evaluate_post
@@ -501,7 +501,11 @@ paths:
 
         §7.3 canonical JSON of ``document``; ``signature.signing_key_id`` names
 
-        the key, the same one that signs LLM transcripts.'
+        the key, the same one that signs LLM transcripts and is recorded on every
+
+        ledger entry, so an auditor pins it from the ledger and verifies offline
+
+        (``ski_sdk.verify_sovereignty_attestation``).'
       operationId: sovereignty_attestation_api_sovereignty_get
       responses:
         '200':

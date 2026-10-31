@@ -129,7 +129,9 @@ def test_obligation_nodes_compile_to_evaluator_obligations() -> None:
 
 def test_obligation_without_a_tiered_rule_has_no_risk_tier() -> None:
     graph = _graph()
-    graph["edges"] = [e for e in graph["edges"] if e["type"] != "consists_of"]
+    rule_ids = {rule["id"] for rule in graph["nodes"]["rules"]}
+    graph["edges"] = [e for e in graph["edges"] if e["from"] not in rule_ids and e["to"] not in rule_ids]
+    graph["nodes"]["rules"] = []
     obligations, _ = compile_graph(graph["nodes"], graph["edges"])
     assert all("risk_tier" not in ob and "rule_ids" not in ob for ob in obligations)
 
@@ -151,6 +153,10 @@ def test_scoped_to_from_the_rule_is_honoured() -> None:
             "unknown node",
         ),
         (lambda g: g["nodes"]["obligations"][0].pop("metric"), "metric"),
+        (
+            lambda g: g.update(edges=[e for e in g["edges"] if e["type"] != "consists_of"]),
+            "consist of no obligation",
+        ),
         (lambda g: g["nodes"].__setitem__("widgets", []), "unknown node list"),
         (lambda g: g.update(edges=[]) or g["nodes"].__setitem__("obligations", []), "at least one"),
         (lambda g: g.__setitem__("edges", {}), "'edges' must be an array"),

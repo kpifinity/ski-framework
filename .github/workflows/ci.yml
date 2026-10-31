@@ -61,7 +61,7 @@ jobs:
           python-version: "3.14"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: pip install -e tools/ski-schemas -e tools/audit-ledger -e tools/ski-model-deploy
+      - run: pip install -e tools/ski-schemas -e tools/audit-ledger -e tools/ski-model-deploy -e tools/ski-sdk
       - name: Build the runtime image
         run: docker build -q -t ski-model:ci --build-arg SKI_BUILD_COMMIT=${{ github.sha }} -f reference-implementation/Dockerfile.ski-model .
       - name: No cloud-LLM SDK installed in the runtime image (sovereignty)
@@ -73,6 +73,16 @@ jobs:
       # loopback-only network namespace (--network=none), replays the
       # fixed workload, and verifies ledger persistence from inside.
       - run: pytest conformance/sovereignty/test_air_gapped.py -q --tb=short
+        env:
+          SKI_L3_AIRGAP: "1"
+          SKI_L3_IMAGE: ski-model:ci
+      # sovereignty-strict dimension: the same pod in SKI_SOVEREIGNTY=strict
+      # (sovereign backend in the namespace, verified weights, anchored KG,
+      # least-privilege ledger role, TLS). Proves the signed attestation,
+      # and that the egress guard blocks a scripted outbound call, counts
+      # it and fails closed.
+      - name: Air-gap rig, sovereignty-strict dimension
+        run: pytest conformance/sovereignty/test_air_gapped_strict.py -q --tb=short
         env:
           SKI_L3_AIRGAP: "1"
           SKI_L3_IMAGE: ski-model:ci
@@ -147,8 +157,17 @@ jobs:
             --set networkPolicy.airgap=true \
             --set skiModel.backend=vllm \
             --set skiModel.externalVllmUrl=http://vllm.gpu-pool:8000 \
-            --set ollama.bundled=false > /tmp/render-airgap.yaml
+            --set ollama.bundled=false \
+            --set skiModel.modelFileSha256=0000000000000000000000000000000000000000000000000000000000000000 \
+            --set skiModel.modelWeights.existingClaim=model-weights \
+            --set skiModel.modelWeights.file=qwen/model.safetensors \
+            --set image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111 > /tmp/render-airgap.yaml
           ! grep -q "port: 53" /tmp/render-airgap.yaml
+          # Strict mode on vLLM: the weights are mounted so the pin is verified.
+          grep -A1 "name: SKI_MODEL_FILE_PATH$" /tmp/render-airgap.yaml | grep -q '"/models/qwen/model.safetensors"'
+          grep -q "claimName: \"model-weights\"" /tmp/render-airgap.yaml
+          grep -q "ghcr.io/kpifinity/ski-model@sha256:1111" /tmp/render-airgap.yaml
+          grep -A1 "name: SKI_IMAGE_DIGEST$" /tmp/render-airgap.yaml | grep -q "sha256:1111"
       - name: Constraints fail the render (not the pod)
         run: |
           ! helm template ski deploy/helm/ski \

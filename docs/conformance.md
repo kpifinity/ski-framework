@@ -88,6 +88,8 @@ air-gapped boot runs the full runtime + ledger in a loopback-only
 |---|---|---|---|
 | No outbound HTTP during CLEAR-path evaluation (local LLM) | Pillar S | `sovereignty/test_no_outbound_calls.py` (+ runtime `v3/tests/test_no_egress.py`) | ✅ runnable |
 | Runtime boots, serves, and persists with `--network=none` | Pillar S | `sovereignty/test_air_gapped.py` | ✅ runnable (Docker + `SKI_L3_AIRGAP=1`) |
+| Strict mode boots air-gapped (TLS, verified weights, anchored KG, `ski_ledger_writer`); `/api/sovereignty` verifies offline; the egress guard blocks and counts a scripted outbound call, then evaluation fails closed | §6 | `sovereignty/test_air_gapped_strict.py` (+ runtime `v3/tests/test_sovereignty.py`) | ✅ runnable (Docker + `SKI_L3_AIRGAP=1`) |
+| Strict startup refuses an owner or superuser ledger role | §6.2 | `sovereignty/test_ledger_writer_role.py` | ✅ runnable (throwaway Postgres via `SKI_L3_LEDGER_DSN`) |
 | Modified ledger row fails `verify_integrity` even after chain forward | §6 | `sovereignty/test_tamper_resistance.py` | ✅ runnable (throwaway Postgres via `SKI_L3_LEDGER_DSN`) |
 | Runtime refuses to start with `SKI_MODEL_WORKERS != 1` | Concurrency | `sovereignty/test_single_worker.py` | ✅ runnable |
 | Recorded transcript carries the snapshot's `scope` block | §3.6 + §6 | `sovereignty/test_jurisdiction_scope_captured.py` | ✅ runnable |

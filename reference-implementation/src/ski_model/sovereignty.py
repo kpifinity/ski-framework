@@ -1,10 +1,13 @@
 """Sovereignty mode (spec §6): startup requirements, the egress guard, attestation.
 
 ``SKI_SOVEREIGNTY`` is ``strict`` (the default) or ``advisory`` (§6.1). The
-runtime checks the five §6.2 requirements on startup; in ``strict`` it
-refuses to start if any fails, in ``advisory`` it logs each failure at WARN.
-Either way the result is logged as one structured report and served, signed,
-by ``/api/sovereignty`` (§6.4).
+runtime checks the five §6.2 requirements on startup, plus the posture a
+sovereign deployment depends on: the loaded KG is anchored, the weight hash
+is verified against the served weights (not only asserted), the ledger role
+is least-privilege, TLS is on and there is a single worker. In ``strict`` it
+refuses to start if any fails, naming each failed check; in ``advisory`` it
+logs each failure at WARN. Either way the result is logged as one structured
+report and served, signed, by ``/api/sovereignty`` (§6.4).
 
 "Local" means inside the deployment: a loopback, private (RFC 1918 / ULA),
 link-local or shared-address (100.64/10) IP, ``localhost``, a single-label
@@ -14,14 +17,16 @@ their own internal domains with ``SKI_SOVEREIGN_LOCAL_DOMAINS``
 (comma-separated suffixes). Names are judged as written; nothing is
 resolved, so the checks themselves make no network call.
 
-The egress guard (§6.3) is a process audit hook. While a verdict is being
-evaluated it sees every Python-level ``socket.connect`` and
-``socket.getaddrinfo``; one aimed at a non-local destination increments
-``ski_egress_attempts_total`` in either mode. In ``strict`` mode the call is
-refused, and the runtime refuses every further evaluation (fail closed on a
-non-zero count) until it is restarted. Connections made by C libraries
-without Python sockets, such as libpq's, are outside the hook; the ledger
-check covers that destination at startup.
+The egress guard (§6.3) is a process audit hook, armed once startup is done.
+From then on it sees every Python-level ``socket.connect``, ``sendto``,
+``sendmsg`` and name lookup in the process, and allows only the egress
+allowlist: loopback, the configured ledger host and the configured LLM
+backend host (and the addresses those names resolve to). Any other
+destination increments ``ski_egress_attempts_total`` in either mode. In
+``strict`` mode the call is refused, and the runtime refuses every further
+evaluation (fail closed on a non-zero count) until it is restarted.
+Connections made by C libraries without Python sockets, such as libpq's,
+are outside the hook; the ledger checks cover that destination at startup.
 """
 
 from __future__ import annotations
@@ -29,15 +34,19 @@ from __future__ import annotations
 import ipaddress
 import json
 import logging
+import socket
 import sys
-from collections.abc import Iterator, Mapping
+import threading
+from collections.abc import Iterable, Iterator, Mapping
 from contextlib import contextmanager
-from contextvars import ContextVar
 from dataclasses import asdict, dataclass
-from typing import Any, Final, Optional
+from typing import TYPE_CHECKING, Any, Final, Optional
 from urllib.parse import urlsplit
 
 from . import metrics
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncEngine
 
 logger = logging.getLogger(__name__)
 
@@ -170,8 +179,113 @@ def model_hash_check(model_hash_source: Optional[str]) -> Check:
     )
 
 
+def model_hash_verified_check(model_hash_verified: bool, model_hash_source: Optional[str]) -> Check:
+    """The pinned weight hash was checked against the served weights, not only asserted."""
+    return Check(
+        id="model_weight_verified",
+        requirement="the model weight hash is verified against the served weights",
+        ok=model_hash_verified,
+        detail=f"model_hash_verified={model_hash_verified} (source={model_hash_source!r})",
+        remedy="Mount the weights file and set SKI_MODEL_FILE_PATH next to SKI_MODEL_FILE_SHA256 (vLLM), "
+        "or serve a model whose digest the backend reports (Ollama). A pin alone is operator-asserted.",
+    )
+
+
+def kg_anchored_check(kg_loaded: bool, kg_trust: Optional[str]) -> Check:
+    """§3.5: the KG serving verdicts verified against an operator trust anchor."""
+    return Check(
+        id="kg_anchored",
+        requirement="§3.5 the loaded KG verifies against an operator trust anchor",
+        ok=kg_loaded and kg_trust == "anchored",
+        detail=f"kg_trust={kg_trust!r}" if kg_loaded else "no KG loaded at startup",
+        remedy="Mount a KG signed by a key in SKI_KG_TRUST_ANCHORS at KG_PATH (ski-model-deploy sign), "
+        "with KG_REQUIRE_SIGNATURE=true.",
+    )
+
+
+def runtime_checks(env: Mapping[str, str]) -> list[Check]:
+    """TLS and the single-worker invariant, decided from configuration."""
+    tls = env.get("TLS_ENABLED", "true").strip().lower() == "true"
+    workers = env.get("SKI_MODEL_WORKERS", "1").strip()
+    return [
+        Check(
+            id="tls_enabled",
+            requirement="the API is served over TLS",
+            ok=tls,
+            detail=f"TLS_ENABLED={env.get('TLS_ENABLED', 'true')!r}",
+            remedy="Set TLS_ENABLED=true and mount TLS_CERT / TLS_KEY.",
+        ),
+        Check(
+            id="single_worker",
+            requirement="one worker process, so the ledger hash chain has one writer",
+            ok=workers == "1",
+            detail=f"SKI_MODEL_WORKERS={workers!r}",
+            remedy="Set SKI_MODEL_WORKERS=1 and scale with more containers (docs/CONCURRENCY.md).",
+        ),
+    ]
+
+
+# The runtime's ledger role must not own, or act as the owner of,
+# ledger_entries, and must hold no privilege that rewrites or removes rows.
+_LEDGER_ROLE_SQL = """
+SELECT current_user,
+       r.rolsuper OR r.rolbypassrls OR r.rolcreaterole,
+       pg_has_role(c.relowner, 'USAGE'),
+       has_table_privilege(c.oid, 'UPDATE, DELETE, TRUNCATE, TRIGGER, REFERENCES')
+  FROM pg_roles r, pg_class c
+ WHERE r.rolname = current_user AND c.oid = to_regclass('ledger_entries')
+"""
+
+LEDGER_ROLE_REQUIREMENT: Final = "the ledger role is least-privilege (INSERT + SELECT, not the owner)"
+
+
+async def ledger_role_check(engine: Optional[AsyncEngine]) -> tuple[Check, Optional[str]]:
+    """The runtime's own ledger role and whether it is least-privilege (``ski_ledger_writer`` passes)."""
+
+    def result(ok: bool, detail: str) -> Check:
+        return Check(
+            id="ledger_least_privilege",
+            requirement=LEDGER_ROLE_REQUIREMENT,
+            ok=ok,
+            detail=detail,
+            remedy="Connect as ski_ledger_writer (append_only.sql creates it), never as the schema "
+            "owner or a superuser: LEDGER_DSN=postgresql://ski_ledger_writer:...@host/db.",
+        )
+
+    if engine is None:
+        return result(False, "no ledger connection"), None
+    from sqlalchemy import text
+
+    try:
+        async with engine.connect() as conn:
+            row = (await conn.execute(text(_LEDGER_ROLE_SQL))).first()
+    except Exception as exc:
+        return result(False, f"could not inspect the ledger role ({exc.__class__.__name__})"), None
+    if row is None:
+        return result(False, "no ledger_entries table"), None
+    role, elevated, owner, rewrite = row
+    problems = [
+        name
+        for name, bad in (
+            ("superuser, bypassrls or createrole", elevated),
+            ("owns ledger_entries", owner),
+            ("may UPDATE/DELETE/TRUNCATE/TRIGGER/REFERENCES ledger_entries", rewrite),
+        )
+        if bad
+    ]
+    return result(not problems, f"role={role!r}" + (f": {'; '.join(problems)}" if problems else "")), str(
+        role
+    )
+
+
 def not_evaluated(check_id: str, requirement: str, reason: str) -> Check:
     return Check(id=check_id, requirement=requirement, ok=None, detail=f"not evaluated: {reason}")
+
+
+def refuse_if_failed(mode: str, checks: list[Check]) -> None:
+    """In strict mode, stop at the first stage with a failed check (before contacting anything else)."""
+    if mode == STRICT and any(c.ok is False for c in checks):
+        enforce(mode, checks)
 
 
 def enforce(mode: str, checks: list[Check]) -> None:
@@ -198,55 +312,116 @@ def enforce(mode: str, checks: list[Check]) -> None:
 
 # ---- Egress guard (§6.3) -----------------------------------------------------------
 
-_EVALUATING: ContextVar[bool] = ContextVar("ski_evaluating", default=False)
+_LOOKUP_EVENTS: Final = frozenset(
+    {"socket.getaddrinfo", "socket.gethostbyname", "socket.gethostbyname_ex", "socket.gethostbyaddr"}
+)
+_SEND_EVENTS: Final = frozenset({"socket.connect", "socket.sendto", "socket.sendmsg"})
+_bypass = threading.local()
 
 
 class EgressRefused(PermissionError):
-    """Strict mode refused a network call to a destination outside the deployment."""
+    """Strict mode refused a network call to a destination outside the egress allowlist."""
+
+
+def egress_allowlist(backend: str, env: Mapping[str, str]) -> tuple[str, ...]:
+    """The hosts the process may reach: the configured ledger and LLM backend (loopback is implicit)."""
+    url = backend_url(backend, env)
+    hosts = {_url_host(env.get("LEDGER_DSN", "")), _url_host(url) if url else ""}
+    return tuple(sorted(h.lower() for h in hosts if h))
+
+
+def _normalise(host: str) -> str:
+    return host.strip().strip("[]").split("%", 1)[0].rstrip(".").lower()
 
 
 class EgressGuard:
-    """Counts, and in strict mode refuses, non-local network calls made while evaluating."""
+    """Counts, and in strict mode refuses, every network call outside the egress allowlist.
 
-    def __init__(self, mode: str, suffixes: tuple[str, ...] = _LOCAL_SUFFIXES) -> None:
+    Inactive until :meth:`arm`, so startup (KG load, backend and ledger
+    initialisation) runs first; then it watches the whole process.
+    """
+
+    def __init__(self, mode: str, allowlist: Iterable[str] = ()) -> None:
         self.mode = mode
-        self.suffixes = suffixes
+        self.allowlist = tuple(sorted({_normalise(h) for h in allowlist if _normalise(h)}))
         self.attempts = 0
+        self.armed = False
+        self._addresses: frozenset[str] = frozenset()
+        self._lock = threading.Lock()
 
     @property
     def tripped(self) -> bool:
         """Strict mode and at least one attempt: evaluation must not continue (§6.3)."""
         return self.mode == STRICT and self.attempts > 0
 
-    @contextmanager
-    def evaluation(self) -> Iterator[None]:
-        """Mark the current task as evaluating a verdict; calls made inside are guarded."""
-        token = _EVALUATING.set(True)
-        try:
-            yield
-        finally:
-            _EVALUATING.reset(token)
+    def arm(self) -> EgressGuard:
+        """Resolve the allowlisted names and start guarding the process."""
+        self._resolve()
+        self.armed = True
+        return self
 
-    def _destination(self, event: str, args: tuple[Any, ...]) -> Optional[str]:
-        if event == "socket.connect" and len(args) >= 2 and isinstance(args[1], tuple) and args[1]:
-            return str(args[1][0])
-        if event == "socket.getaddrinfo" and args and isinstance(args[0], (str, bytes)):
+    def state(self) -> dict[str, Any]:
+        """The guard as ``/api/sovereignty`` attests it."""
+        return {
+            "mode": self.mode,
+            "enforcing": self.mode == STRICT,
+            "armed": self.armed,
+            "allowlist": ["loopback", *self.allowlist],
+            "attempts_total": self.attempts,
+            "tripped": self.tripped,
+        }
+
+    def _resolve(self) -> None:
+        """The addresses the allowlisted names resolve to now; the lookups themselves are not guarded."""
+        addresses: set[str] = set()
+        with unguarded():
+            for host in self.allowlist:
+                try:
+                    addresses.update(_normalise(str(info[4][0])) for info in socket.getaddrinfo(host, None))
+                except (OSError, UnicodeError):
+                    continue
+        self._addresses = frozenset(addresses)
+
+    def allows(self, host: str) -> bool:
+        """True for loopback, an allowlisted name, or an address an allowlisted name resolves to."""
+        host = _normalise(host)
+        if not host or host == "localhost" or host in self.allowlist or host in self._addresses:
+            return True
+        try:
+            ip = ipaddress.ip_address(host)
+        except ValueError:
+            return False
+        if ip.is_loopback or ip.is_unspecified:
+            return True
+        self._resolve()  # an allowlisted name may have moved to a new address
+        return host in self._addresses
+
+    @staticmethod
+    def _destination(event: str, args: tuple[Any, ...]) -> Optional[str]:
+        if event in _SEND_EVENTS:
+            address = args[1] if len(args) >= 2 else None
+            # AF_UNIX paths (str/bytes) stay on this host.
+            return str(address[0]) if isinstance(address, tuple) and address else None
+        if event in _LOOKUP_EVENTS and args and isinstance(args[0], (str, bytes)):
             host = args[0]
             return host.decode("ascii", "replace") if isinstance(host, bytes) else host
         return None
 
     def audit(self, event: str, args: tuple[Any, ...]) -> None:
-        if not _EVALUATING.get():
+        if not self.armed or getattr(_bypass, "active", False):
             return
         destination = self._destination(event, args)
-        if destination is None or is_local_host(destination, self.suffixes):
+        if destination is None or self.allows(destination):
             return
-        self.attempts += 1
+        with self._lock:
+            self.attempts += 1
         metrics.EGRESS_ATTEMPTS.labels(mode=self.mode).inc()
-        logger.error("Egress attempt during evaluation: %s to %r (mode=%s).", event, destination, self.mode)
+        logger.error(
+            "Egress attempt outside the allowlist: %s to %r (mode=%s).", event, destination, self.mode
+        )
         if self.mode == STRICT:
             raise EgressRefused(
-                f"{MODE_ENV}=strict: {event} to {destination!r} is outside the deployment (§6.3)."
+                f"{MODE_ENV}=strict: {event} to {destination!r} is outside the egress allowlist (§6.3)."
             )
 
 
@@ -267,3 +442,14 @@ def install_egress_guard(guard: EgressGuard) -> EgressGuard:
         sys.addaudithook(_audit_hook)
         _hook_installed = True
     return guard
+
+
+@contextmanager
+def unguarded() -> Iterator[None]:
+    """Run the enclosed calls outside the guard. For the guard's own lookups and tests only."""
+    previous = getattr(_bypass, "active", False)
+    _bypass.active = True
+    try:
+        yield
+    finally:
+        _bypass.active = previous

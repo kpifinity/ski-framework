@@ -25,6 +25,9 @@ hashed. Each ``Obligation`` node becomes one obligation:
   no Rule declares one (the risk-tier governor then applies tier-1);
 * ``rule_ids`` lists those Rules.
 
+Every Rule must ``consists_of`` at least one Obligation (spec §3.3); a Rule
+without one has nothing the verifier can check, so the graph is refused.
+
 Malformed graphs fail closed with :class:`ValueError`; full structural
 validation is ``kg-validator``'s job.
 """
@@ -97,6 +100,15 @@ def compile_graph(nodes: Any, edges: Any) -> tuple[list[dict[str, Any]], list[di
             owners.setdefault(target, []).append(source)
         elif edge_type == "scoped_to" and target in jurisdiction_ids:
             scoped.setdefault(source, set()).add(target)
+
+    obligation_ids = ids_of("obligations")
+    ruled = {rule_id for target, rules in owners.items() if target in obligation_ids for rule_id in rules}
+    empty_rules = sorted(rule_ids - ruled)
+    if empty_rules:
+        raise ValueError(
+            f"KG rule(s) {empty_rules} consist of no obligation; spec §3.3 requires at least one "
+            "typed obligation per rule (a consists_of edge to an Obligation node)."
+        )
 
     children: dict[str, set[str]] = {}
     for jurisdiction_id in jurisdiction_ids:
