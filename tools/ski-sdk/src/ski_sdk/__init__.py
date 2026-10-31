@@ -22,12 +22,13 @@ from .models import (
     V3VerdictEnvelope,
     VerifierStatus,
 )
-from .verify import VerificationReport, verify_transcript
+from .verify import AttestationReport, VerificationReport, verify_sovereignty_attestation, verify_transcript
 
 __version__ = "3.2.0"
 
 __all__ = [
     "AsyncSKIClient",
+    "AttestationReport",
     "HealthStatus",
     "LLMTranscript",
     "MeasurementRecord",
@@ -43,5 +44,6 @@ __all__ = [
     "VerificationReport",
     "VerifierStatus",
     "__version__",
+    "verify_sovereignty_attestation",
     "verify_transcript",
 ]

@@ -9,6 +9,41 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Strict sovereignty mode, completed (spec §6, §9 Level 1)
+
+**Breaking for strict deployments (each check names its fix; `advisory` is unchanged):**
+
+- **More strict startup checks.** Besides the five §6.2 checks, strict mode now
+  refuses to start unless the loaded KG is anchored (`kg_anchored`), the weight
+  hash is verified against the served weights rather than only pinned
+  (`model_weight_verified`; vLLM needs `SKI_MODEL_FILE_PATH`), the ledger role
+  cannot rewrite rows or the schema (`ledger_least_privilege`, asked of Postgres),
+  TLS is on (`tls_enabled`) and there is one worker (`single_worker`). Each stage
+  refuses before the next dependency is contacted.
+- **Process-wide egress guard with an explicit allowlist.** Once startup is done
+  the guard watches every Python-level connect, datagram and DNS lookup in the
+  process, not only those made during an evaluation, and allows only loopback,
+  the ledger host and the model backend host. A private address is no longer
+  allowed just for being private. Anything else counts in
+  `ski_egress_attempts_total`; strict mode refuses it and fails closed.
+- **One typed obligation per rule (spec §3.3).** A graph KG with a Rule that
+  `consists_of` no Obligation is refused at load.
+
+**Added:**
+
+- `/api/sovereignty` also attests `strict`, `model_id`, `model_hash_verified`,
+  `kg_version`, `egress_guard` (mode, allowlist, attempts, tripped), `ledger_role`
+  and `image_digest` (`SKI_IMAGE_DIGEST`).
+- `ski_sdk.verify_sovereignty_attestation`: verifies an attestation offline
+  against a pinned key id (the one on every ledger entry) or PEM.
+- Helm: `skiModel.modelWeights` mounts the vLLM weights read-only so strict mode
+  can verify them; `image.digest` pins the image and is attested.
+- Conformance: the air-gap rig's `sovereignty-strict` dimension
+  (`test_air_gapped_strict.py`, run in CI) boots strict mode in the loopback-only
+  namespace with a vLLM-API stub, verified weights, TLS and `ski_ledger_writer`,
+  verifies the signed attestation offline, and shows the egress guard blocking
+  and counting a scripted outbound call before evaluation fails closed.
+
 ## [3.2.0] -- 2026-10-30
 
 The gold-standard release, in two parts. **Phase 0 (trust and safety)** makes the

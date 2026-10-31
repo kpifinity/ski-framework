@@ -109,6 +109,11 @@ startup log names each unmet one, with the fix:
 | `kg_trust_anchor` | KG signers are operator-pinned keys | set `SKI_KG_TRUST_ANCHORS` to your own PEM bundle |
 | `ledger_local` | the ledger is inside the deployment | `LEDGER_DSN` host is a service name, private IP or internal domain |
 | `egress_allowlist_local` | the model and ledger are inside the deployment | as above, for `OLLAMA_BASE_URL` / `VLLM_BASE_URL` |
+| `model_weight_verified` | the pinned hash was checked against the served weights | Ollama: automatic. vLLM: mount the weights and set `SKI_MODEL_FILE_PATH` (Helm: `skiModel.modelWeights`) |
+| `kg_anchored` | the KG loaded at startup verifies against a trust anchor | mount a KG signed with `ski-model-deploy sign` at `KG_PATH` |
+| `ledger_least_privilege` | the runtime's ledger role cannot rewrite rows or the schema | `LEDGER_DSN` uses `ski_ledger_writer`, not the owner or a superuser |
+| `tls_enabled` | the API is served over TLS | `TLS_ENABLED=true` with `TLS_CERT` / `TLS_KEY` |
+| `single_worker` | one worker writes the hash chain | `SKI_MODEL_WORKERS=1` |
 
 Hosts count as inside the deployment when they are loopback, private or
 link-local IPs, single-label service names, or end in `.local`,
@@ -118,10 +123,27 @@ domains with `SKI_SOVEREIGN_LOCAL_DOMAINS` (comma-separated, e.g.
 namespace listed, or use the `.svc.cluster.local` form). In Helm, set
 `skiModel.sovereignty.mode` and `skiModel.sovereignty.localDomains`.
 
-In strict mode the runtime also stops evaluating, until restarted, after any
-network call leaving the deployment during an evaluation; watch
-`ski_egress_attempts_total`. `GET /api/sovereignty` returns the signed check
-report and the running model, KG and commit.
+Once started, an egress guard watches every Python-level connect, datagram
+and DNS lookup in the process and allows only loopback, the `LEDGER_DSN`
+host and the model backend host. Anything else is counted in
+`ski_egress_attempts_total`; in strict mode it is also refused, and the
+runtime stops evaluating (`503`) until restarted. Connections made in C
+(libpq's) are outside the guard; the ledger checks cover that destination at
+startup.
+
+`GET /api/sovereignty` returns the signed posture: mode, every check, the
+model id, weight hash and whether it was verified, the KG version, signer and
+trust, the egress guard's allowlist, attempt count and state, the ledger
+role, and the commit, image digest (`SKI_IMAGE_DIGEST`; Helm `image.digest`)
+and build provenance. It is signed with the transcript key, whose id is on
+every ledger entry, so an auditor verifies it offline:
+
+```python
+from ski_sdk import verify_sovereignty_attestation
+
+report = verify_sovereignty_attestation(attestation, trusted_key_id=signing_key_id_from_the_ledger)
+assert report.ok and report.strict
+```
 
 `SKI_SOVEREIGNTY=advisory` logs unmet requirements instead of refusing to
 start. It is for demos and CI (the demo stack and FakeLLM use it), never

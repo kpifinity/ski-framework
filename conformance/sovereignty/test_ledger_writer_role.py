@@ -306,3 +306,29 @@ def test_runtime_initialises_and_uses_the_buffer_as_writer(
     assert window.count == 1
     assert skew == 0, "a NULL tenant column must defer to SKI_MAX_CLOCK_SKEW_SECONDS"
     assert missing is None, "an unknown tenant cannot write the buffer (FK); the runtime must not try"
+
+
+# ---------------------------------------------------------------------------
+# Strict sovereignty asks the ledger the same question at startup
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("role, least_privilege", [("writer", True), ("owner", False)])
+def test_strict_startup_ledger_role_check(ledger: dict[str, str], role: str, least_privilege: bool) -> None:
+    """``ski_ledger_writer`` passes the strict-mode ledger check; the owner/superuser is refused."""
+    from ski_model.ledger_client import LedgerClient
+    from ski_model.sovereignty import ledger_role_check
+
+    async def _check() -> Any:
+        client = LedgerClient(ledger[role])
+        await client.initialize()
+        try:
+            return await ledger_role_check(client._engine)
+        finally:
+            await client.close()
+
+    check, name = asyncio.run(_check())
+    assert check.ok is least_privilege, check
+    assert name == (WRITER if role == "writer" else _owner_scalar(ledger, "SELECT current_user"))
+    if not least_privilege:
+        assert "owns ledger_entries" in check.detail or "superuser" in check.detail

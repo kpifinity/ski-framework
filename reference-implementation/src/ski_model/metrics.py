@@ -95,8 +95,8 @@ UNVERIFIABLE_BY_TIER = Counter(
 
 EGRESS_ATTEMPTS = Counter(
     "ski_egress_attempts",
-    "Network calls to a destination outside the deployment made while a "
-    "verdict was being evaluated (spec §6.3). Counted in every sovereignty "
+    "Network calls or name lookups outside the egress allowlist (loopback, "
+    "the ledger, the model backend) made after startup (spec §6.3). Counted in every sovereignty "
     "mode; in strict mode the call is refused and the runtime stops "
     "evaluating until restarted.",
     ["mode"],

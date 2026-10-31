@@ -119,6 +119,7 @@ class _State:
     sovereignty_mode: str = sovereignty.STRICT
     sovereignty_checks: tuple[sovereignty.Check, ...] = ()
     egress_guard: Optional[sovereignty.EgressGuard] = None
+    ledger_role: Optional[str] = None
 
 
 state = _State()
@@ -409,26 +410,20 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     # Spec §6.2: decide the configuration-only requirements before the model
     # backend or the ledger is contacted, so strict mode never calls out to
-    # a destination it is about to reject.
+    # a destination it is about to reject. Each later stage refuses before
+    # the next dependency is contacted.
     state.sovereignty_mode = sovereignty.resolve_mode(os.environ)
-    config_checks = sovereignty.config_checks(
-        backend=resolve_backend_name(),
-        env=os.environ,
-        trust_anchor_count=len(state.kg_trust_policy.anchors),
-        unanchored=state.kg_trust_policy.allow_unanchored,
-    )
-    if state.sovereignty_mode == sovereignty.STRICT and any(c.ok is False for c in config_checks):
-        sovereignty.enforce(
-            state.sovereignty_mode,
-            [
-                *config_checks,
-                sovereignty.not_evaluated(
-                    "model_weight_registered",
-                    "§6.2(2) the model weight hash is in the operator's weight registry",
-                    "the backend is not contacted while another requirement is unmet",
-                ),
-            ],
-        )
+    backend_name = resolve_backend_name()
+    checks = [
+        *sovereignty.config_checks(
+            backend=backend_name,
+            env=os.environ,
+            trust_anchor_count=len(state.kg_trust_policy.anchors),
+            unanchored=state.kg_trust_policy.allow_unanchored,
+        ),
+        *sovereignty.runtime_checks(os.environ),
+    ]
+    sovereignty.refuse_if_failed(state.sovereignty_mode, checks)
     if _kg_hot_load_enabled():
         _kg_admin_api_key()  # refuse to start with an unusable admin key
         logger.warning(
@@ -460,6 +455,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     if state.knowledge_graph is not None:
         state.tag_registry = TagRegistry.from_knowledge_graph(state.knowledge_graph)
+    checks.append(
+        sovereignty.kg_anchored_check(
+            state.knowledge_graph is not None,
+            state.knowledge_graph.kg_trust if state.knowledge_graph is not None else None,
+        )
+    )
+    sovereignty.refuse_if_failed(state.sovereignty_mode, checks)
 
     state.symbolic_evaluator = SymbolicEvaluator()
     state.llm_backend = _build_v3_llm_backend()
@@ -472,14 +474,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         backend_prov["model_hash_verified"],
         backend_prov["model_hash_source"],
     )
-    state.sovereignty_checks = (
-        *config_checks,
+    checks += [
         sovereignty.model_hash_check(backend_prov["model_hash_source"]),
-    )
-    sovereignty.enforce(state.sovereignty_mode, list(state.sovereignty_checks))
-    state.egress_guard = sovereignty.install_egress_guard(
-        sovereignty.EgressGuard(state.sovereignty_mode, sovereignty.local_suffixes(os.environ))
-    )
+        sovereignty.model_hash_verified_check(
+            backend_prov["model_hash_verified"], backend_prov["model_hash_source"]
+        ),
+    ]
+    sovereignty.refuse_if_failed(state.sovereignty_mode, checks)
 
     # The ledger comes up before the transcript signer: a missing signing key
     # is only a first boot if the ledger holds no signed transcripts yet.
@@ -493,6 +494,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # evaluation time. Set SKI_AUTOMIGRATE=false to opt out.
     if state.ledger._engine is not None:
         await ensure_v3_ledger_schema(state.ledger._engine)
+    ledger_check, state.ledger_role = await sovereignty.ledger_role_check(state.ledger._engine)
+    checks.append(ledger_check)
+    state.sovereignty_checks = tuple(checks)
+    sovereignty.enforce(state.sovereignty_mode, checks)
 
     key_path = transcript_key_path()
     ledger_has_signed = False
@@ -534,6 +539,15 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         window_size=int(os.getenv("SKI_AGREEMENT_WINDOW", "1000")),
         threshold=float(os.getenv("SKI_AGREEMENT_THRESHOLD", "0.95")),
     )
+
+    # Startup is done: from here on the whole process may reach only
+    # loopback, the ledger and the LLM backend (spec §6.3).
+    state.egress_guard = sovereignty.install_egress_guard(
+        sovereignty.EgressGuard(
+            state.sovereignty_mode, sovereignty.egress_allowlist(backend_name, os.environ)
+        ).arm()
+    )
+    logger.info("Egress guard armed: %s", state.egress_guard.state())
 
     metrics.RUNTIME_INFO.labels(version=_VERSION, backend=state.llm_backend.name).set(1)
     metrics.AGREEMENT_RATE.set(1.0)  # empty window == no observed disagreement
@@ -640,25 +654,22 @@ async def evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     disagreeing result may still pass through or must downgrade to
     ``DISCRETIONARY``.
 
-    Evaluation runs under the spec §6.3 egress guard: in strict sovereignty
-    mode one network call leaving the deployment stops all further
+    The process runs under the spec §6.3 egress guard: in strict sovereignty
+    mode one network call outside the egress allowlist stops all further
     evaluation (``503``) until the runtime is restarted.
     """
     guard = state.egress_guard
-    if guard is None:
-        return await _evaluate(measurement)
-    if guard.tripped:
+    if guard is not None and guard.tripped:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"Evaluation refused: {guard.attempts} egress attempt(s) outside the deployment "
+            f"Evaluation refused: {guard.attempts} egress attempt(s) outside the allowlist "
             "(SKI_SOVEREIGNTY=strict, spec §6.3). Investigate ski_egress_attempts_total and restart.",
         )
-    with guard.evaluation():
-        return await _evaluate(measurement)
+    return await _evaluate(measurement)
 
 
 async def _evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
-    """The evaluation itself; :func:`evaluate` runs it inside the egress guard."""
+    """The evaluation itself; :func:`evaluate` refuses it once the egress guard has tripped."""
     if state.knowledge_graph is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "No KG loaded.")
     if state.evaluator is None or state.ledger is None:
@@ -815,22 +826,36 @@ async def sovereignty_attestation() -> Dict[str, Any]:
 
     ``signature.value_hex`` is the runtime's Ed25519 transcript key over the
     §7.3 canonical JSON of ``document``; ``signature.signing_key_id`` names
-    the key, the same one that signs LLM transcripts.
+    the key, the same one that signs LLM transcripts and is recorded on every
+    ledger entry, so an auditor pins it from the ledger and verifies offline
+    (``ski_sdk.verify_sovereignty_attestation``).
     """
     if state.transcript_signer is None:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Signer not initialised.")
     backend_prov = _backend_provenance(state.llm_backend)
     guard = state.egress_guard
+    kg = state.knowledge_graph
+    ledger_check = next((c for c in state.sovereignty_checks if c.id == "ledger_least_privilege"), None)
     document: Dict[str, Any] = {
         "sovereignty_mode": state.sovereignty_mode,
+        "strict": state.sovereignty_mode == sovereignty.STRICT,
         "checks": [asdict(c) for c in state.sovereignty_checks],
+        "model_id": backend_prov["model_id"],
         "model_weight_hash": backend_prov["model_weight_hash"],
+        "model_hash_verified": backend_prov["model_hash_verified"],
         "model_hash_source": backend_prov["model_hash_source"],
+        "kg_version": kg.version if kg is not None else None,
         "kg_version_hash": state.kg_version_hash,
         **{k: v for k, v in _trust_provenance().items() if k in ("kg_signer_key_id", "kg_trust")},
-        "codebase_commit_hash": os.getenv("SKI_BUILD_COMMIT") or "unknown",
-        "build_provenance_attestation": _build_provenance(),
+        "egress_guard": guard.state() if guard is not None else None,
         "egress_attempts_total": guard.attempts if guard is not None else 0,
+        "ledger_role": {
+            "role": state.ledger_role,
+            "least_privilege": ledger_check.ok if ledger_check is not None else None,
+        },
+        "codebase_commit_hash": os.getenv("SKI_BUILD_COMMIT") or "unknown",
+        "image_digest": os.getenv("SKI_IMAGE_DIGEST") or None,
+        "build_provenance_attestation": _build_provenance(),
         "runtime_version": _VERSION,
         "signed_at": _now_iso(),
     }
@@ -1005,7 +1030,8 @@ def _first_obligation_id(envelope: V3VerdictEnvelope) -> Optional[str]:
 # ============================================================================
 
 
-if __name__ == "__main__":
+def main() -> None:
+    """Serve the app: one worker, TLS unless ``TLS_ENABLED=false`` (strict mode refuses that)."""
     workers = int(os.getenv("SKI_MODEL_WORKERS", "1"))
     if workers != 1:
         raise RuntimeError(
@@ -1029,3 +1055,7 @@ if __name__ == "__main__":
         reload=False,
         **ssl_kwargs,
     )
+
+
+if __name__ == "__main__":
+    main()

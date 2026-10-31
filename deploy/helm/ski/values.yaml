@@ -16,6 +16,9 @@ image:
   # repository at the mirror.
   repository: ghcr.io/kpifinity/ski-model
   tag: "3.2.0"
+  # Optional sha256:<hex> image digest. When set the pod pulls
+  # repository@digest and /api/sovereignty attests it (SKI_IMAGE_DIGEST).
+  digest: ""
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 
@@ -93,6 +96,12 @@ skiModel:
   # vllm exposes no digest: the value is then recorded operator-asserted
   # (unverified) unless the weights file is mounted and SKI_MODEL_FILE_PATH set.
   modelFileSha256: ""
+  # vllm in strict mode: mount the served weights so the runtime can hash
+  # them against modelFileSha256 (strict refuses an unverified pin). The
+  # PVC is mounted read-only at /models; file is the path inside it.
+  modelWeights:
+    existingClaim: ""
+    file: ""
   # Used when the corresponding bundled service is disabled.
   externalOllamaUrl: ""
   externalVllmUrl: ""

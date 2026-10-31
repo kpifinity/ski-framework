@@ -21,6 +21,12 @@ sovereign boundary, exactly as in a real air-gapped deployment:
 software is transferred in; the running namespace never gets an
 interface.
 
+The rig has two sovereignty dimensions. This module boots it in
+``advisory`` mode with FakeLLM; ``test_air_gapped_strict.py`` boots the
+same pod in ``strict`` mode (spec §6) with a sovereign backend inside the
+namespace, TLS and the least-privilege ledger role. ``_boot_rig`` builds
+both.
+
 Infrastructure: requires Docker and the opt-in ``SKI_L3_AIRGAP=1``
 environment variable (building the runtime image takes minutes; CI
 sets it in the dedicated air-gap job). Skips cleanly otherwise — the
@@ -50,6 +56,7 @@ pytestmark = pytest.mark.sovereignty
 REPO = Path(__file__).resolve().parent.parent.parent
 REF_IMPL = REPO / "reference-implementation"
 LEDGER_SQL = REF_IMPL / "src" / "ledger"
+AIRGAP_FIXTURES = Path(__file__).resolve().parent / "airgap"
 
 _OPT_IN = os.environ.get("SKI_L3_AIRGAP", "").lower() in {"1", "true", "yes"}
 _PG_IMAGE = "postgres:16-alpine"
@@ -226,6 +233,8 @@ class AirgapRig:
     api_key: str
     workdir: Path
     anchor_key_id: str
+    base_url: str = "http://localhost:8000"
+    curl_tls: List[str] = field(default_factory=list)  # e.g. --cacert for the strict rig's TLS
     _workload: Optional[List[Tuple[str, str, Dict[str, Any]]]] = field(default=None, repr=False)
 
     def exec(
@@ -238,9 +247,15 @@ class AirgapRig:
         self, method: str, path: str, body: Optional[Dict[str, Any]] = None
     ) -> Tuple[int, Dict[str, Any]]:
         """HTTP call to the runtime from *inside* the air-gapped namespace."""
+        status, text = self.api_text(method, path, body)
+        return status, (json.loads(text) if text.strip() else {})
+
+    def api_text(self, method: str, path: str, body: Optional[Dict[str, Any]] = None) -> Tuple[int, str]:
+        """Like :meth:`api`, returning the raw body (for ``/metrics``)."""
         argv = [
             "curl",
             "-sS",
+            *self.curl_tls,
             "--max-time",
             "60",
             "-X",
@@ -251,7 +266,7 @@ class AirgapRig:
             "Content-Type: application/json",
             "-w",
             "\n%{http_code}",
-            f"http://localhost:8000{path}",
+            f"{self.base_url}{path}",
         ]
         stdin: Optional[str] = None
         if body is not None:
@@ -259,7 +274,7 @@ class AirgapRig:
             stdin = json.dumps(body)
         out = _must(["docker", "exec", "-i", self.model, *argv], stdin=stdin, timeout=120)
         payload, _, status = out.rpartition("\n")
-        return int(status), (json.loads(payload) if payload.strip() else {})
+        return int(status), payload
 
     def sql(self, query: str) -> str:
         """Run a query against the ledger from inside the namespace."""
@@ -329,8 +344,48 @@ def _wait(
     )
 
 
-@pytest.fixture(scope="module")
-def rig(request: pytest.FixtureRequest) -> AirgapRig:
+def _self_signed_tls(workdir: Path) -> Tuple[Path, Path]:
+    """A throwaway certificate for ``localhost``, for the strict rig's TLS listener."""
+    import datetime
+
+    from cryptography import x509
+    from cryptography.hazmat.primitives import hashes, serialization
+    from cryptography.hazmat.primitives.asymmetric import ec
+    from cryptography.x509.oid import NameOID
+
+    key = ec.generate_private_key(ec.SECP256R1())
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "localhost")])
+    now = datetime.datetime.now(datetime.timezone.utc)
+    cert = (
+        x509.CertificateBuilder()
+        .subject_name(name)
+        .issuer_name(name)
+        .public_key(key.public_key())
+        .serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(minutes=5))
+        .not_valid_after(now + datetime.timedelta(days=1))
+        .add_extension(x509.SubjectAlternativeName([x509.DNSName("localhost")]), critical=False)
+        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+        .sign(key, hashes.SHA256())
+    )
+    cert_path, key_path = workdir / "ski-model.crt", workdir / "ski-model.key"
+    cert_path.write_bytes(cert.public_bytes(serialization.Encoding.PEM))
+    key_path.write_bytes(
+        key.private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()
+        )
+    )
+    for path in (cert_path, key_path):
+        path.chmod(0o644)  # read by uid 10001; a throwaway key in a throwaway dir
+    return cert_path, key_path
+
+
+_STUB_MODEL = "conformance/stub-vllm"
+_STUB_PORT = 8001
+
+
+def _boot_rig(request: pytest.FixtureRequest, *, strict: bool) -> AirgapRig:
+    """Boot the loopback-only pod in ``advisory`` (FakeLLM) or ``strict`` (spec §6) mode."""
     if not _OPT_IN:
         pytest.skip("SKI_L3_AIRGAP not set; the air-gap rig builds and boots containers (opt-in).")
     if shutil.which("docker") is None:
@@ -338,8 +393,10 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
 
     suffix = uuid.uuid4().hex[:8]
     pg_name = f"ski-l3-airgap-pg-{suffix}"
+    stub_name = f"ski-l3-airgap-vllm-{suffix}"
     model_name = f"ski-l3-airgap-model-{suffix}"
     api_key = secrets.token_hex(32)
+    writer_password = secrets.token_hex(16)
 
     workdir = Path(tempfile.mkdtemp(prefix="ski-l3-airgap-"))
     workdir.chmod(0o755)  # the runtime container runs as uid 10001
@@ -353,7 +410,7 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
     anchors_path.chmod(0o644)
 
     def cleanup() -> None:
-        for name in (model_name, pg_name):
+        for name in (model_name, stub_name, pg_name):
             _run(["docker", "rm", "-f", name], timeout=120)
         shutil.rmtree(workdir, ignore_errors=True)
 
@@ -389,6 +446,8 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
             f"POSTGRES_PASSWORD={_PG_PASSWORD}",
             "-e",
             "POSTGRES_DB=ski_ledger",
+            "-e",
+            f"SKI_LEDGER_WRITER_PASSWORD={writer_password}",
             "-v",
             f"{LEDGER_SQL / 'schema.sql'}:/docker-entrypoint-initdb.d/01-schema.sql:ro",
             "-v",
@@ -396,6 +455,8 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
             "-v",
             f"{LEDGER_SQL / 'migrations' / '0002_transcript_columns.sql'}"
             ":/docker-entrypoint-initdb.d/03-transcript-columns.sql:ro",
+            "-v",
+            f"{LEDGER_SQL / 'ledger_writer_login.sh'}:/docker-entrypoint-initdb.d/04-ledger-writer-login.sh:ro",
             "-v",
             f"{LEDGER_SQL / 'telemetry_buffer.sql'}:/docker-entrypoint-initdb.d/05-telemetry-buffer.sql:ro",
             _PG_IMAGE,
@@ -413,32 +474,37 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
     )
 
     # 2. SKI Model joins the SAME loopback-only namespace.
-    _must(
-        [
-            "docker",
-            "run",
-            "-d",
-            "--name",
-            model_name,
-            f"--network=container:{pg_name}",
-            "-v",
-            f"{kg_path}:/app/kg/kg.json:ro",
-            "-e",
-            "KG_PATH=/app/kg/kg.json",
-            "-e",
-            "KG_REQUIRE_SIGNATURE=true",
-            "-v",
-            f"{anchors_path}:/app/trust/kg-trust-anchors.pem:ro",
-            "-e",
-            "SKI_KG_TRUST_ANCHORS=/app/trust/kg-trust-anchors.pem",
-            # Fresh ledger, fresh container: generating the transcript
-            # signing key on this first boot is an explicit opt-in.
-            "-e",
-            "SKI_ALLOW_KEY_GENERATION=true",
+    common = [
+        f"--network=container:{pg_name}",
+        "-v",
+        f"{kg_path}:/app/kg/kg.json:ro",
+        "-e",
+        "KG_PATH=/app/kg/kg.json",
+        "-e",
+        "KG_REQUIRE_SIGNATURE=true",
+        "-v",
+        f"{anchors_path}:/app/trust/kg-trust-anchors.pem:ro",
+        "-e",
+        "SKI_KG_TRUST_ANCHORS=/app/trust/kg-trust-anchors.pem",
+        # Fresh ledger, fresh container: generating the transcript
+        # signing key on this first boot is an explicit opt-in.
+        "-e",
+        "SKI_ALLOW_KEY_GENERATION=true",
+        "-e",
+        f"API_KEY={api_key}",
+        # The fixed workload below is pinned to a fixed 2026-06-15
+        # timestamp for reproducibility, not "now" -- exactly the
+        # legitimate-backfill case the clock-skew guard must not
+        # break. Disabled here; guard behaviour itself is covered by
+        # test_clock_skew_guard.py and
+        # conformance/provenance/test_clock_skew_enforced.py.
+        "-e",
+        "SKI_MAX_CLOCK_SKEW_SECONDS=0",
+    ]
+    if not strict:
+        mode = [
             "-e",
             f"LEDGER_DSN=postgresql://postgres:{_PG_PASSWORD}@localhost:5432/ski_ledger",
-            "-e",
-            f"API_KEY={api_key}",
             "-e",
             "SKI_V3_LLM_BACKEND=fake",
             # v3.2.0: FakeLLM needs an explicit opt-in to start.
@@ -449,24 +515,94 @@ def rig(request: pytest.FixtureRequest) -> AirgapRig:
             "SKI_SOVEREIGNTY=advisory",
             "-e",
             "TLS_ENABLED=false",
-            # The fixed workload below is pinned to a fixed 2026-06-15
-            # timestamp for reproducibility, not "now" -- exactly the
-            # legitimate-backfill case the clock-skew guard must not
-            # break. Disabled here; guard behaviour itself is covered by
-            # test_clock_skew_guard.py and
-            # conformance/provenance/test_clock_skew_enforced.py.
-            "-e",
-            "SKI_MAX_CLOCK_SKEW_SECONDS=0",
             image,
         ]
-    )
+    else:
+        # A sovereign backend inside the namespace: the vLLM API, served by
+        # a stub (airgap/stub_vllm.py) from the same image. The runtime
+        # verifies a real weights file against its pinned digest.
+        _must(
+            [
+                "docker",
+                "run",
+                "-d",
+                "--name",
+                stub_name,
+                f"--network=container:{pg_name}",
+                "-v",
+                f"{AIRGAP_FIXTURES}:/conformance:ro",
+                "-e",
+                "PYTHONPATH=/app",
+                "--entrypoint",
+                "python",
+                image,
+                "/conformance/stub_vllm.py",
+                _STUB_MODEL,
+                str(_STUB_PORT),
+            ]
+        )
+        _wait(
+            ["curl", "-fsS", f"http://127.0.0.1:{_STUB_PORT}/v1/models"],
+            container=stub_name,
+            what="in-namespace vLLM stub",
+            rig_logs=rig_handle.logs,
+        )
+        weights = workdir / "weights.safetensors"
+        weights.write_bytes(secrets.token_bytes(4096))
+        weights.chmod(0o644)
+        cert_path, key_path = _self_signed_tls(workdir)
+        rig_handle.base_url = "https://localhost:8000"
+        rig_handle.curl_tls = ["--cacert", "/app/tls/ski-model.crt"]
+        mode = [
+            "-e",
+            "SKI_SOVEREIGNTY=strict",
+            # The least-privilege role, never the owner (strict refuses it).
+            "-e",
+            f"LEDGER_DSN=postgresql://ski_ledger_writer:{writer_password}@localhost:5432/ski_ledger",
+            "-e",
+            "SKI_V3_LLM_BACKEND=vllm",
+            "-e",
+            f"VLLM_BASE_URL=http://127.0.0.1:{_STUB_PORT}",
+            "-e",
+            f"SKI_MODEL_NAME={_STUB_MODEL}",
+            "-v",
+            f"{weights}:/models/weights.safetensors:ro",
+            "-e",
+            "SKI_MODEL_FILE_PATH=/models/weights.safetensors",
+            "-e",
+            f"SKI_MODEL_FILE_SHA256={hashlib.sha256(weights.read_bytes()).hexdigest()}",
+            "-v",
+            f"{cert_path}:/app/tls/ski-model.crt:ro",
+            "-v",
+            f"{key_path}:/app/tls/ski-model.key:ro",
+            "-e",
+            "TLS_ENABLED=true",
+            "-e",
+            "SKI_IMAGE_DIGEST=" + _must(["docker", "image", "inspect", "-f", "{{.Id}}", image]).strip(),
+            # The shipped entry point plus one conformance-only route that
+            # makes an outbound call from inside the runtime process.
+            "-v",
+            f"{AIRGAP_FIXTURES}:/conformance:ro",
+            "-e",
+            "PYTHONPATH=/app",
+            "--entrypoint",
+            "python",
+            image,
+            "/conformance/strict_harness.py",
+        ]
+    _must(["docker", "run", "-d", "--name", model_name, *common, *mode])
     _wait(
-        ["curl", "-fsS", "http://localhost:8000/api/health"],
+        ["curl", "-fsS", *rig_handle.curl_tls, f"{rig_handle.base_url}/api/health"],
         container=model_name,
         what="air-gapped SKI Model",
         rig_logs=rig_handle.logs,
     )
     return rig_handle
+
+
+@pytest.fixture(scope="module")
+def rig(request: pytest.FixtureRequest) -> AirgapRig:
+    return _boot_rig(request, strict=False)
 
 
 # ---------------------------------------------------------------------------
