@@ -7,8 +7,8 @@
 -- mounted at /docker-entrypoint-initdb.d/01-schema.sql by docker-compose, so
 -- every Postgres instance brought up against a clean volume initialises with
 -- the v3 column set. Existing v0.2.x ledgers are upgraded via
--- ``migrations/0002_transcript_columns.sql`` (idempotent — see the migration
--- header).
+-- ``migrations/0002_transcript_columns.sql`` and v3.2.x ledgers to format 5
+-- via ``migrations/0003_ledger_v5.sql`` (both idempotent).
 --
 -- Notes:
 --  * Confidence scoring is REMOVED in v3 (and was already gone in v2.1) —
@@ -73,6 +73,15 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
             'UNVERIFIABLE'
         )
     ),
+    -- Ledger format 5 (v3.3.0): the spec §7.1 columns, chained into entry_hash,
+    -- and the runtime's signature over (sequence, entry_hash, telemetry_id,
+    -- transcript_id). Older rows leave them NULL; they verify as v3/v4.
+    tenant_id TEXT,
+    kg_version_hash CHAR(71),
+    model_weight_hash CHAR(71),
+    schema_version TEXT,
+    verdict_signature TEXT,
+    verdict_signing_key_id CHAR(71),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -91,6 +100,33 @@ CREATE INDEX IF NOT EXISTS idx_ledger_verifier_status
 CREATE INDEX IF NOT EXISTS idx_ledger_signing_key_id
     ON ledger_entries (signing_key_id)
     WHERE signing_key_id IS NOT NULL;
+
+-- ----------------------------------------------------------------------------
+-- Ledger format 5 (v3.3.0): the runtime's public signing keys, and signed
+-- Merkle checkpoints over the entry hashes (ski_schemas.merkle). Both are
+-- append-only (append_only.sql). A key row lets an auditor verify signatures
+-- from the ledger alone; the auditor still pins the key id out of band (it is
+-- sha256 of the raw key, so a substituted PEM cannot match it).
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ledger_signing_keys (
+    key_id CHAR(71) PRIMARY KEY,          -- "sha256:" + hex of the raw Ed25519 key
+    public_key_pem TEXT NOT NULL,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ledger_checkpoints (
+    id BIGSERIAL PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    tree_size BIGINT NOT NULL CHECK (tree_size > 0),
+    root_hash CHAR(64) NOT NULL,
+    last_entry_hash CHAR(64) NOT NULL,
+    created_at TEXT NOT NULL,              -- exactly as signed in the statement
+    signing_key_id CHAR(71) NOT NULL,
+    signature TEXT NOT NULL,               -- Ed25519 over the checkpoint statement, hex
+    tsa_url TEXT,                          -- in-boundary RFC 3161 TSA, when configured
+    tsa_response BYTEA,                    -- its DER TimeStampResp over the statement
+    UNIQUE (tenant_id, tree_size)
+);
 
 -- ----------------------------------------------------------------------------
 -- Coverage Register — NULL_UNMAPPED / NULL_STALE entries denormalised for

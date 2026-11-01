@@ -187,7 +187,147 @@ async def ensure_v3_ledger_schema(engine: AsyncEngine) -> None:
     logger.info("Applied 0002_transcript_columns. Ledger schema is now at v3.")
 
 
+# ----------------------------------------------------------------------------
+# Ledger format 5 (v3.3.0): byte-for-byte the body of
+# ``reference-implementation/src/ledger/migrations/0003_ledger_v5.sql`` below
+# its header comment (pinned by test_ledger_migrations.py).
+# ----------------------------------------------------------------------------
+_V5_LEDGER_MIGRATION_SQL: Final[str] = """
+ALTER TABLE ledger_entries
+    ADD COLUMN IF NOT EXISTS tenant_id TEXT,
+    ADD COLUMN IF NOT EXISTS kg_version_hash CHAR(71),
+    ADD COLUMN IF NOT EXISTS model_weight_hash CHAR(71),
+    ADD COLUMN IF NOT EXISTS schema_version TEXT,
+    ADD COLUMN IF NOT EXISTS verdict_signature TEXT,
+    ADD COLUMN IF NOT EXISTS verdict_signing_key_id CHAR(71);
+
+CREATE TABLE IF NOT EXISTS ledger_signing_keys (
+    key_id CHAR(71) PRIMARY KEY,
+    public_key_pem TEXT NOT NULL,
+    first_seen TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS ledger_checkpoints (
+    id BIGSERIAL PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    tree_size BIGINT NOT NULL CHECK (tree_size > 0),
+    root_hash CHAR(64) NOT NULL,
+    last_entry_hash CHAR(64) NOT NULL,
+    created_at TEXT NOT NULL,
+    signing_key_id CHAR(71) NOT NULL,
+    signature TEXT NOT NULL,
+    tsa_url TEXT,
+    tsa_response BYTEA,
+    UNIQUE (tenant_id, tree_size)
+);
+
+CREATE OR REPLACE FUNCTION ledger_block_update_delete()
+RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION '% is append-only; % is not permitted', TG_TABLE_NAME, TG_OP
+        USING ERRCODE = 'insufficient_privilege';
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['ledger_signing_keys', 'ledger_checkpoints'] LOOP
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_block_update', t);
+        EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE ON %I FOR EACH ROW '
+                       'EXECUTE FUNCTION ledger_block_update_delete()', t || '_block_update', t);
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_block_delete', t);
+        EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW '
+                       'EXECUTE FUNCTION ledger_block_update_delete()', t || '_block_delete', t);
+        EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_block_truncate', t);
+        EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I '
+                       'EXECUTE FUNCTION ledger_block_update_delete()', t || '_block_truncate', t);
+    END LOOP;
+END$$;
+
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ski_ledger_writer') THEN
+        REVOKE ALL ON ledger_signing_keys, ledger_checkpoints FROM ski_ledger_writer;
+        GRANT SELECT, INSERT ON ledger_signing_keys, ledger_checkpoints TO ski_ledger_writer;
+        REVOKE ALL ON SEQUENCE ledger_checkpoints_id_seq FROM ski_ledger_writer;
+        GRANT USAGE ON SEQUENCE ledger_checkpoints_id_seq TO ski_ledger_writer;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ski_audit_reader') THEN
+        GRANT SELECT ON ledger_signing_keys, ledger_checkpoints TO ski_audit_reader;
+    END IF;
+END$$;
+"""
+
+_REQUIRED_V5_COLUMNS: Final[tuple[str, ...]] = (
+    "tenant_id",
+    "kg_version_hash",
+    "model_weight_hash",
+    "schema_version",
+    "verdict_signature",
+    "verdict_signing_key_id",
+)
+_V5_TABLES: Final[tuple[str, ...]] = ("ledger_signing_keys", "ledger_checkpoints")
+
+
+async def _has_v5_schema(engine: AsyncEngine) -> bool:
+    async with engine.connect() as conn:
+        present = {
+            row[0]
+            for row in (
+                await conn.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name = 'ledger_entries'"
+                    )
+                )
+            ).fetchall()
+        }
+        tables = [
+            (await conn.execute(text("SELECT to_regclass(:t)"), {"t": table})).scalar()
+            for table in _V5_TABLES
+        ]
+    return all(col in present for col in _REQUIRED_V5_COLUMNS) and all(t is not None for t in tables)
+
+
+async def ensure_v5_ledger_schema(engine: AsyncEngine) -> bool:
+    """True when the ledger can take format-5 entries, applying 0003 if missing and allowed.
+
+    Unlike the v3 columns, format 5 is not required to serve: without it the
+    runtime keeps writing format-4 entries (still evidence-chained) and makes
+    no checkpoints, and says so at WARN until 0003 is applied as the owner.
+    """
+    if await _has_v5_schema(engine):
+        logger.info("Ledger schema is at format 5.")
+        return True
+    remedy = (
+        "Apply reference-implementation/src/ledger/migrations/0003_ledger_v5.sql as the schema "
+        "OWNER and restart. Until then entries are written in ledger format 4 (no spec §7.1 "
+        "columns, no verdict signatures) and no checkpoints are made."
+    )
+    if os.getenv("SKI_AUTOMIGRATE", "true").lower() == "false":
+        logger.warning("Ledger schema is not at format 5 and SKI_AUTOMIGRATE=false. %s", remedy)
+        return False
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text(_V5_LEDGER_MIGRATION_SQL))
+    except DBAPIError as exc:
+        logger.warning(
+            "Ledger schema is not at format 5 and the runtime's role cannot migrate it (%r; expected "
+            "for ski_ledger_writer). %s",
+            exc.orig,
+            remedy,
+        )
+        return False
+    if not await _has_v5_schema(engine):
+        logger.warning("Applied 0003_ledger_v5 but the schema is still not at format 5. %s", remedy)
+        return False
+    logger.info("Applied 0003_ledger_v5. Ledger schema is now at format 5.")
+    return True
+
+
 __all__ = [
     "LedgerSchemaError",
     "ensure_v3_ledger_schema",
+    "ensure_v5_ledger_schema",
 ]

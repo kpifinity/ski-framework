@@ -72,6 +72,11 @@ def _policy(*keys: Ed25519PrivateKey) -> KGTrustPolicy:
 
 @dataclass
 class _FakeLedger:
+    # The ledger-format-5 surface the server sets and reads (off: format 4).
+    format5 = False
+    tenant_id = "default"
+    signer = None
+
     appended: List[Dict[str, Any]] = field(default_factory=list)
     _engine: Any = None
 

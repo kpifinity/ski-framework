@@ -1,0 +1,32 @@
+{
+  "name": "v5_entry_with_transcript",
+  "description": "A v5 evaluator entry: v4 plus the spec §7.1 columns, and its verdict-signature payload.",
+  "columns": {
+    "sequence_number": 7,
+    "previous_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "timestamp": "2026-10-30T12:00:00.123456+00:00",
+    "verdict": "FLAG",
+    "telemetry_id": "meas-0007",
+    "telemetry_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+    "rule_id": "energy.so2.cap",
+    "knowledge_graph_version": "kg-2026.10",
+    "ski_model_version": "3.2.0",
+    "reasoning": "SO2 above cap.",
+    "track": "v3-evaluator",
+    "envelope_json": "{\"verdict\": \"FLAG\", \"reasoning\": \"SO2 above cap.\", \"kg_citations\": [\"energy.so2.cap\"], \"formalizable_assertions\": [{\"metric\": \"so2_ppm\", \"observed\": 142.5, \"predicate\": \"must_not_exceed\", \"satisfied\": false, \"value\": 100.0, \"window_seconds\": null}, {\"metric\": \"flow\", \"observed\": 1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000, \"predicate\": \"must_not_exceed\", \"satisfied\": false, \"value\": 85.0, \"window_seconds\": null}], \"verifier_result\": {\"status\": \"AGREED\", \"checked_assertions\": 2, \"divergences\": []}}",
+    "transcript_json": "{\"transcript_id\": \"transcript:0001\", \"request_hash\": \"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\", \"response_hash\": \"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\", \"signature_hex\": \"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\", \"signing_key_id\": \"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\", \"backend_name\": \"fake-llm\"}",
+    "transcript_signature": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "signing_key_id": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "verifier_status": "AGREED",
+    "tenant_id": "default",
+    "kg_version_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "model_weight_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "schema_version": "3.0.0",
+    "transcript_id": "transcript:0001"
+  },
+  "envelope_hash": "sha256:7f1167ce6ace5f028187f91a1044a40e9e2da889038ee4ddb470022e64e1cf0f",
+  "transcript_hash": "sha256:921a50ce0d641354111e3f149825366d268e809488b66839bc20124ae9b77111",
+  "entry_payload": "{\"envelope_hash\":\"sha256:7f1167ce6ace5f028187f91a1044a40e9e2da889038ee4ddb470022e64e1cf0f\",\"kg_version\":\"kg-2026.10\",\"kg_version_hash\":\"sha256:1111111111111111111111111111111111111111111111111111111111111111\",\"ledger_format\":5,\"model_weight_hash\":\"sha256:2222222222222222222222222222222222222222222222222222222222222222\",\"previous_hash\":\"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\",\"reasoning\":\"SO2 above cap.\",\"rule_id\":\"energy.so2.cap\",\"schema_version\":\"3.0.0\",\"sequence_number\":7,\"signing_key_id\":\"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"ski_model_version\":\"3.2.0\",\"telemetry_hash\":\"ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff\",\"telemetry_id\":\"meas-0007\",\"tenant_id\":\"default\",\"timestamp\":\"2026-10-30T12:00:00.123456+00:00\",\"track\":\"v3-evaluator\",\"transcript_hash\":\"sha256:921a50ce0d641354111e3f149825366d268e809488b66839bc20124ae9b77111\",\"transcript_signature\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"verdict\":\"FLAG\",\"verifier_status\":\"AGREED\"}",
+  "entry_hash": "bd9ecae44da20ede7b940b6d3df5e66875c95cde19838a291f6c0da25c7c8fd4",
+  "verdict_signing_payload": "{\"entry_hash\":\"bd9ecae44da20ede7b940b6d3df5e66875c95cde19838a291f6c0da25c7c8fd4\",\"purpose\":\"ski.ledger.verdict-signature.v1\",\"sequence_number\":7,\"telemetry_id\":\"meas-0007\",\"transcript_id\":\"transcript:0001\"}"
+}

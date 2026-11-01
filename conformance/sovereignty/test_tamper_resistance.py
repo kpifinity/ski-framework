@@ -51,7 +51,9 @@ def _seed(engine: Any, sqlalchemy: Any, n: int = 3) -> None:
 
     text = sqlalchemy.text
     with engine.begin() as cx:
-        cx.execute(text("DROP TABLE IF EXISTS ledger_entries CASCADE"))
+        cx.execute(
+            text("DROP TABLE IF EXISTS ledger_checkpoints, ledger_signing_keys, ledger_entries CASCADE")
+        )
         cx.exec_driver_sql(SCHEMA.read_text(encoding="utf-8").replace("%", "%%"))
         cx.exec_driver_sql(TRIGGERS.read_text(encoding="utf-8").replace("%", "%%"))
         prev = "0" * 64

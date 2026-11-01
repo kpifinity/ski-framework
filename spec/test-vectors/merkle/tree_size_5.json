@@ -1,0 +1,38 @@
+{
+  "name": "tree_size_5",
+  "description": "A checkpoint over the first 5 ledger entries.",
+  "entry_hashes": [
+    "5e2d5d1e58e94d7607e0745cd3e612c4a358fc93f37fc5ab1fed8d04bbf7ce77",
+    "edda7b47233f9790fcc6d116d0a0c0eac38a5d6e44b7cf0c002c6d30bfa61e74",
+    "6e18ec763c0751ffab6eddca795cf9a03b16c59b30cc266b9281a23a55897359",
+    "75fd4a268b09c13ab16af6af68987296498cea8f18054d63d7d26a00714f8d33",
+    "b7c2e52d90733be990c46f507e7ea3151bba2e1fd656be8695502ce2c5de4cd3"
+  ],
+  "root_hash": "f971e42faca9f4d7d545b5498769bf3380d70534518151134cd36cc29d74ca2e",
+  "proofs": [
+    [
+      "5ee80a55110ef9ca07c485651efdc161dd039f3ddc513cefb12063697255ff1f",
+      "8714ddf092b9929bb2d84a53cc1853a85351252b8f9c512017cc7525ed5414de",
+      "ba0ba6781f155d898ac9237fb0a14c33473b2b31e169af95dc9e1ccb7057404d"
+    ],
+    [
+      "33186f3bfa6b0fd360526e6ea4fa5fe220f19e2aacf0724c5d96544e5cf79783",
+      "8714ddf092b9929bb2d84a53cc1853a85351252b8f9c512017cc7525ed5414de",
+      "ba0ba6781f155d898ac9237fb0a14c33473b2b31e169af95dc9e1ccb7057404d"
+    ],
+    [
+      "9a33cea529849e5a505fc891db51d4396851878c954107309a87b64f4f877983",
+      "fc8467efcbd3b777761e745762ced1458454b2c06a00f7d4467ed7527d62021f",
+      "ba0ba6781f155d898ac9237fb0a14c33473b2b31e169af95dc9e1ccb7057404d"
+    ],
+    [
+      "e158ea37abd66192112086848d1758bc938487dab1e2e2844e59bf06809bd56b",
+      "fc8467efcbd3b777761e745762ced1458454b2c06a00f7d4467ed7527d62021f",
+      "ba0ba6781f155d898ac9237fb0a14c33473b2b31e169af95dc9e1ccb7057404d"
+    ],
+    [
+      "a7cd7789da6579a14b261fabd40ef1a06c4cc7c0e32c4911d9a474ea35699b3d"
+    ]
+  ],
+  "checkpoint_statement": "{\"checkpoint_format\":1,\"created_at\":\"2026-11-01T00:00:00+00:00\",\"last_entry_hash\":\"b7c2e52d90733be990c46f507e7ea3151bba2e1fd656be8695502ce2c5de4cd3\",\"root_hash\":\"f971e42faca9f4d7d545b5498769bf3380d70534518151134cd36cc29d74ca2e\",\"tenant_id\":\"default\",\"tree_size\":5}"
+}

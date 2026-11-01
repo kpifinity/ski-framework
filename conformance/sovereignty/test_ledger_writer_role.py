@@ -65,7 +65,9 @@ def ledger() -> Iterator[dict[str, str]]:
     owner_url = sqlalchemy.engine.make_url(DSN)
     password = secrets.token_hex(16)  # hex only: safe to inline below
     with psycopg.connect(_libpq_url(owner_url), autocommit=True) as cx:
-        cx.execute("DROP TABLE IF EXISTS telemetry_buffer, tenants, ledger_entries CASCADE")
+        cx.execute(
+            "DROP TABLE IF EXISTS telemetry_buffer, tenants, ledger_checkpoints, ledger_signing_keys, ledger_entries CASCADE"
+        )
         for path in (
             LEDGER_SQL / "schema.sql",
             LEDGER_SQL / "append_only.sql",

@@ -106,6 +106,13 @@ skiModel:
   externalOllamaUrl: ""
   externalVllmUrl: ""
   tenantId: default
+  # Ledger format 5: sign the Merkle root of the ledger every N entries
+  # (0 = off). Export them with `audit-ledger checkpoint export` to WORM
+  # storage so a forward rewrite of the ledger is detectable.
+  ledgerCheckpointEvery: 1000
+  # Optional RFC 3161 TSA that time-stamps each checkpoint. It must be
+  # inside the deployment (strict mode checks it like the model host).
+  tsaUrl: ""
   logLevel: INFO
   agreementWindow: 1000
   agreementThreshold: "0.95"

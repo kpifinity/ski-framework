@@ -113,6 +113,44 @@ def test_workload_replays_with_expected_verdicts_in_strict_mode(strict_rig: Airg
         assert provenance.get("model_hash_verified") is True, mid
 
 
+def test_ledger_is_format5_with_signed_checkpoints_inside_the_airgap(strict_rig: AirgapRig) -> None:
+    """Every entry carries the spec §7.1 columns and a verdict signature, and a checkpoint signed by
+    the attested key covers the ledger."""
+    import hashlib
+    import time
+
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+    from ski_schemas.merkle import checkpoint_statement, merkle_root
+
+    strict_rig.replay_workload()
+    key_id = _attestation(strict_rig)["signature"]["signing_key_id"]
+    assert strict_rig.sql(
+        "SELECT count(*) FROM ledger_entries WHERE schema_version = '3.0.0' AND tenant_id = 'default' "  # nosec B608 -- test fixture SQL with constant values
+        f"AND verdict_signature IS NOT NULL AND verdict_signing_key_id = '{key_id}'"
+    ) == str(len(_WORKLOAD))
+    deadline = time.monotonic() + 30
+    while strict_rig.sql("SELECT count(*) FROM ledger_checkpoints") != "2" and time.monotonic() < deadline:
+        time.sleep(0.5)  # checkpoints are written in the background
+    tenant, size, root, last, created_at, signature = strict_rig.sql(
+        "SELECT tenant_id, tree_size, root_hash, last_entry_hash, created_at, signature "
+        "FROM ledger_checkpoints ORDER BY tree_size DESC LIMIT 1"
+    ).split("|")
+    hashes = strict_rig.sql("SELECT entry_hash FROM ledger_entries ORDER BY sequence_number").split()
+    assert int(size) == len(_WORKLOAD) and merkle_root(hashes) == root and hashes[-1] == last
+    pem = strict_rig.sql(f"SELECT public_key_pem FROM ledger_signing_keys WHERE key_id = '{key_id}'")  # nosec B608 -- test fixture SQL with constant values
+    key = serialization.load_pem_public_key(pem.encode("ascii"))
+    assert isinstance(key, Ed25519PublicKey)
+    raw = key.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+    assert "sha256:" + hashlib.sha256(raw).hexdigest() == key_id
+    key.verify(
+        bytes.fromhex(signature),
+        checkpoint_statement(
+            tenant_id=tenant, tree_size=int(size), root_hash=root, last_entry_hash=last, created_at=created_at
+        ),
+    )
+
+
 def test_egress_guard_blocks_a_scripted_outbound_call_and_fails_closed(strict_rig: AirgapRig) -> None:
     strict_rig.replay_workload()
     before = _egress_counter(strict_rig)

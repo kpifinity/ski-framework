@@ -69,14 +69,23 @@ tier — plus the controls that an honest CLEAR survives. The reference
 runtime enforces every case in
 `conformance/adversarial/test_fail_closed_verifier.py`.
 
-### `ledger/` — ledger-v4 entry hashes
+### `ledger/` — ledger entry hashes (formats 4 and 5)
 
 Each file gives one ledger entry's stored columns, with the envelope and
 transcript as the JSON text the database returns (JSONB respells numbers:
 `1e+300` comes back as a 301-digit integer), and pins the evidence digests,
-the canonical v4 payload and the `entry_hash` a conforming verifier must
-derive from them. The payload is specified in
+the canonical payload and the `entry_hash` a conforming verifier must
+derive from them. Format-5 files (`v5_*`) also carry the spec §7.1 columns
+and pin `verdict_signing_payload`, the bytes the entry's Ed25519
+`verdict_signature` signs. The payloads are specified in
 `tools/ski-schemas/src/ski_schemas/ledger.py` (spec §7.1).
+
+### `merkle/` — ledger checkpoints
+
+Each file gives a run of `entry_hashes` and pins the RFC 6962 Merkle root
+over them, the inclusion proof for every entry, and the canonical
+checkpoint statement a runtime signs (and timestamps) for it. Specified in
+`tools/ski-schemas/src/ski_schemas/merkle.py`.
 
 ## Regenerating
 
@@ -84,6 +93,7 @@ derive from them. The payload is specified in
 - `python spec/contracts/generate_openapi.py` — OpenAPI from the FastAPI app.
 - `python spec/test-vectors/canonical/generate.py` — canonical vectors.
 - `python spec/test-vectors/envelopes/generate.py` — envelope examples.
-- `python spec/test-vectors/ledger/generate.py` — ledger-v4 entry hashes.
+- `python spec/test-vectors/ledger/generate.py` — ledger entry hashes.
+- `python spec/test-vectors/merkle/generate.py` — checkpoint Merkle trees.
 - `python spec/contracts/check_drift.py` — fails if any committed schema or
   vector no longer matches the code (wired into CI).

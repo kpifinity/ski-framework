@@ -75,6 +75,10 @@ class VerificationResult(BaseModel):
     verification_date: datetime
     verdict_distribution: Dict[str, int] = Field(default_factory=dict)
     recommendation: str = ""
+    # Ledger format 5 (v3.3.0).
+    verdict_signatures_verified: int = 0
+    checkpoints_verified: int = 0
+    timestamps_verified: int = 0
 
 
 class ExportResult(BaseModel):

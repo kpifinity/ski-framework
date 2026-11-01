@@ -80,6 +80,10 @@ services:
       LEDGER_DSN: postgresql://ski_ledger_writer:${SKI_LEDGER_WRITER_PASSWORD:?SKI_LEDGER_WRITER_PASSWORD is required}@postgres:5432/${POSTGRES_DB:-ski_ledger}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       TLS_ENABLED: ${TLS_ENABLED:-true}
+      # Ledger format 5: signed Merkle checkpoint every N entries (0 = off);
+      # SKI_TSA_URL optionally time-stamps them (RFC 3161, inside the deployment).
+      SKI_LEDGER_CHECKPOINT_EVERY: ${SKI_LEDGER_CHECKPOINT_EVERY:-1000}
+      SKI_TSA_URL: ${SKI_TSA_URL:-}
       API_KEY: ${SKI_API_KEY:?SKI_API_KEY is required — generate one with `openssl rand -hex 32`}
       DETERMINISM_CANARY_INTERVAL: ${DETERMINISM_CANARY_INTERVAL:-300}
       # Framework v3.2.0 KG trust anchors: the KG must verify against one of

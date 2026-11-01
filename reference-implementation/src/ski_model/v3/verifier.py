@@ -77,10 +77,10 @@ from __future__ import annotations
 
 import logging
 import math
-import statistics
 import sys
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from fractions import Fraction
 from typing import (
     Any,
     Dict,
@@ -344,23 +344,26 @@ _PREDICATE_HANDLERS = {
 _STATEFUL_PREDICATES = frozenset({"must_average_within", "must_not_exceed_in_window"})
 
 
-def _finite_number(v: Any) -> Optional[float]:
-    """``float(v)`` for a finite int/float; ``None`` for anything else.
+def _exact_number(v: Any) -> Optional[Union[int, float]]:
+    """``v`` itself for a finite int/float (an int beyond the double range kept exact); else None.
 
-    bool is an int subclass and is rejected explicitly; NaN/inf are not
-    readings (and NaN makes ``max()`` order-dependent).
+    A stateful reading too large for a double is still a reading: dropping it
+    (or calling it "no samples") would hide exactly the breach a window peak
+    exists to catch.
     """
-    if not _is_real(v):
-        return None
+    return v if _is_real(v) else None
+
+
+def _fmt(x: Union[int, float, Fraction]) -> str:
+    """``x`` to 6 significant digits; an exact value beyond the double range keeps its magnitude."""
     try:
-        f = float(v)
-    except OverflowError:  # an int beyond the double range
-        return None
-    return f if math.isfinite(f) else None
+        return f"{float(x):.6g}"
+    except OverflowError:
+        return f"{'-' if x < 0 else ''}~10^{len(str(abs(int(x)))) - 1}"
 
 
-def _extract_values(window_data: Any) -> List[float]:
-    """Coerce a list-shaped window_query result into a list of floats.
+def _extract_values(window_data: Any) -> List[Union[int, float]]:
+    """Coerce a list-shaped window_query result into a list of finite numbers (ints kept exact).
 
     Accepts an iterable of:
       * (timestamp, value) tuples
@@ -372,7 +375,7 @@ def _extract_values(window_data: Any) -> List[float]:
     question, not the parsing. Raises ``TypeError`` if ``window_data`` is
     not iterable.
     """
-    values: List[float] = []
+    values: List[Union[int, float]] = []
     for entry in window_data:
         if isinstance(entry, tuple) and len(entry) == 2:
             _ts, v = entry
@@ -380,11 +383,11 @@ def _extract_values(window_data: Any) -> List[float]:
             v = entry["value"]
         else:
             v = entry
-        f = _finite_number(v)
-        if f is None:
+        n = _exact_number(v)
+        if n is None:
             logger.debug("Dropping non-numeric buffer value: %r", v)
             continue
-        values.append(f)
+        values.append(n)
     return values
 
 
@@ -397,8 +400,8 @@ class _WindowSummary:
     ``samples`` is ``None`` when the buffer only reports aggregates.
     """
 
-    average: Optional[float]
-    peak: Optional[float]
+    average: Optional[Union[int, float, Fraction]]
+    peak: Optional[Union[int, float]]
     samples: Optional[int]
     peak_reported: bool = True
 
@@ -418,8 +421,8 @@ def _summarize_window(window_data: Any) -> Optional[_WindowSummary]:
     """
     if hasattr(window_data, "avg_value"):
         return _WindowSummary(
-            average=_finite_number(getattr(window_data, "avg_value", None)),
-            peak=_finite_number(getattr(window_data, "max_value", None)),
+            average=_exact_number(getattr(window_data, "avg_value", None)),
+            peak=_exact_number(getattr(window_data, "max_value", None)),
             samples=None,
             peak_reported=hasattr(window_data, "max_value"),
         )
@@ -428,7 +431,7 @@ def _summarize_window(window_data: Any) -> Optional[_WindowSummary]:
     except TypeError:
         return None
     return _WindowSummary(
-        average=statistics.fmean(values) if values else None,
+        average=sum(map(Fraction, values), Fraction(0)) / len(values) if values else None,  # exact
         peak=max(values) if values else None,
         samples=len(values),
     )
@@ -524,7 +527,7 @@ async def _check_must_average_within(
     ok = lo <= average <= hi
     return _CheckOutcome(
         ok,
-        f"average({assertion.metric}, {assertion.window_seconds}s)={average:.6g} "
+        f"average({assertion.metric}, {assertion.window_seconds}s)={_fmt(average)} "
         f"in [{lo}, {hi}]: {ok}{_sample_note(summary)}",
     )
 
@@ -580,7 +583,7 @@ async def _check_must_not_exceed_in_window(
     ok = peak <= threshold
     return _CheckOutcome(
         ok,
-        f"peak({assertion.metric}, {assertion.window_seconds}s)={peak:.6g} "
+        f"peak({assertion.metric}, {assertion.window_seconds}s)={_fmt(peak)} "
         f"<= {threshold}: {ok}{_sample_note(summary)}",
     )
 

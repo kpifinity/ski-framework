@@ -20,8 +20,9 @@ resolved, so the checks themselves make no network call.
 The egress guard (§6.3) is a process audit hook, armed once startup is done.
 From then on it sees every Python-level ``socket.connect``, ``sendto``,
 ``sendmsg`` and name lookup in the process, and allows only the egress
-allowlist: loopback, the configured ledger host and the configured LLM
-backend host (and the addresses those names resolve to). Any other
+allowlist: loopback, the configured ledger host, the configured LLM
+backend host and the checkpoint TSA (``SKI_TSA_URL``), and the addresses
+those names resolve to. Any other
 destination increments ``ski_egress_attempts_total`` in either mode. In
 ``strict`` mode the call is refused, and the runtime refuses every further
 evaluation (fail closed on a non-zero count) until it is restarted.
@@ -52,6 +53,7 @@ logger = logging.getLogger(__name__)
 
 MODE_ENV: Final = "SKI_SOVEREIGNTY"
 LOCAL_DOMAINS_ENV: Final = "SKI_SOVEREIGN_LOCAL_DOMAINS"
+TSA_URL_ENV: Final = "SKI_TSA_URL"  # ledger checkpoint time-stamping (timestamping.py)
 STRICT: Final = "strict"
 ADVISORY: Final = "advisory"
 
@@ -153,7 +155,9 @@ def config_checks(
         )
     )
     url = backend_url(backend, env)
-    destinations = [d for d in (_url_host(url) if url else "", ledger_host) if d]
+    destinations = [
+        d for d in (_url_host(url) if url else "", ledger_host, _url_host(env.get(TSA_URL_ENV, ""))) if d
+    ]
     outside = [d for d in destinations if not is_local_host(d, suffixes)]
     checks.append(
         Check(
@@ -324,9 +328,13 @@ class EgressRefused(PermissionError):
 
 
 def egress_allowlist(backend: str, env: Mapping[str, str]) -> tuple[str, ...]:
-    """The hosts the process may reach: the configured ledger and LLM backend (loopback is implicit)."""
+    """The hosts the process may reach: the ledger, the LLM backend and the checkpoint TSA (loopback is implicit)."""
     url = backend_url(backend, env)
-    hosts = {_url_host(env.get("LEDGER_DSN", "")), _url_host(url) if url else ""}
+    hosts = {
+        _url_host(env.get("LEDGER_DSN", "")),
+        _url_host(url) if url else "",
+        _url_host(env.get(TSA_URL_ENV, "")),
+    }
     return tuple(sorted(h.lower() for h in hosts if h))
 
 

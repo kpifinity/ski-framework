@@ -13,8 +13,12 @@ Checks, in order:
    against the committed ``v3_verdict_envelope.schema.json`` (JSON Schema
    draft 2020-12), proving the published schema accepts a real envelope.
 4. **Ledger vectors** — for every ``spec/test-vectors/ledger/*.json``, re-derive
-   the evidence hashes, the v4 entry payload and the entry hash from the
-   vector's ``columns`` (``ski_schemas.ledger``) and compare.
+   the evidence hashes, the v4/v5 entry payload, the entry hash and (v5) the
+   verdict-signature payload from the vector's ``columns``
+   (``ski_schemas.ledger``) and compare.
+5. **Merkle vectors** — for every ``spec/test-vectors/merkle/*.json``, re-derive
+   the RFC 6962 root, every inclusion proof and the checkpoint statement
+   (``ski_schemas.merkle``) and compare.
 
 Exit code 0 when everything matches, 1 otherwise. Depends only on
 ``ski_schemas`` (pydantic) and ``jsonschema``; it does not import the server.
@@ -22,6 +26,7 @@ Exit code 0 when everything matches, 1 otherwise. Depends only on
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -41,6 +46,16 @@ CANONICAL_DIR = _REPO_ROOT / "spec" / "test-vectors" / "canonical"
 ENVELOPES_DIR = _REPO_ROOT / "spec" / "test-vectors" / "envelopes"
 ENVELOPE_SCHEMA = SCHEMAS_DIR / "v3_verdict_envelope.schema.json"
 LEDGER_DIR = _REPO_ROOT / "spec" / "test-vectors" / "ledger"
+MERKLE_DIR = _REPO_ROOT / "spec" / "test-vectors" / "merkle"
+
+
+def _merkle_generator() -> Any:
+    """spec/test-vectors/merkle/generate.py, loaded by path (the ledger one is also ``generate``)."""
+    spec = importlib.util.spec_from_file_location("merkle_generate", MERKLE_DIR / "generate.py")
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _rel(path: Path) -> str:
@@ -111,12 +126,28 @@ def check_ledger_vectors(failures: list[str]) -> None:
             print(f"ok   ledger {path.name}")
 
 
+def check_merkle_vectors(failures: list[str]) -> None:
+    paths = sorted(MERKLE_DIR.glob("*.json"))
+    if not paths:
+        failures.append(f"no merkle vectors found under {_rel(MERKLE_DIR)}")
+    derive = _merkle_generator().derive
+    for path in paths:
+        vec = json.loads(path.read_text(encoding="utf-8"))
+        derived = derive(vec["entry_hashes"])
+        mismatched = [key for key, value in derived.items() if vec.get(key) != value]
+        if mismatched:
+            failures.append(f"merkle vector {_rel(path)} does not reproduce: {', '.join(mismatched)}")
+        else:
+            print(f"ok   merkle {path.name}")
+
+
 def main() -> int:
     failures: list[str] = []
     check_schema_drift(failures)
     check_canonical_vectors(failures)
     check_envelope_vectors(failures)
     check_ledger_vectors(failures)
+    check_merkle_vectors(failures)
 
     print()
     if failures:
@@ -124,7 +155,7 @@ def main() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("drift check passed: schemas, canonical, envelope and ledger vectors all consistent.")
+    print("drift check passed: schemas, canonical, envelope, ledger and merkle vectors all consistent.")
     return 0
 
 
