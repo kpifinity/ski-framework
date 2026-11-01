@@ -143,10 +143,15 @@ def _write(
     asyncio.run(run())
 
 
+def _sa(dsn: str) -> str:
+    """The SQLAlchemy URL for a libpq DSN, on psycopg 3 (the driver the runtime and CI install)."""
+    return dsn.replace("postgresql://", "postgresql+psycopg://", 1)
+
+
 def _verify(dsn: str, **kwargs: Any) -> Any:
     from audit_ledger.ledger import Ledger
 
-    return Ledger(dsn).verify_integrity(**kwargs)
+    return Ledger(_sa(dsn)).verify_integrity(**kwargs)
 
 
 def _kinds(result: Any) -> set[str]:
@@ -348,7 +353,7 @@ def test_exported_checkpoint_catches_a_rewrite_of_the_checkpoints_too(
 
     signer = _signer()
     _write(dsns["writer"], signer, [40, 140, 60, 70], checkpoint_every=4)
-    ledger = Ledger(dsns["owner"])
+    ledger = Ledger(_sa(dsns["owner"]))
     with ledger.Session() as session:
         (exported,) = export_checkpoints(session, tmp_path)  # to WORM storage
     _rewrite_forward(dsns, signer, from_seq=2)
@@ -476,7 +481,7 @@ def test_checkpoint_timestamp_from_an_in_boundary_tsa_verifies(dsns: dict[str, s
         assert result.checkpoints_verified == 1 and result.timestamps_verified == 1
 
         # The exported file carries the token too, and verifies on its own.
-        with Ledger(dsns["owner"]).Session() as session:
+        with Ledger(_sa(dsns["owner"])).Session() as session:
             (exported,) = export_checkpoints(session, tmp_path)
         assert _verify(
             dsns["owner"], trusted_key_ids=[signer.key_id], checkpoints=[exported], tsa_ca=ca

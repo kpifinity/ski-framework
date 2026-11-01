@@ -109,7 +109,7 @@ def test_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_the_tsa_is_on_the_egress_allowlist_and_must_be_local() -> None:
     env = {"LEDGER_DSN": "postgresql://w:p@postgres/l", "SKI_TSA_URL": "http://tsa.internal/ts"}
-    assert "tsa.internal" in sovereignty.egress_allowlist("fake", env)
+    assert sovereignty.egress_allowlist("fake", env) == ("postgres", "tsa.internal")
     outside = {**env, "SKI_TSA_URL": "https://freetsa.org/tsr"}
     checks = {
         c.id: c
@@ -117,7 +117,6 @@ def test_the_tsa_is_on_the_egress_allowlist_and_must_be_local() -> None:
             backend="ollama", env=outside, trust_anchor_count=1, unanchored=False
         )
     }
-    assert (
-        checks["egress_allowlist_local"].ok is False
-        and "freetsa.org" in checks["egress_allowlist_local"].detail
-    )
+    egress = checks["egress_allowlist_local"]
+    assert egress.ok is False
+    assert egress.detail.endswith("; outside=['freetsa.org']"), egress.detail
