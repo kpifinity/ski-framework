@@ -38,6 +38,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         help="Skip TLS certificate verification (explicit opt-in, local testing only). "
         "Prefer SSL_CERT_FILE=<ca.crt> to trust a self-signed CA.",
     )
+    # Black-box suite (conformance/blackbox): registered here, at the suite root, so the
+    # options exist whichever directory pytest is pointed at.
+    group = parser.getgroup("ski-blackbox")
+    group.addoption("--scripted-llm", default=os.getenv("SKI_SCRIPTED_LLM"), help="Scripted LLM base URL.")
+    group.addoption(
+        "--kg-fixture", default=os.getenv("SKI_KG_FIXTURE"), help="kg.json written by prepare.py."
+    )
+    group.addoption(
+        "--ledger-table",
+        default=os.getenv("SKI_LEDGER_TABLE", "ledger_entries"),
+        help="Ledger table for the append-only checks.",
+    )
 
 
 @pytest.fixture(scope="session")
