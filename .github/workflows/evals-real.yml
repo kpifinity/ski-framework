@@ -15,6 +15,7 @@ on:
   pull_request:
     paths:
       - "evals/**"
+      - "!evals/reports/**"  # committing a run's results must not start another run
       - ".github/workflows/evals-real.yml"
 
 permissions:

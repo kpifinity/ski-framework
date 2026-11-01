@@ -81,7 +81,7 @@ files = [
     "reference-implementation/src/symbolic_evaluator",
     "reference-implementation/src/tag_registry",
     "reference-implementation/src/telemetry_buffer",
-    "tools/audit-ledger/src/audit_ledger/canonical.py",
+    "tools/audit-ledger/src/audit_ledger",
     "tools/ski-sdk/src/ski_sdk",
     "tools/ski-schemas/src/ski_schemas",
     "conformance",
@@ -95,8 +95,9 @@ exclude = [
 ]
 
 # Strict on the deterministic core (Symbolic Evaluator + telemetry
-# buffer + tag registry + canonical hashing). Any change here ships
-# with full type coverage.
+# buffer + tag registry), the v3 evaluator / verifier / policies, and the
+# auditor's tool (audit_ledger). Any change here ships with full type
+# coverage.
 [[tool.mypy.overrides]]
 module = [
     "symbolic_evaluator",
@@ -105,7 +106,17 @@ module = [
     "tag_registry.*",
     "telemetry_buffer",
     "telemetry_buffer.*",
-    "audit_ledger.canonical",
+    "ski_model.v3",
+    "ski_model.v3.evaluator",
+    "ski_model.v3.verifier",
+    "ski_model.v3.envelope",
+    "ski_model.v3.signing",
+    "ski_model.v3.transcript",
+    "ski_model.v3.agreement_monitor",
+    "ski_model.v3.policies.*",
+    "ski_model.v3.backends.*",
+    "audit_ledger",
+    "audit_ledger.*",
 ]
 strict = true
 disallow_untyped_defs = true
@@ -173,6 +184,9 @@ asyncio_mode = "auto"
 # coverage.py
 # ---------------------------------------------------------------------
 [tool.coverage.run]
+# Branch coverage since v3.3.0: a line run with only one side of its branch
+# taken no longer counts as covered.
+branch = true
 source = [
     "reference-implementation/src",
     "tools",
@@ -185,12 +199,13 @@ omit = [
 ]
 
 [tool.coverage.report]
-# Gating floor (measured 80.4% at 2026-09-15, v-next GA hardening item A1).
-# Ratchet upward only. The safety-critical module set (verifier, evaluator,
-# risk_tier policy, signing, kg_loader, ledger_client) is held to a
-# separate, stricter 95% floor — see the "Safety-critical module coverage"
+# Gating floor, line + branch coverage (measured 82% at 2026-11-01 with
+# branch coverage on; was 80.4% line-only at 2026-09-15). Ratchet upward
+# only. The safety-critical module set (verifier, evaluator, risk_tier
+# policy, signing, kg_loader, ledger_client) is held to a separate, stricter
+# 95% floor (96% with branches) — see the "Safety-critical module coverage"
 # step in .github/workflows/ci.yml.
-fail_under = 80
+fail_under = 81
 exclude_lines = [
     "pragma: no cover",
     "raise NotImplementedError",

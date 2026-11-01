@@ -121,6 +121,32 @@ class TestTier2:
         assert out.verdict == V3Verdict.CLEAR.value
         assert out.human_attestation == {"reviewer": "rk@ski.example", "fulfilled": True}
 
+    def test_contradiction_downgrade_marks_attestation_required(self) -> None:
+        out = apply_risk_policy(
+            _envelope(verifier_status=VerifierStatus.LLM_CONTRADICTION), risk_tier="standard"
+        )
+        assert out.human_attestation == {"required": True, "fulfilled": False}
+
+    def test_divergence_without_attestation_forces_discretionary(self) -> None:
+        """Spec §5.4 medium: NEURO_SYMBOLIC_DIVERGENCE is not honoured without a human."""
+        env = _envelope(verdict=V3Verdict.FLAG, verifier_status=VerifierStatus.NEURO_SYMBOLIC_DIVERGENCE)
+        out = apply_risk_policy(env, risk_tier="medium")
+        assert out.verdict == V3Verdict.DISCRETIONARY.value
+        assert out.human_attestation == {"required": True, "fulfilled": False}
+        assert any("tier-2" in n and "NEURO_SYMBOLIC_DIVERGENCE" in n for n in out.notes)
+        assert env.verdict == V3Verdict.FLAG.value  # the input envelope is not mutated
+
+    def test_divergence_with_attestation_keeps_verdict(self) -> None:
+        attestation = {"reviewer": "rk@ski.example", "fulfilled": True}
+        env = _envelope(
+            verdict=V3Verdict.FLAG,
+            verifier_status=VerifierStatus.NEURO_SYMBOLIC_DIVERGENCE,
+            human_attestation=attestation,
+        )
+        out = apply_risk_policy(env, risk_tier="medium")
+        assert out.verdict == V3Verdict.FLAG.value
+        assert out.human_attestation == attestation
+
     def test_unverifiable_records_note_but_keeps_verdict(self) -> None:
         env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
         out = apply_risk_policy(env, risk_tier="standard")
@@ -142,6 +168,14 @@ class TestTier3:
         out = apply_risk_policy(env, risk_tier="tier-3")
         assert out.verdict == V3Verdict.DISCRETIONARY.value
         assert any("tier-3" in n for n in out.notes)
+        # tier-3 does not demand an attestation for the downgrade.
+        assert out.human_attestation is None
+
+    def test_divergence_accepted_with_note(self) -> None:
+        env = _envelope(verdict=V3Verdict.FLAG, verifier_status=VerifierStatus.NEURO_SYMBOLIC_DIVERGENCE)
+        out = apply_risk_policy(env, risk_tier="low")
+        assert out.verdict == V3Verdict.FLAG.value
+        assert any("tier-3" in n and "NEURO_SYMBOLIC_DIVERGENCE" in n for n in out.notes)
 
     def test_unverifiable_accepted_with_note(self) -> None:
         env = _envelope(verifier_status=VerifierStatus.UNVERIFIABLE)
