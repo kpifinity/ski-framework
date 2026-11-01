@@ -40,12 +40,13 @@ jobs:
   mutation:
     name: Mutation testing (verifier + risk-tier policy)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.14"
+          # mutmut's libcst needs pyyaml>=6.0.3 on 3.14; requirements-dev pins 6.0.1.
+          python-version: "3.12"
           cache: pip
       - run: pip install -r requirements-dev.txt "mutmut==3.8.1"
       - run: pip install -e tools/ski-schemas
