@@ -190,7 +190,8 @@ class _RecordedResponse:
         return str(self._provenance.get("structured_grammar_hash", "sha256:" + "0" * 64))
 
     async def evaluate(self, **_: Any) -> dict[str, Any]:
-        return json.loads(json.dumps(self._response))  # a fresh copy each call
+        fresh: dict[str, Any] = json.loads(json.dumps(self._response))  # a fresh copy each call
+        return fresh
 
 
 def _value(enum_or_str: Any) -> str:
@@ -216,13 +217,13 @@ async def _replay_async(
     if str(ref_impl_src) not in sys.path:
         sys.path.insert(0, str(ref_impl_src))
 
-    from ski_model.kg_loader import load_signed_kg  # type: ignore
-    from ski_model.server import _compute_kg_version_hash  # type: ignore
-    from ski_model.v3 import V3Evaluator  # type: ignore
-    from ski_model.v3.backends.hashes import PROMPT_TEMPLATE_HASH  # type: ignore
+    from ski_model.kg_loader import load_signed_kg
+    from ski_model.server import _compute_kg_version_hash
+    from ski_model.v3 import V3Evaluator
+    from ski_model.v3.backends.hashes import PROMPT_TEMPLATE_HASH
     from sqlalchemy.ext.asyncio import create_async_engine
-    from tag_registry import RiskTierGovernor  # type: ignore
-    from telemetry_buffer import TelemetryBuffer  # type: ignore
+    from tag_registry import RiskTierGovernor
+    from telemetry_buffer import TelemetryBuffer
 
     report = ReplayReport(
         started_at=datetime.now(timezone.utc), from_sequence=from_sequence, to_sequence=to_sequence
