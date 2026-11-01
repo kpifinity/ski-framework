@@ -139,3 +139,26 @@ must refuse a Rule with no obligation (item 8) and route by subject (item 7).
 - Whether the four extended assertion predicates (item 3) should also become
   `Obligation.obligation_type` values in §3.3 (today a KG expresses them with
   `must_be_within` / `must_not_exceed` and `window_seconds`).
+- **Verifier status after `satisfied` correction (§4.5).** The reference
+  verifier first corrects each `satisfied` flag it can compute from
+  `observed`, so a FLAG whose assertions all hold is reported as
+  `NEURO_SYMBOLIC_DIVERGENCE`; the §4.5 wording makes it
+  `LLM_CONTRADICTION`. The verdict is the same at every tier that downgrades
+  either. Proposal: define the status on the corrected assertions and say so.
+- **Subject absent from the KG (§4.1, §5.1).** §4.1 gives `NULL_UNMAPPED`
+  ("the telemetry subject is not present in the KG"); the reference treats
+  any subject with an empty slice as tier-1 and returns `DISCRETIONARY`.
+  Options: keep §4.1 and split the two cases (absent → `NULL_UNMAPPED`,
+  present but unrouted → `DISCRETIONARY`), or make both `DISCRETIONARY`.
+- **Risk tiers at `high` and `low` (§5.4).** At `high`, §5.4 holds an AGREED
+  verdict until a human attestation arrives; the reference honours it
+  without one and requires attestation only when the verifier disagrees. At
+  `low`, §5.4 honours the model's verdict whatever the verifier says; the
+  reference downgrades `LLM_CONTRADICTION` to `DISCRETIONARY`. The `low`
+  behaviour is safer and should become the text. The `high` behaviour is a
+  product decision: implement the hold (an attestation API), or relax the
+  text to the reference's rule.
+
+These three were found by the black-box conformance suite
+(`conformance/blackbox/`), which accepts either behaviour until this RFC
+decides.
