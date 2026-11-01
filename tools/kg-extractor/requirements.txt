@@ -2,8 +2,8 @@
 # Phase 1 (compilation) is permitted to use cloud LLMs but the
 # implementation defaults to a local backend. PyPDF2 was replaced with
 # pypdf due to CVE-2023-36464 and CVE-2022-24859.
-pydantic==2.13.5
-python-dotenv==1.2.3
+pydantic==2.14.2
+python-dotenv==1.2.4
 click==8.5.0
 pyyaml==6.0.3
 httpx==0.28.1
