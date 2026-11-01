@@ -470,7 +470,10 @@ An implementation MUST resolve the relevant KG slice for each verdict
 request by:
 
 1. Identifying the `Rule` nodes whose `applies_to` edges target the
-   telemetry record's subject.
+   telemetry record's subject. A `Rule` with no `applies_to` edge applies
+   to every subject (as an `Obligation` with no `scoped_to` edge applies in
+   every jurisdiction); a record whose subject no `Rule` applies to gets an
+   empty slice.
 2. Identifying the `Obligation` nodes reachable from those rules via
    `consists_of`.
 3. Filtering by `effective_date_start <= as_of` and (if
@@ -876,7 +879,10 @@ preserved as a separate code path.
 ### 11.2 v2.x Knowledge Graphs
 
 A v3 implementation MUST accept v2.x KGs in a backwards-compatibility
-mode for at least one minor version. The reference implementation's
+mode for at least one minor version. The reference implementation keeps the
+mode until v4.0, behind an explicit operator opt-in (`SKI_KG_ALLOW_FLAT`), and
+runs such a KG as the spec §3 graph it converts to, so routing (§5.1) and the
+`kg_version_hash` are defined once, over the graph. The reference implementation's
 compatibility mode loads the earlier flat document, `{"metadata",
 "rules", "tag_registry", "signature"}`, with its original signing bytes. v2.x KGs that omit typed
 obligations MUST be treated as `DISCRETIONARY`-only and the absence of

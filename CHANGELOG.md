@@ -9,6 +9,28 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### One Knowledge Graph shape (spec §3, §5.1, §11.2)
+
+- **Subject routing (spec §5.1).** The KG slice for a measurement now holds only
+  the obligations reachable from the Rules that `applies_to` its subject. A Rule
+  with no `applies_to` edge applies to every subject (spec clarified), so KGs that
+  model no subjects behave as before. A subject no Rule applies to gets an empty
+  slice, which has no declared risk tier, so it fails closed to tier-1 and goes to
+  human review (`DISCRETIONARY`). The subject is recorded in the transcript's scope block
+  and `audit-ledger replay` re-scopes with it; older entries replay unchanged.
+- **Flat KGs deprecated (breaking, with an opt-in).** The flat shape
+  (`rules` + `tag_registry`) loads only with `SKI_KG_ALLOW_FLAT=true`, and runs as
+  the graph it converts to (`ski_schemas.kg_graph.flat_to_graph`, which
+  `scripts/flat-kg-to-graph.py` now wraps); its `tag_registry` becomes
+  `applies_to` routing. Removed in v4.0.
+- **One KG version hash:** `ski_schemas.kg_graph.kg_version_hash`, SHA-256 of the
+  §7.3 canonical `{metadata, nodes, edges}`, for both shapes. Replay still accepts
+  the pre-v3.3.0 hash of a flat KG for entries written under it.
+- **One migration mechanism.** The Alembic tree (v0.1 → v0.2) is retired; the
+  ordered, idempotent SQL files in `reference-implementation/src/ledger/` are the
+  only migrations, applied by Postgres init (fresh) or the runtime / `psql`
+  (upgrades). `docs/migrations.md` rewritten.
+
 ### Standards-native evidence (SCITT, TRACE, OpenSSF Model Signing, CycloneDX, OSCAL)
 
 - **SCITT signed statements and COSE Receipts.** `GET /api/ledger/{sequence}/evidence`

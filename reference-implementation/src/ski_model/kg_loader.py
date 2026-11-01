@@ -77,7 +77,8 @@ from typing import Any, Final, Literal, Optional
 from cryptography.exceptions import InvalidSignature, UnsupportedAlgorithm
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from ski_schemas.canonical import canonicalize
+from ski_schemas.canonical import canonicalize, sha256_canonical
+from ski_schemas.kg_graph import flat_to_graph, kg_version_hash
 
 from .kg_graph import compile_graph, is_graph_kg
 
@@ -285,11 +286,22 @@ class KnowledgeGraph:
     # through signature verification.
     signer_key_id: Optional[str] = None
     kg_trust: Optional[KGTrust] = None
-    # Graph-shape KGs: the signed ``{metadata, nodes, edges}`` content, and
-    # the Definition nodes. None for flat KGs, whose definitions (if any)
-    # live in ``metadata["definitions"]``.
+    # The spec §3 ``{metadata, nodes, edges}`` content: as signed for a graph
+    # KG, converted in memory (ski_schemas.kg_graph.flat_to_graph) for a flat
+    # one, so the runtime has one KG shape. None only for KGs constructed
+    # directly (tests). ``definitions`` are its Definition nodes.
     graph: Optional[dict[str, Any]] = None
     definitions: Optional[list[dict[str, Any]]] = None
+    # "graph", or "flat" for the deprecated spec §11.2 compatibility shape.
+    source_shape: str = "graph"
+    # Flat KGs only: the pre-v3.3.0 kg_version_hash, so ledger entries written
+    # under the flat file still replay against it.
+    legacy_version_hash: Optional[str] = None
+
+    @property
+    def version_hash(self) -> Optional[str]:
+        """The one KG version hash (``ski_schemas.kg_graph.kg_version_hash``); None without a graph."""
+        return kg_version_hash(self.graph) if self.graph is not None else None
 
     @classmethod
     def from_dict(
@@ -318,19 +330,27 @@ class KnowledgeGraph:
         graph: Optional[dict[str, Any]] = None
         definitions: Optional[list[dict[str, Any]]] = None
         tag_registry: dict[str, str] = {}
+        legacy_hash: Optional[str] = None
         if is_graph_kg(data):
             # Compile before verifying so a malformed graph is refused either way.
             rules, definitions = compile_graph(data.get("nodes"), data.get("edges"))
             graph = {"metadata": metadata, "nodes": data["nodes"], "edges": data["edges"]}
             version = str(metadata.get("version") or metadata.get("name") or "unknown")
         else:
-            rules = data.get("rules") or []
+            flat_rules = data.get("rules") or []
             tag_registry = data.get("tag_registry") or {}
-            if not isinstance(rules, list) or not rules:
+            if not isinstance(flat_rules, list) or not flat_rules:
                 raise ValueError("KG must contain a non-empty 'rules' array (or the spec §3 'nodes' graph).")
             if not isinstance(tag_registry, dict):
                 raise ValueError("KG must contain a 'tag_registry' object.")
             version = str(metadata.get("version", "unknown"))
+            # One shape at runtime: the flat KG becomes its spec §3 graph
+            # (signature still checked over the flat file, below).
+            graph = flat_to_graph(data)
+            rules, definitions = compile_graph(graph["nodes"], graph["edges"])
+            legacy_hash = sha256_canonical(
+                {"version": version, "rules": flat_rules, "tag_registry": tag_registry}
+            )
 
         signature_verified = False
         signer_key_id: Optional[str] = None
@@ -368,6 +388,8 @@ class KnowledgeGraph:
             kg_trust=kg_trust,
             graph=graph,
             definitions=definitions,
+            source_shape="graph" if legacy_hash is None else "flat",
+            legacy_version_hash=legacy_hash,
         )
 
     def scope_to(
@@ -375,6 +397,7 @@ class KnowledgeGraph:
         *,
         jurisdiction: Optional[str],
         as_of: datetime,
+        subject: Optional[str] = None,
     ) -> dict[str, Any]:
         """Return a v3 snapshot dict containing only applicable obligations.
 
@@ -387,6 +410,10 @@ class KnowledgeGraph:
             ``jurisdiction`` argument exactly. If ``jurisdiction`` is
             ``None`` (no tenant restriction supplied) all jurisdictions
             pass through.
+          * Its ``subjects`` (spec §5.1: the Subjects its Rules ``applies_to``)
+            are absent (the Rule applies to every subject) or contain
+            ``subject``. ``subject=None`` (a replay of an entry recorded before
+            subject routing) does not filter.
 
         The returned dict is the v3 evaluator's expected snapshot shape:
         ``{"version": ..., "obligations": [...], "definitions": [...],
@@ -397,7 +424,10 @@ class KnowledgeGraph:
         """
         n_in = len(self.rules)
         kept: list[dict[str, Any]] = [
-            rule for rule in self.rules if _rule_is_in_scope(rule, jurisdiction=jurisdiction, as_of=as_of)
+            rule
+            for rule in self.rules
+            if _rule_is_in_scope(rule, jurisdiction=jurisdiction, as_of=as_of)
+            and (subject is None or "subjects" not in rule or subject in rule["subjects"])
         ]
         snapshot: dict[str, Any] = {
             "version": self.version,
@@ -406,6 +436,7 @@ class KnowledgeGraph:
             if self.definitions is not None
             else self.metadata.get("definitions", []),
             "scope": {
+                "subject": subject,
                 "jurisdiction": jurisdiction,
                 "as_of": as_of.isoformat(),
                 "n_in": n_in,
