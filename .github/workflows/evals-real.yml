@@ -74,7 +74,9 @@ jobs:
   summary:
     name: Summary (Wilson 95% intervals)
     needs: run
-    if: always()
+    # Summarize whatever finished (a failed model job must not hide the others),
+    # but not a run that was cancelled by a newer push.
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
