@@ -67,11 +67,30 @@ def _versioned(node: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def flat_to_graph(flat: Mapping[str, Any], default_effective_date: Optional[str] = None) -> Dict[str, Any]:
-    """The graph-shape KG for a flat ``{metadata, rules, tag_registry}`` KG."""
-    metadata = dict(flat.get("metadata") or {})
+    """The graph-shape KG for a flat ``{metadata, rules, tag_registry}`` KG.
+
+    Raises ``ValueError`` for a flat document that is not well formed: rules
+    must be objects with a non-empty string ``id``, the tag registry a map of
+    subject to the id of a rule.
+    """
+    raw_metadata, raw_rules = flat.get("metadata") or {}, flat.get("rules") or []
+    registry = flat.get("tag_registry") or {}
+    if (
+        not isinstance(raw_metadata, Mapping)
+        or not isinstance(raw_rules, list)
+        or not isinstance(registry, Mapping)
+    ):
+        raise ValueError("A flat KG needs object 'metadata', array 'rules' and object 'tag_registry'.")
+    if not all(isinstance(r, Mapping) and isinstance(r.get("id"), str) and r["id"] for r in raw_rules):
+        raise ValueError("Every flat KG rule must be an object with a non-empty string 'id'.")
+    rule_ids = {r["id"] for r in raw_rules}
+    bad_routes = sorted(str(s) for s, r in registry.items() if not isinstance(r, str) or r not in rule_ids)
+    if bad_routes:
+        raise ValueError(f"tag_registry routes subject(s) {bad_routes} to no rule in the KG.")
+    metadata = dict(raw_metadata)
     metadata.setdefault("name", str(metadata.get("version") or "converted-kg"))
     metadata["schema_version"] = "3.0"
-    rules: List[Dict[str, Any]] = flat.get("rules") or []
+    rules: List[Dict[str, Any]] = [dict(r) for r in raw_rules]
     edges: List[Dict[str, str]] = []
     nodes: Dict[str, List[Dict[str, Any]]] = {
         "subjects": [],

@@ -51,6 +51,31 @@ The reference implementation expects a local Ollama instance. The fastest path i
 - **Shell** — `#!/bin/bash` + `set -euo pipefail`. Pass `shellcheck` cleanly.
 - **YAML / TOML** — two-space indent; lowercase keys.
 
+## Quality gates
+
+Every pull request must pass:
+
+- **Types:** `mypy` with `strict` on the deterministic core, the v3 evaluator /
+  verifier / policies / backends (`ski_model.v3`), and `audit_ledger`.
+- **Coverage:** line + branch coverage at least 81% overall, and 95% on the
+  safety-critical modules (verifier, evaluator, risk-tier policy, signing, KG
+  loader, ledger client). The floors only move up.
+- **Fuzzing:** the canonicalizer and the KG loader are fuzzed with Hypothesis on
+  every run (300 examples; `SKI_FUZZ_EXAMPLES` raises it): any JSON either
+  canonicalizes to one round-tripping form or is refused, and any KG document is
+  loaded or refused with a `ValueError`, never a crash.
+
+The weekly **Quality** workflow (`.github/workflows/quality.yml`, also run on
+pull requests that touch the verifier or the risk-tier policy) adds:
+
+- **Mutation testing** of the Symbolic Verifier and the risk-tier policy with
+  `mutmut` (configured in `reference-implementation/setup.cfg`). Mutants that
+  only change string text are not counted (`scripts/mutation_score.py`); the
+  score of the rest must stay at or above the gate (82%; measured 83.7% on
+  1,023 counted mutants). Run it locally with
+  `cd reference-implementation && mutmut run && mutmut results`.
+- **Deep fuzzing** at 20,000 examples.
+
 ## Commit messages
 
 Format: `[type] short subject (≤72 chars)` followed by a blank line and a body that explains what and why.
