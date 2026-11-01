@@ -55,9 +55,13 @@ from ski_schemas.canonical import CanonicalizationError, canonicalize, sha256_ca
 from ski_schemas.measurement import MeasurementRecord
 
 from . import metrics, sovereignty
+from .evidence import ledger_evidence
 from .kg_loader import KGTrustPolicy, KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
 from .ledger_migrations import ensure_v3_ledger_schema, ensure_v5_ledger_schema
+from .mlbom import ml_bom
+from .model_signature import ModelSignature
+from .model_signature import verify_from_env as verify_model_signature_from_env
 from .timestamping import TimestampAuthority, TimestampError
 from .v3 import (
     AgreementMonitor,
@@ -123,6 +127,7 @@ class _State:
     sovereignty_checks: tuple[sovereignty.Check, ...] = ()
     egress_guard: Optional[sovereignty.EgressGuard] = None
     ledger_role: Optional[str] = None
+    model_signature: Optional[ModelSignature] = None
     # Ledger checkpoints (format 5): every N entries, optionally time-stamped.
     tsa: Optional[TimestampAuthority] = None
     checkpoint_every: int = 0
@@ -487,6 +492,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             backend_prov["model_hash_verified"], backend_prov["model_hash_source"]
         ),
     ]
+    # OpenSSF Model Signing (SKI_MODEL_SIGNATURE): a bad or foreign signature
+    # refuses to start in any mode, like a weight-hash mismatch.
+    state.model_signature = verify_model_signature_from_env(os.environ)
+    if state.model_signature is not None:
+        logger.info("Model signature verified: %s", state.model_signature.attestation())
+    checks.append(
+        sovereignty.model_signature_check(
+            state.model_signature.signer_key_id if state.model_signature is not None else None
+        )
+    )
     sovereignty.refuse_if_failed(state.sovereignty_mode, checks)
 
     # The ledger comes up before the transcript signer: a missing signing key
@@ -915,6 +930,7 @@ async def sovereignty_attestation() -> Dict[str, Any]:
         "kg_version": kg.version if kg is not None else None,
         "kg_version_hash": state.kg_version_hash,
         **{k: v for k, v in _trust_provenance().items() if k in ("kg_signer_key_id", "kg_trust")},
+        "model_signature": state.model_signature.attestation() if state.model_signature is not None else None,
         "egress_guard": guard.state() if guard is not None else None,
         "egress_attempts_total": guard.attempts if guard is not None else 0,
         "ledger_role": {
@@ -936,6 +952,60 @@ async def sovereignty_attestation() -> Dict[str, Any]:
             "value_hex": state.transcript_signer.sign(canonicalize(document)),
         },
     }
+
+
+@app.get("/api/mlbom")
+async def model_bom() -> Dict[str, Any]:
+    """CycloneDX 1.6 ML-BOM of the model, KG and runtime this deployment is serving."""
+    kg = state.knowledge_graph
+    return ml_bom(
+        runtime_version=_VERSION,
+        image_digest=os.getenv("SKI_IMAGE_DIGEST") or None,
+        codebase_commit=os.getenv("SKI_BUILD_COMMIT") or None,
+        backend=_backend_provenance(state.llm_backend),
+        model_signature=state.model_signature.attestation() if state.model_signature is not None else None,
+        kg=(
+            {
+                "name": kg.metadata.get("name"),
+                "version": kg.version,
+                "kg_version_hash": state.kg_version_hash,
+                "kg_trust": kg.kg_trust,
+                "kg_signer_key_id": kg.signer_key_id,
+            }
+            if kg is not None
+            else None
+        ),
+    )
+
+
+@app.get("/api/ledger/{sequence_number}/evidence", dependencies=[Depends(require_api_key)])
+async def entry_evidence(sequence_number: int) -> Dict[str, Any]:
+    """A ledger entry as a SCITT transparent statement (COSE_Sign1 + COSE Receipt) and a TRACE record.
+
+    Format-5 ledgers only. The receipt is present once a checkpoint covers
+    the entry (``SKI_LEDGER_CHECKPOINT_EVERY``); see ``ski_model.evidence``.
+    """
+    ledger, signer = state.ledger, state.transcript_signer
+    if ledger is None or signer is None:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Service not initialised.")
+    if not ledger.format5:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Standards-native evidence needs ledger format 5 (apply 0003_ledger_v5.sql).",
+        )
+    evidence = await ledger.evidence(sequence_number)
+    if evidence is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No ledger entry {sequence_number}.")
+    kg = state.knowledge_graph
+    return ledger_evidence(
+        evidence,
+        signer=signer,
+        strict=state.sovereignty_mode == sovereignty.STRICT,
+        kg_version=kg.version if kg is not None else None,
+        data_class=os.getenv("SKI_DATA_CLASS", "regulated-telemetry"),
+        image_digest=os.getenv("SKI_IMAGE_DIGEST") or None,
+        codebase_commit=os.getenv("SKI_BUILD_COMMIT") or None,
+    )
 
 
 def _build_provenance() -> Optional[Any]:

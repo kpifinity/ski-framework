@@ -492,6 +492,61 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
           description: Validation Error
       summary: Load Kg
+  /api/ledger/{sequence_number}/evidence:
+    get:
+      description: 'A ledger entry as a SCITT transparent statement (COSE_Sign1 + COSE Receipt) and a
+        TRACE record.
+
+
+        Format-5 ledgers only. The receipt is present once a checkpoint covers
+
+        the entry (``SKI_LEDGER_CHECKPOINT_EVERY``); see ``ski_model.evidence``.'
+      operationId: entry_evidence_api_ledger__sequence_number__evidence_get
+      parameters:
+      - in: path
+        name: sequence_number
+        required: true
+        schema:
+          title: Sequence Number
+          type: integer
+      - in: header
+        name: x-api-key
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Api-Key
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Entry Evidence Api Ledger  Sequence Number  Evidence Get
+                type: object
+          description: Successful Response
+        '422':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+          description: Validation Error
+      summary: Entry Evidence
+  /api/mlbom:
+    get:
+      description: CycloneDX 1.6 ML-BOM of the model, KG and runtime this deployment is serving.
+      operationId: model_bom_api_mlbom_get
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                title: Response Model Bom Api Mlbom Get
+                type: object
+          description: Successful Response
+      summary: Model Bom
   /api/sovereignty:
     get:
       description: 'Spec §6.4: a signed statement of what this runtime is running and under which mode.

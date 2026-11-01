@@ -9,6 +9,31 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Standards-native evidence (SCITT, TRACE, OpenSSF Model Signing, CycloneDX, OSCAL)
+
+- **SCITT signed statements and COSE Receipts.** `GET /api/ledger/{sequence}/evidence`
+  returns each ledger entry as a COSE_Sign1 signed statement (RFC 9052, EdDSA; SCITT
+  RFC 9943 CWT claims) and, once a checkpoint covers it, a COSE Receipt
+  (`RFC9162_SHA256` inclusion proof) whose Merkle root is the signed checkpoint's. A
+  generic COSE verifier (tested with `pycose`) accepts both. New
+  `ski_schemas.cose` (deterministic CBOR, COSE_Sign1) and `ski_schemas.scitt`.
+- **TRACE v0.2 Trust Records.** The same endpoint returns a TRACE record for the run
+  (model, policy = the signed KG, transcript, Symbolic Verifier appraisal, SCITT
+  receipt), signed in TRACE's embedded-signature profile (`ski_schemas.trace`).
+- **OpenSSF Model Signing at boot.** With `SKI_MODEL_SIGNATURE` and
+  `SKI_MODEL_ORIGINS` (an allowlist of permitted model-origin keys) the runtime
+  refuses to start unless the OMS v1.0 signature verifies, the model directory holds
+  exactly the signed files, and the pinned weights file is one of them. Interop is
+  pinned by a fixture signed with the reference `model-signing` tool. Attested at
+  `/api/sovereignty`; Helm `skiModel.modelSigning`.
+- **CycloneDX 1.6 ML-BOM** at `GET /api/mlbom`: model, KG and runtime, validated
+  against the CycloneDX schema.
+- **OSCAL 1.1.3 Assessment Results**: `audit-ledger export-oscal` writes a
+  verification (and a replay report) as observations and findings per spec
+  requirement, validated against NIST's published schema.
+- **ISO/IEC 24970 crosswalk** (provisional, pending the published text) and a
+  standards guide: `docs/standards.md`, `docs/crosswalks/iso-iec-24970.md`.
+
 ### Ledger format 5: tamper-evident evidence, end to end (spec §7, §8.1)
 
 - **Format 5 entries.** The entry hash now also chains the spec §7.1 columns

@@ -547,9 +547,29 @@ def _boot_rig(request: pytest.FixtureRequest, *, strict: bool) -> AirgapRig:
             what="in-namespace vLLM stub",
             rig_logs=rig_handle.logs,
         )
-        weights = workdir / "weights.safetensors"
+        # The model directory, OMS-signed by a throwaway origin key the
+        # runtime is told to accept (SKI_MODEL_ORIGINS).
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+
+        from .oms_sign import sign_model
+
+        model_dir = workdir / "model"
+        model_dir.mkdir()
+        model_dir.chmod(0o755)
+        weights = model_dir / "weights.safetensors"
         weights.write_bytes(secrets.token_bytes(4096))
-        weights.chmod(0o644)
+        (model_dir / "config.json").write_text('{"model_type": "conformance-stub"}\n')
+        origin = ec.generate_private_key(ec.SECP256R1())
+        signature_path, origins_path = workdir / "model.sig", workdir / "model-origins.pem"
+        signature_path.write_text(json.dumps(sign_model(model_dir, origin)))
+        origins_path.write_bytes(
+            origin.public_key().public_bytes(
+                serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo
+            )
+        )
+        for path in (*model_dir.iterdir(), signature_path, origins_path):
+            path.chmod(0o644)
         cert_path, key_path = _self_signed_tls(workdir)
         rig_handle.base_url = "https://localhost:8000"
         rig_handle.curl_tls = ["--cacert", "/app/tls/ski-model.crt"]
@@ -569,9 +589,17 @@ def _boot_rig(request: pytest.FixtureRequest, *, strict: bool) -> AirgapRig:
             "-e",
             f"SKI_MODEL_NAME={_STUB_MODEL}",
             "-v",
-            f"{weights}:/models/weights.safetensors:ro",
+            f"{model_dir}:/models:ro",
             "-e",
             "SKI_MODEL_FILE_PATH=/models/weights.safetensors",
+            "-v",
+            f"{signature_path}:/app/trust/model.sig:ro",
+            "-e",
+            "SKI_MODEL_SIGNATURE=/app/trust/model.sig",
+            "-v",
+            f"{origins_path}:/app/trust/model-origins.pem:ro",
+            "-e",
+            "SKI_MODEL_ORIGINS=/app/trust/model-origins.pem",
             "-e",
             f"SKI_MODEL_FILE_SHA256={hashlib.sha256(weights.read_bytes()).hexdigest()}",
             "-v",

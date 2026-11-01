@@ -195,6 +195,14 @@ def model_hash_verified_check(model_hash_verified: bool, model_hash_source: Opti
     )
 
 
+def model_signature_check(signer_key_id: Optional[str]) -> Check:
+    """OpenSSF Model Signing: the model is signed by a permitted origin (only when a signature is configured)."""
+    requirement = "the model is signed by a permitted origin (OpenSSF Model Signing)"
+    if signer_key_id is None:
+        return not_evaluated("model_signature", requirement, "SKI_MODEL_SIGNATURE is not set")
+    return Check(id="model_signature", requirement=requirement, ok=True, detail=f"signer={signer_key_id}")
+
+
 def kg_anchored_check(kg_loaded: bool, kg_trust: Optional[str]) -> Check:
     """§3.5: the KG serving verdicts verified against an operator trust anchor."""
     return Check(

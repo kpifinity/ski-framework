@@ -2,11 +2,11 @@
 """Generate the public OpenAPI 3.1 contract for the SKI Model API.
 
 Derived from FastAPI's ``app.openapi()`` so it cannot drift from the live
-server, then pruned to the four public paths and the components they
+server, then pruned to the public paths and the components they
 reference. Run this to (re)write ``spec/contracts/openapi.yaml``.
 
 Public paths: ``POST /api/evaluate``, ``GET /api/health``, ``GET /api/sovereignty``,
-``POST /api/kg/load``. The operational endpoints (``/api/verdicts``,
+``POST /api/kg/load``, ``GET /api/mlbom``, ``GET /api/ledger/{sequence_number}/evidence``. The operational endpoints (``/api/verdicts``,
 ``/api/canary``, ``/metrics``) are intentionally excluded from the public
 contract.
 
@@ -49,7 +49,14 @@ for _src in _TOOL_SRCS:
 os.environ.setdefault("SKI_ALLOW_FAKE_LLM", "true")
 os.environ.setdefault("SKI_ALLOW_KEY_GENERATION", "true")
 
-PUBLIC_PATHS = ("/api/evaluate", "/api/health", "/api/kg/load", "/api/sovereignty")
+PUBLIC_PATHS = (
+    "/api/evaluate",
+    "/api/health",
+    "/api/kg/load",
+    "/api/sovereignty",
+    "/api/mlbom",
+    "/api/ledger/{sequence_number}/evidence",
+)
 
 OPENAPI_PATH = Path(__file__).resolve().parent / "openapi.yaml"
 

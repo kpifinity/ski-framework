@@ -162,13 +162,17 @@ jobs:
             --set skiModel.modelFileSha256=0000000000000000000000000000000000000000000000000000000000000000 \
             --set skiModel.modelWeights.existingClaim=model-weights \
             --set skiModel.modelWeights.file=qwen/model.safetensors \
-            --set image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111 > /tmp/render-airgap.yaml
+            --set image.digest=sha256:1111111111111111111111111111111111111111111111111111111111111111 \
+            --set skiModel.modelSigning.signatureFile=qwen.sig \
+            --set skiModel.modelSigning.originsConfigMap=model-origins > /tmp/render-airgap.yaml
           ! grep -q "port: 53" /tmp/render-airgap.yaml
           # Strict mode on vLLM: the weights are mounted so the pin is verified.
           grep -A1 "name: SKI_MODEL_FILE_PATH$" /tmp/render-airgap.yaml | grep -q '"/models/qwen/model.safetensors"'
           grep -q "claimName: \"model-weights\"" /tmp/render-airgap.yaml
           grep -q "ghcr.io/kpifinity/ski-model@sha256:1111" /tmp/render-airgap.yaml
           grep -A1 "name: SKI_IMAGE_DIGEST$" /tmp/render-airgap.yaml | grep -q "sha256:1111"
+          grep -A1 "name: SKI_MODEL_SIGNATURE$" /tmp/render-airgap.yaml | grep -q '"/models/qwen.sig"'
+          grep -q "mountPath: /app/model-origins" /tmp/render-airgap.yaml
       - name: Constraints fail the render (not the pod)
         run: |
           ! helm template ski deploy/helm/ski \
