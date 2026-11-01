@@ -148,7 +148,7 @@ class Ledger:
             issues: List[IntegrityIssue] = []
             warnings: List[str] = []
             prev_hash = GENESIS_HASH
-            prev_timestamp = None
+            prev_timestamp: Optional[datetime] = None
             expected_seq = 1
             chain_link_verified = 0
             entry_hash_verified = 0
@@ -552,7 +552,7 @@ class Ledger:
             if limit:
                 parts.append(f"LIMIT {int(limit)}")
             result = session.execute(text(" ".join(parts)), params)
-            rows = result.mappings().all()
+            rows = [dict(r) for r in result.mappings().all()]
 
             if format == "json":
                 _write_json(rows, output_file, fields)
@@ -667,7 +667,7 @@ class Ledger:
 
 
 def _write_json(rows: Iterable[dict[str, Any]], path: str, fields: Optional[List[str]]) -> None:
-    out = {
+    out: dict[str, Any] = {
         "export_date": datetime.now().isoformat(),
         "entries": [_project(row, fields) for row in rows],
     }

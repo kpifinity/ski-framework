@@ -24,6 +24,22 @@ referenced from each release entry.
   `adapters/reference.py` runs it against the reference implementation, and CI
   does so on every pull request (50 checks, all passing).
 
+### Quality gates
+
+- **Strict typing** now covers the v3 evaluator, verifier, policies and backends
+  and the whole `audit_ledger` package (was: its canonical module only).
+- **Branch coverage** is measured and gated (81% overall with branches; the
+  safety-critical modules stay at 95%, measured 96%).
+- **Fuzzing:** Hypothesis fuzzers for the §7.3 canonicalizer and the KG loader run
+  on every push and at 20,000 examples weekly. They found that a flat KG with a
+  non-object rule (`"rules": [null]`) crashed the loader with a `TypeError`; flat
+  documents are now validated and refused with a `ValueError`.
+- **Mutation testing** of the Symbolic Verifier and the risk-tier policy
+  (`mutmut`), weekly and on pull requests that touch them, gated on the score of
+  the non-text mutants (`scripts/mutation_score.py`): 83.7% measured, gate 82%.
+  The first run found the tier-2 `NEURO_SYMBOLIC_DIVERGENCE` path and the
+  `human_attestation` marker on downgrades untested; both are now pinned.
+
 ### One Knowledge Graph shape (spec §3, §5.1, §11.2)
 
 - **Subject routing (spec §5.1).** The KG slice for a measurement now holds only

@@ -299,7 +299,7 @@ def replay(
 # ---------------------------------------------------------------------------
 
 
-def _html_report(result, title: str) -> str:
+def _html_report(result: Any, title: str) -> str:
     vs = result.verdict_summary
     rows = [
         ("CLEAR", vs.clear, vs.clear_percent, "verdict-clear"),

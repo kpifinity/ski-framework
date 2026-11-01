@@ -1,0 +1,57 @@
+name: Quality (mutation testing + deep fuzzing)
+
+# Slow gates that do not belong on every push: mutation testing of the
+# safety-critical decision code (the Symbolic Verifier and the risk-tier
+# policy), and the KG-loader / canonicalizer fuzzers at a high example count.
+# The per-push CI runs the same fuzzers at 300 examples.
+
+on:
+  schedule:
+    - cron: "17 3 * * 1"  # weekly, Monday 03:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "reference-implementation/src/ski_model/v3/verifier.py"
+      - "reference-implementation/src/ski_model/v3/policies/**"
+      - "reference-implementation/setup.cfg"
+      - "scripts/mutation_score.py"
+      - ".github/workflows/quality.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz-deep:
+    name: Fuzz KG loader + canonicalizer (deep)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e tools/ski-schemas
+      - run: pytest -q tools/ski-schemas/tests/test_fuzz_canonical.py reference-implementation/src/ski_model/v3/tests/test_fuzz_kg_loader.py
+        env:
+          SKI_FUZZ_EXAMPLES: "20000"
+
+  mutation:
+    name: Mutation testing (verifier + risk-tier policy)
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          # mutmut's libcst needs pyyaml>=6.0.3 on 3.14; requirements-dev pins 6.0.1.
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt "mutmut==3.8.1"
+      - run: pip install -e tools/ski-schemas
+      - name: mutmut run
+        working-directory: reference-implementation
+        run: mutmut run || true  # the score below is the gate, not mutmut's exit code
+      - name: Mutation score (gate)
+        run: python scripts/mutation_score.py reference-implementation/mutants --min-score 0.82

@@ -86,3 +86,6 @@ Thumbs.db
 reference-implementation/examples/knowledge-graphs/kg.json
 reference-implementation/tls/
 reference-implementation/kg-signing/
+
+# mutmut sandbox (setup.cfg in reference-implementation/)
+reference-implementation/mutants/
