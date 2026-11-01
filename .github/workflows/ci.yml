@@ -51,6 +51,34 @@ jobs:
         env:
           SKI_L3_LEDGER_DSN: postgresql+psycopg://postgres:l3test@localhost:5433/postgres
 
+  conformance-blackbox:
+    name: SKI conformance tests (black-box suite vs reference)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: bbtest
+          POSTGRES_DB: ski_blackbox
+        ports: ["5434:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e tools/ski-schemas
+      # The adapter boots the reference implementation against the scripted
+      # LLM and a fresh ledger, then runs conformance/blackbox over HTTP + SQL.
+      - run: >-
+          python conformance/blackbox/adapters/reference.py
+          --ledger-dsn postgresql://postgres:bbtest@localhost:5434/ski_blackbox
+          -- -q --tb=short -rs
+
   sovereignty-l3-airgap:
     name: SKI conformance tests (Sovereignty L3, air-gapped boot)
     runs-on: ubuntu-latest
