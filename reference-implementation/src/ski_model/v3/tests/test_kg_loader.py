@@ -79,6 +79,11 @@ _RULES: List[Dict[str, Any]] = [
 _TAG_REGISTRY: Dict[str, str] = {"emissions": "r.a"}
 
 
+def _as_flat(rules: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """A loaded flat KG's obligations without what its graph conversion adds (owning Rules, Subjects)."""
+    return [{k: v for k, v in r.items() if k not in ("rule_ids", "subjects")} for r in rules]
+
+
 def _canonical(metadata: Dict[str, Any], rules: List[Dict[str, Any]], tag_registry: Dict[str, str]) -> bytes:
     payload = {"metadata": metadata, "rules": rules, "tag_registry": tag_registry}
     return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -125,7 +130,7 @@ class TestValidSignature:
         kg = KnowledgeGraph.from_dict(payload, require_signature=True, trust=_anchored(key))
         assert kg.signature_verified is True
         assert kg.version == "kgtest-0001"
-        assert kg.rules == _RULES
+        assert _as_flat(kg.rules) == _RULES
 
     def test_valid_signature_also_verifies_when_not_required(self) -> None:
         """A present, valid signature is always checked -- require_signature only
@@ -149,7 +154,7 @@ class TestSignatureRefusal:
         payload = {"metadata": _METADATA, "rules": _RULES, "tag_registry": _TAG_REGISTRY}
         kg = KnowledgeGraph.from_dict(payload, require_signature=False)
         assert kg.signature_verified is False
-        assert kg.rules == _RULES
+        assert _as_flat(kg.rules) == _RULES
         assert kg.kg_trust == "unsigned"
         assert kg.signer_key_id is None
 
@@ -270,7 +275,7 @@ class TestLoadSignedKG:
         path.write_text(json.dumps(payload), encoding="utf-8")
         kg = load_signed_kg(path, require_signature=True, trust=_anchored(key))
         assert kg.signature_verified is True
-        assert kg.rules == _RULES
+        assert _as_flat(kg.rules) == _RULES
 
     def test_loads_unsigned_file_when_not_required(self, tmp_path: Path) -> None:
         payload = {"metadata": _METADATA, "rules": _RULES, "tag_registry": _TAG_REGISTRY}
@@ -501,3 +506,29 @@ class TestKGTrustPolicyFromEnv:
         empty.write_text("", encoding="utf-8")
         with pytest.raises(KGTrustError):
             KGTrustPolicy.from_env({"SKI_KG_TRUST_ANCHORS": str(empty), "SKI_KG_ALLOW_UNANCHORED": "true"})
+
+
+class TestFlatKGRunsAsItsGraph:
+    """Since v3.3.0 a flat KG is converted to the spec §3 graph at load: one shape at runtime."""
+
+    def test_flat_kg_routes_by_its_tag_registry_subjects(self) -> None:
+        payload, key = _signed_payload()
+        kg = KnowledgeGraph.from_dict(payload, require_signature=True, trust=_anchored(key))
+        assert kg.source_shape == "flat" and kg.graph is not None
+        assert kg.rules[0]["subjects"] == ["emissions"]
+        as_of = datetime(2026, 1, 15, tzinfo=timezone.utc)
+        assert [
+            o["id"] for o in kg.scope_to(jurisdiction=None, as_of=as_of, subject="emissions")["obligations"]
+        ] == ["r.a"]
+        assert kg.scope_to(jurisdiction=None, as_of=as_of, subject="other")["obligations"] == []
+        assert len(kg.scope_to(jurisdiction=None, as_of=as_of)["obligations"]) == 1  # replay of older entries
+
+    def test_flat_kg_keeps_its_legacy_hash_for_replay(self) -> None:
+        from ski_schemas.canonical import sha256_canonical
+
+        payload, key = _signed_payload()
+        kg = KnowledgeGraph.from_dict(payload, require_signature=True, trust=_anchored(key))
+        assert kg.legacy_version_hash == sha256_canonical(
+            {"version": kg.version, "rules": _RULES, "tag_registry": _TAG_REGISTRY}
+        )
+        assert kg.version_hash is not None and kg.version_hash != kg.legacy_version_hash

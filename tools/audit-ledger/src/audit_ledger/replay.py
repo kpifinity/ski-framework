@@ -348,7 +348,9 @@ async def _replay_async(
                 )
                 continue
 
-            if provenance.get("kg_version_hash") != kg_version_hash:
+            # A flat KG recorded before v3.3.0 was hashed in its flat form.
+            accepted = {kg_version_hash, getattr(kg, "legacy_version_hash", None)} - {None}
+            if provenance.get("kg_version_hash") not in accepted:
                 mismatch(
                     entry,
                     "<not replayed>",
@@ -389,7 +391,9 @@ async def _replay_async(
             as_of = record["telemetry_ts"]
 
             scope = snapshot.get("scope") or {}
-            rescoped = kg.scope_to(jurisdiction=scope.get("jurisdiction"), as_of=as_of)
+            rescoped = kg.scope_to(
+                jurisdiction=scope.get("jurisdiction"), as_of=as_of, subject=scope.get("subject")
+            )
             if [ob.get("id") for ob in rescoped["obligations"]] != [
                 ob.get("id") for ob in snapshot.get("obligations", [])
             ]:

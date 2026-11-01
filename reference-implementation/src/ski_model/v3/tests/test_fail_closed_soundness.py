@@ -859,9 +859,11 @@ class TestHttpRejectsMalformedInput:
         kg: KnowledgeGraph = server.state.knowledge_graph  # type: ignore[assignment]
         original = kg.scope_to
 
-        def spy(*, jurisdiction: Optional[str], as_of: datetime) -> Dict[str, Any]:
+        def spy(
+            *, jurisdiction: Optional[str], as_of: datetime, subject: Optional[str] = None
+        ) -> Dict[str, Any]:
             seen.append(as_of)
-            return original(jurisdiction=jurisdiction, as_of=as_of)
+            return original(jurisdiction=jurisdiction, as_of=as_of, subject=subject)
 
         monkeypatch.setattr(kg, "scope_to", spy)
         resp = _post(c, _payload({"so2_ppm": 50}, timestamp="2026-01-15T07:00:00-05:00"))

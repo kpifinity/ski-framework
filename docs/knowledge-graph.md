@@ -119,11 +119,22 @@ and citations through explicit, validatable edges. `kg-validator`'s
 §3.6 passes enforce referential integrity — every edge endpoint must
 resolve to a declared node, every obligation must be cited and scoped.
 
-## Jurisdiction + effective-date scoping at runtime
+## Subject, jurisdiction and effective-date scoping at runtime
 
-`KnowledgeGraph.scope_to(jurisdiction, as_of)` returns the slice of
-obligations applicable to a tenant's jurisdiction and in force at the
-measurement's timestamp. Only that slice is shown to the LLM (so
+`KnowledgeGraph.scope_to(jurisdiction, as_of, subject)` returns the slice of
+obligations (spec §5.1) that apply to the measurement's subject, its
+jurisdiction, and are in force at its timestamp:
+
+- **Subject:** the obligations reachable through `consists_of` from the Rules
+  that `applies_to` the measurement's `subject`. A Rule with no `applies_to`
+  edge applies to every subject, the same way an obligation with no
+  `scoped_to` edge applies in every jurisdiction. A measurement whose subject
+  no Rule applies to gets an empty slice. Nothing is then known about its risk
+  tier, so the strictest tier applies and the verdict goes to human review
+  (`DISCRETIONARY`): route every subject you send, or give it a universal Rule.
+- **Jurisdiction:** the obligation is `scoped_to` the measurement's
+  jurisdiction (or an ancestor of it), or to none.
+- **Effective dates:** `effective_date_start <= timestamp <= effective_date_end`. Only that slice is shown to the LLM (so
 real-sized KGs don't blow the context window), and the scope block
 travels inside the signed transcript so an auditor can confirm exactly
 what the model saw.
@@ -150,8 +161,12 @@ Signature verification at load time is **mandatory** — there is no
 runtime's `KG_REQUIRE_SIGNATURE=false` knob exists only so the unsigned
 demo KGs can load; it is non-conformant by definition (the Durability
 conformance suite asserts signed-KG-required). The earlier flat format
-(`rules` + `tag_registry`) still loads, as a compatibility mode. To move a
-flat KG to the graph format (then validate and sign it):
+(`rules` + `tag_registry`) is **deprecated** and removed in v4.0: since
+v3.3.0 the runtime loads it only with `SKI_KG_ALLOW_FLAT=true`, checks its
+signature over the flat file, and then runs it as its converted graph (its
+`tag_registry` subjects become `applies_to` routing), so there is one KG
+shape and one KG version hash. To move a flat KG to the graph format (then
+validate and sign it):
 
 ```bash
 python scripts/flat-kg-to-graph.py kg-flat.json kg.json --default-effective-date 2026-01-01T00:00:00Z

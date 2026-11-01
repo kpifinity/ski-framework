@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Convert a flat Knowledge Graph (``rules`` + ``tag_registry``) to the spec §3 graph shape.
 
-The flat shape still loads in compatibility mode (spec §11.2); this script
-moves a KG to the graph shape the spec, kg-validator and the runtime share.
+The flat shape still loads in compatibility mode (spec §11.2, opt-in with
+``SKI_KG_ALLOW_FLAT=true`` since v3.3.0); this script moves a KG to the graph
+shape the spec, kg-validator and the runtime share. The conversion itself is
+``ski_schemas.kg_graph.flat_to_graph``; the runtime applies the same one in memory.
 Each flat rule becomes one Obligation (same id, so recorded citations still
 resolve) owned by one Rule (``rule.<id>``):
 
@@ -31,90 +33,15 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
 _REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_REPO / "tools" / "ski-schemas" / "src"))
 
-from ski_schemas.canonical import sha256_canonical
+from ski_schemas.kg_graph import flat_to_graph
 
-_UNIVERSAL = {"global", "*", ""}
-_TIERS = {
-    "tier-1": "high",
-    "tier1": "high",
-    "high": "high",
-    "high-risk": "high",
-    "tier-2": "medium",
-    "tier2": "medium",
-    "standard": "medium",
-    "default": "medium",
-    "medium": "medium",
-    "tier-3": "low",
-    "tier3": "low",
-    "low": "low",
-    "low-risk": "low",
-}
-_KEPT = ("metric", "value", "unit", "window_seconds", "requires_recent_within_seconds")
-
-
-def _versioned(node: Dict[str, Any]) -> Dict[str, Any]:
-    return {**node, "version": sha256_canonical(node)}
-
-
-def convert(flat: Dict[str, Any], default_effective_date: Optional[str] = None) -> Dict[str, Any]:
-    """The graph-shape KG for a flat ``{metadata, rules, tag_registry}`` KG."""
-    metadata = dict(flat.get("metadata") or {})
-    metadata.setdefault("name", str(metadata.get("version") or "converted-kg"))
-    metadata["schema_version"] = "3.0"
-    rules: List[Dict[str, Any]] = flat.get("rules") or []
-    edges: List[Dict[str, str]] = []
-    nodes: Dict[str, List[Dict[str, Any]]] = {
-        "subjects": [],
-        "rules": [],
-        "obligations": [],
-        "jurisdictions": [],
-    }
-    jurisdictions: Dict[str, Dict[str, Any]] = {}
-
-    for flat_rule in rules:
-        ob_id = str(flat_rule["id"])
-        rule_id = f"rule.{ob_id}"
-        obligation: Dict[str, Any] = {
-            "id": ob_id,
-            "type": "Obligation",
-            "obligation_type": flat_rule.get("predicate", "must_not_exceed"),
-        }
-        obligation.update({k: flat_rule[k] for k in _KEPT if flat_rule.get(k) is not None})
-        start = flat_rule.get("effective_date") or default_effective_date
-        if start:
-            obligation["effective_date_start"] = start
-        if flat_rule.get("sunset_date"):
-            obligation["effective_date_end"] = flat_rule["sunset_date"]
-        if flat_rule.get("name"):
-            obligation["summary"] = flat_rule["name"]
-        nodes["obligations"].append(_versioned(obligation))
-
-        rule: Dict[str, Any] = {"id": rule_id, "type": "Rule", "name": str(flat_rule.get("name") or ob_id)}
-        tier = flat_rule.get("risk_tier")
-        if isinstance(tier, str) and tier.strip().lower() in _TIERS:
-            rule["risk_tier"] = _TIERS[tier.strip().lower()]
-        nodes["rules"].append(_versioned(rule))
-        edges.append({"type": "consists_of", "from": rule_id, "to": ob_id})
-
-        scope = flat_rule.get("jurisdiction")
-        for jurisdiction in [scope] if isinstance(scope, str) else (scope or []):
-            if jurisdiction in _UNIVERSAL:
-                continue
-            jurisdictions.setdefault(
-                jurisdiction, _versioned({"id": jurisdiction, "type": "Jurisdiction", "name": jurisdiction})
-            )
-            edges.append({"type": "scoped_to", "from": ob_id, "to": jurisdiction})
-
-    for subject, routed_rule in sorted((flat.get("tag_registry") or {}).items()):
-        nodes["subjects"].append(_versioned({"id": subject, "type": "Subject", "name": subject}))
-        edges.append({"type": "applies_to", "from": f"rule.{routed_rule}", "to": subject})
-    nodes["jurisdictions"] = [jurisdictions[j] for j in sorted(jurisdictions)]
-    return {"metadata": metadata, "nodes": nodes, "edges": edges}
+# Kept as ``convert`` for callers of the script module.
+convert = flat_to_graph
 
 
 def main(argv: Optional[List[str]] = None) -> int:

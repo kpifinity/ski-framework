@@ -1,50 +1,53 @@
 # Schema migrations
 
-The SKI Framework reference implementation uses Alembic to manage
-Postgres schema changes. Migrations live under
-[`reference-implementation/migrations/`](../reference-implementation/migrations/)
-and are versioned alongside the spec.
+The reference ledger has **one** migration mechanism: ordered, idempotent
+SQL files in
+[`reference-implementation/src/ledger/`](../reference-implementation/src/ledger/).
+The same files are applied two ways, never by different code:
 
-## Why we use migrations
+- **Fresh databases** run the baseline as Postgres init scripts (compose and
+  Helm mount them in this order): `schema.sql`, `append_only.sql`,
+  `ledger_writer_login.sh`, `telemetry_buffer.sql`. The baseline already
+  includes every migration below.
+- **Existing databases** take the numbered files in `migrations/`, in order.
+  The runtime applies them itself on startup when its role may
+  (`SKI_AUTOMIGRATE`, on by default; it embeds byte-identical copies, pinned
+  by tests), otherwise the owner runs them with `psql`. Every file is safe to
+  re-run.
 
-- **Reproducible deployments.** Every deployment ends up at a known
-  schema version.
-- **Audit-grade upgrade paths.** Every schema change has an `upgrade()`
-  and (where safe) a `downgrade()` function. Auditors can read the
-  exact transformation that was applied.
-- **Forwards / backwards compatibility.** v0.1 ledger entries continue
-  to read after the v0.2 migration runs, because the migration only
-  adds nullable columns and new tables.
+Since v3.3.0 the Alembic tree that covered the v0.1 → v0.2 upgrade is
+retired: `telemetry_buffer.sql` contains the same change, idempotently.
 
 ## Versions
 
-| Revision | Spec version | What it does |
+| File | Release | What it does |
 |---|---|---|
-| `001_baseline` | v2.0 / v0.1.0-alpha | Captures the v0.1 baseline (already-deployed `ledger_entries` + append-only triggers) without modification |
-| `002_telemetry_buffer` | v2.1 / v0.2.0 | Adds `tenants`, `telemetry_buffer` (RANGE-partitioned), buffer append-only triggers, `schema_version` column on `ledger_entries`, default `tenant` row, default daily partition |
-| `0003_ledger_v5` | v3.0 / v3.3.0 | Ledger format 5: adds `tenant_id`, `kg_version_hash`, `model_weight_hash`, `schema_version`, `verdict_signature`, `verdict_signing_key_id` to `ledger_entries`, and the append-only `ledger_signing_keys` and `ledger_checkpoints` tables with the writer's grants. Idempotent; existing rows are not modified. Fresh deployments get the same from `schema.sql` / `append_only.sql`. |
-| `0002_transcript_columns` | v3.0 / v3.0.0 | Adds the v3 audit-trail columns to `ledger_entries`: `envelope_json`, `envelope_hash`, `transcript_json`, `transcript_signature`, `signing_key_id`, `verifier_status`. Relaxes the legacy `track` CHECK so v3 evaluator entries (`'v3-evaluator'`) are accepted. Idempotent (every ALTER guarded with IF [NOT] EXISTS). Required for any v0.2.x ledger being upgraded to v3.0. **Fresh v3.0.1+ deployments** get these columns directly from `schema.sql` (rewritten to the v3 baseline in PR 15) and docker-compose also mounts this migration as `03-transcript-columns.sql` for defence-in-depth — both paths end at the same column set. |
+| `telemetry_buffer.sql` | v0.2.0 | `tenants`, the RANGE-partitioned `telemetry_buffer`, its append-only triggers and the writer's grants. Also the upgrade from v0.1 (formerly Alembic `002_telemetry_buffer`). |
+| `migrations/0002_transcript_columns.sql` | v3.0.0 | The v3 audit-trail columns on `ledger_entries`: `envelope_json`, `envelope_hash`, `transcript_json`, `transcript_signature`, `signing_key_id`, `verifier_status`; relaxes the legacy `track` CHECK. Required for a v0.2.x ledger. |
+| `migrations/0003_ledger_v5.sql` | v3.3.0 | Ledger format 5: `tenant_id`, `kg_version_hash`, `model_weight_hash`, `schema_version`, `verdict_signature`, `verdict_signing_key_id` on `ledger_entries`, and the append-only `ledger_signing_keys` and `ledger_checkpoints` tables with the writer's grants. Existing rows are not modified. |
+
+New schema changes add the next numbered file, update the baseline to match,
+and add the embedded copy to `ski_model/ledger_migrations.py`.
 
 ## Running migrations
 
 ### First-time setup on an empty database
 
+Compose and Helm do it on first init. By hand, as the owner:
+
 ```bash
-cd reference-implementation
-alembic -c migrations/alembic.ini upgrade head
+cd reference-implementation/src/ledger
+for f in schema.sql append_only.sql telemetry_buffer.sql; do psql "<owner DSN>" -f "$f"; done
+psql "<owner DSN>" -c "ALTER ROLE ski_ledger_writer WITH LOGIN PASSWORD '<secret>'"
 ```
 
-### Upgrading an existing v0.1 deployment to v0.2
+### Upgrading an existing v0.1 deployment
 
 ```bash
-# Back up first.
-audit-ledger backup --source "$LEDGER_DSN" --output ledger-pre-v0.2.dump
-
-# Run migrations.
-cd reference-implementation
-alembic -c migrations/alembic.ini upgrade head
-
-# Verify.
+audit-ledger backup --source "$LEDGER_DSN" --output ledger-pre-upgrade.dump
+psql "<owner DSN>" -f reference-implementation/src/ledger/telemetry_buffer.sql
+psql "<owner DSN>" -f reference-implementation/src/ledger/append_only.sql
+for f in reference-implementation/src/ledger/migrations/0*.sql; do psql "<owner DSN>" -f "$f"; done
 audit-ledger verify --ledger-db "$LEDGER_DSN"
 ```
 
@@ -215,14 +218,11 @@ unless you set it, which defers to `SKI_MAX_CLOCK_SKEW_SECONDS`.
 
 ## Rolling back
 
-```bash
-alembic -c migrations/alembic.ini downgrade -1
-```
-
-The v0.2 downgrade drops the buffer table and the `schema_version`
-column. The `tenants` table is preserved (downgrades are not allowed to
-destroy customer-supplied configuration). Pre-v0.2 ledger entries are
-unaffected.
+The migrations only add nullable columns, tables and grants, and existing
+rows keep verifying under the formats they were written in, so an older
+runtime keeps working against a newer schema. Rolling back is restoring the
+backup taken before the upgrade (`audit-ledger backup`); there are no
+down-migrations, because an append-only ledger must not lose rows or columns.
 
 ## Operator tasks
 

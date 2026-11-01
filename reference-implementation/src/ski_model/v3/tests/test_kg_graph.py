@@ -12,7 +12,7 @@ import copy
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import pytest
 from cryptography.hazmat.primitives import serialization
@@ -214,7 +214,8 @@ def test_flat_kg_keeps_its_signing_bytes() -> None:
     assert signing_bytes(flat) == _canonical_bytes(flat["metadata"], flat["rules"], flat["tag_registry"])
     key = Ed25519PrivateKey.generate()
     kg = KnowledgeGraph.from_dict(_sign(flat, key), require_signature=True, trust=_anchored(key))
-    assert kg.graph is None and kg.tag_registry == {"s": "r"}
+    assert kg.source_shape == "flat" and kg.tag_registry == {"s": "r"}
+    assert kg.graph is not None and [e["type"] for e in kg.graph["edges"]] == ["consists_of", "applies_to"]
 
 
 # ---- runtime use -------------------------------------------------------------------
@@ -247,3 +248,37 @@ def test_every_committed_demo_kg_loads(path: Path) -> None:
     )
     assert kg.rules and all(ob["metric"] and ob["predicate"] for ob in kg.rules)
     assert kg.scope_to(jurisdiction="us.federal", as_of=_AS_OF)["obligations"]
+
+
+# ---- spec §5.1 subject routing -------------------------------------------------------
+
+
+def _scope_ids(graph: Dict[str, Any], subject: Any) -> List[str]:
+    key = Ed25519PrivateKey.generate()
+    kg = KnowledgeGraph.from_dict(_sign(graph, key), require_signature=True, trust=_anchored(key))
+    snapshot = kg.scope_to(
+        jurisdiction="us", as_of=datetime(2026, 6, 1, tzinfo=timezone.utc), subject=subject
+    )
+    assert snapshot["scope"]["subject"] == subject
+    return sorted(ob["id"] for ob in snapshot["obligations"])
+
+
+def test_obligations_carry_the_subjects_their_rules_apply_to() -> None:
+    graph = _graph()
+    by_id = {ob["id"]: ob for ob in compile_graph(graph["nodes"], graph["edges"])[0]}
+    assert by_id["ob.avg"]["subjects"] == ["stack"]  # only r.so2 owns it, and r.so2 applies_to stack
+    assert "subjects" not in by_id["ob.so2"]  # also owned by r.strict, which applies to every subject
+
+
+def test_a_measurement_is_routed_to_its_subjects_slice() -> None:
+    graph = _graph()
+    assert _scope_ids(graph, "stack") == ["ob.avg", "ob.so2"]
+    assert _scope_ids(graph, "other-stack") == ["ob.so2"]  # the universal rule's obligation only
+    assert _scope_ids(graph, None) == ["ob.avg", "ob.so2"]  # no subject recorded: not filtered
+
+
+def test_a_subject_no_rule_applies_to_gets_an_empty_slice() -> None:
+    graph = _graph()
+    graph["edges"].append({"type": "applies_to", "from": "r.strict", "to": "stack"})
+    assert _scope_ids(graph, "stack") == ["ob.avg", "ob.so2"]
+    assert _scope_ids(graph, "other-stack") == []  # every rule is routed, none to this subject

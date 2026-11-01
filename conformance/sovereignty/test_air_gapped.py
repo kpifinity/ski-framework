@@ -138,15 +138,22 @@ _KG_NODES: Dict[str, List[Dict[str, Any]]] = {
 }
 _KG_EDGES: List[Dict[str, Any]] = [edge for cap in _CAPS for edge in cap["edges"]]
 
-# (measurement_id, measurement payload, expected verdict)
+# (measurement_id, measurement payload, expected verdict). The subject is
+# ``facility.<metric>`` (see _subject): each cap's Rule applies_to it (spec §5.1).
 _WORKLOAD: List[Tuple[str, Dict[str, Any], str]] = [
     ("airgap-001", {"so2_ppm": 85}, "CLEAR"),
     ("airgap-002", {"so2_ppm": 142}, "FLAG"),
     ("airgap-003", {"nox_ppm": 12}, "CLEAR"),
     ("airgap-004", {"nox_ppm": 60}, "FLAG"),
+    # A routed subject reporting a metric none of its obligations name.
     ("airgap-005", {"co2_ppm": 410}, "NULL_UNMAPPED"),
     ("airgap-006", {"pm25_ppm": 12}, "CLEAR"),
 ]
+
+
+def _subject(measurement_id: str, measurement: Dict[str, Any]) -> str:
+    """``facility.<metric>``, except airgap-005: the SO2 stack reporting an unmapped CO2 reading."""
+    return "facility.so2_ppm" if measurement_id == "airgap-005" else f"facility.{next(iter(measurement))}"
 
 
 @dataclass(frozen=True)
@@ -310,7 +317,7 @@ class AirgapRig:
                     {
                         "measurement_id": measurement_id,
                         "timestamp": "2026-06-15T12:00:00Z",
-                        "subject": f"facility.{next(iter(measurement))}",
+                        "subject": _subject(measurement_id, measurement),
                         "measurement": measurement,
                     },
                 )
