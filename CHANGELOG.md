@@ -9,6 +9,21 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Black-box conformance suite
+
+- **`conformance/blackbox/`: conformance for any implementation.** The suite
+  tests an implementation through its HTTP API, its ledger (SQL, for the §7.2
+  append-only checks) and `spec/test-vectors/` only; a test fails the build if
+  any file in it imports reference code. The implementation uses a scripted,
+  OpenAI-compatible LLM (`scripted_llm.py`), so each test fixes the model's
+  answer: correct, self-contradicting, misreporting the reading, citing outside
+  the slice, malformed, or missing. It then checks the verdict, the verifier
+  status, the risk-tier outcome, routing, and the ledger evidence (hash chain,
+  envelope hash, SCITT and TRACE signatures, Merkle receipts). Its RFC 8785 and
+  RFC 6962 checkers are written from the RFCs and verified against the vectors.
+  `adapters/reference.py` runs it against the reference implementation, and CI
+  does so on every pull request (50 checks, all passing).
+
 ### Quality gates
 
 - **Strict typing** now covers the v3 evaluator, verifier, policies and backends

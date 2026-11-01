@@ -122,6 +122,23 @@ Each test prints the spec section it validates on failure. Run results
 can be exported as JUnit XML and rendered into a conformance badge in
 your project's README.
 
+### Black-box suite (any implementation)
+
+`conformance/blackbox/` tests an implementation through its HTTP API, its
+ledger and the vectors in `spec/test-vectors/` only, with no reference code,
+so an implementation in any language can run it. The implementation uses
+the suite's scripted, OpenAI-compatible LLM, so each test fixes what the
+model says (a correct answer, a self-contradiction, a misreported reading,
+a citation outside the slice, malformed output, no answer) and checks what
+the implementation does with it. See
+[`conformance/blackbox/README.md`](https://github.com/kpifinity/ski-framework/blob/main/conformance/blackbox/README.md).
+
+```bash
+# The reference implementation, end to end (needs an empty Postgres database):
+python conformance/blackbox/adapters/reference.py \
+  --ledger-dsn postgresql://postgres:pw@127.0.0.1:5432/ski_blackbox
+```
+
 ## Attestation flow
 
 For self-asserted conformance:
