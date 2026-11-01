@@ -34,7 +34,12 @@ See [Governance](../governance.md) for the full process.
 
 ## Draft
 
-_(none currently)_
+- [RFC 0004 — Specification 3.1: align the text with the contracts](0004-spec-3-1-alignment.md)
+  — Canonical JSON is RFC 8785 exactly; NFC on values only; the full
+  assertion predicate set and `window_seconds`; optional provenance fields;
+  `prompt_template_hash` is the template's hash; ledger storage by content;
+  one KG shape; every Rule needs an obligation; vendor-neutral normative
+  text. In its 14-day comment period.
 
 ## Templates
 
