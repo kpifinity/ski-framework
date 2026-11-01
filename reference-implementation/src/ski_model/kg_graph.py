@@ -23,7 +23,12 @@ hashed. Each ``Obligation`` node becomes one obligation:
 * ``risk_tier`` is the strictest ``risk_tier`` (spec §5.4: ``low`` /
   ``medium`` / ``high``) of the Rules that ``consists_of`` it, absent when
   no Rule declares one (the risk-tier governor then applies tier-1);
-* ``rule_ids`` lists those Rules.
+* ``rule_ids`` lists those Rules;
+* ``subjects`` lists the Subjects those Rules ``applies_to`` (spec §5.1), used
+  to route a measurement to its slice. A Rule with no ``applies_to`` edge
+  applies to every subject, as an obligation with no ``scoped_to`` edge
+  applies in every jurisdiction; an obligation reachable from such a Rule
+  (or from no Rule) has no ``subjects`` key and is never filtered by subject.
 
 Every Rule must ``consists_of`` at least one Obligation (spec §3.3); a Rule
 without one has nothing the verifier can check, so the graph is refused.
@@ -85,9 +90,10 @@ def compile_graph(nodes: Any, edges: Any) -> tuple[list[dict[str, Any]], list[di
     def ids_of(kind: str) -> set[str]:
         return {node_id for node_id, (k, _) in by_id.items() if k == kind}
 
-    rule_ids, jurisdiction_ids = ids_of("rules"), ids_of("jurisdictions")
+    rule_ids, jurisdiction_ids, subject_ids = ids_of("rules"), ids_of("jurisdictions"), ids_of("subjects")
     owners: dict[str, list[str]] = {}  # obligation id -> rule ids (consists_of)
     scoped: dict[str, set[str]] = {}  # obligation or rule id -> jurisdiction ids (scoped_to)
+    applies: dict[str, set[str]] = {}  # rule id -> subject ids (applies_to)
     for edge in edges:
         if not isinstance(edge, dict):
             raise ValueError("KG edges must be objects.")
@@ -100,6 +106,8 @@ def compile_graph(nodes: Any, edges: Any) -> tuple[list[dict[str, Any]], list[di
             owners.setdefault(target, []).append(source)
         elif edge_type == "scoped_to" and target in jurisdiction_ids:
             scoped.setdefault(source, set()).add(target)
+        elif edge_type == "applies_to" and source in rule_ids and target in subject_ids:
+            applies.setdefault(source, set()).add(target)
 
     obligation_ids = ids_of("obligations")
     ruled = {rule_id for target, rules in owners.items() if target in obligation_ids for rule_id in rules}
@@ -152,6 +160,8 @@ def compile_graph(nodes: Any, edges: Any) -> tuple[list[dict[str, Any]], list[di
             compiled["risk_tier"] = min(ranked, key=_TIER_RANK.__getitem__)
         if rules_of:
             compiled["rule_ids"] = sorted(rules_of)
+            if all(r in applies for r in rules_of):
+                compiled["subjects"] = sorted(set().union(*(applies[r] for r in rules_of)))
         obligations.append(compiled)
 
     if not obligations:

@@ -52,6 +52,7 @@ except ImportError:  # pragma: no cover
     from tag_registry import RiskTierGovernor, TagRegistry
 
 from ski_schemas.canonical import CanonicalizationError, canonicalize, sha256_canonical
+from ski_schemas.kg_graph import kg_version_hash
 from ski_schemas.measurement import MeasurementRecord
 
 from . import metrics, sovereignty
@@ -237,21 +238,34 @@ def _kg_to_v3_snapshot(kg: KnowledgeGraph) -> Dict[str, Any]:
 
 
 def _compute_kg_version_hash(kg: KnowledgeGraph) -> str:
-    """sha256 of the spec §7.3 canonical KG payload — recorded in ModelProvenance.
+    """The KG's version hash, recorded in ModelProvenance: ``ski_schemas.kg_graph.kg_version_hash``.
 
-    A graph KG hashes its signed ``{metadata, nodes, edges}`` content, so an
-    auditor recomputes the value from the KG file; a flat (compatibility)
-    KG hashes ``{version, rules, tag_registry}``. Raises
-    :class:`CanonicalizationError` for a KG that has no canonical form.
+    The one definition for both KG shapes: a flat (compatibility) KG is hashed
+    as the graph it converts to. Raises :class:`CanonicalizationError` for a
+    KG that has no canonical form.
     """
     if kg.graph is not None:
-        return sha256_canonical(kg.graph)
-    return sha256_canonical(
-        {
-            "version": kg.version,
-            "rules": kg.rules,
-            "tag_registry": kg.tag_registry,
-        }
+        return kg_version_hash(kg.graph)
+    return sha256_canonical({"version": kg.version, "rules": kg.rules, "tag_registry": kg.tag_registry})
+
+
+_ALLOW_FLAT_ENV = "SKI_KG_ALLOW_FLAT"
+
+
+def _require_graph_shape(kg: KnowledgeGraph) -> None:
+    """Refuse a flat (spec §11.2) KG unless ``SKI_KG_ALLOW_FLAT=true``; it is deprecated."""
+    if kg.source_shape != "flat":
+        return
+    if os.getenv(_ALLOW_FLAT_ENV, "").strip().lower() != "true":
+        raise ValueError(
+            "The KG is in the deprecated flat shape (rules + tag_registry). Convert it with "
+            "scripts/flat-kg-to-graph.py and sign it with `ski-model-deploy sign`, or set "
+            f"{_ALLOW_FLAT_ENV}=true to load it in compatibility mode until v4.0."
+        )
+    logger.warning(
+        "Loaded a flat-shape KG in compatibility mode (%s=true); it runs as its converted spec §3 graph. "
+        "Convert it with scripts/flat-kg-to-graph.py: flat KGs are removed in v4.0.",
+        _ALLOW_FLAT_ENV,
     )
 
 
@@ -448,6 +462,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         state.knowledge_graph = load_signed_kg(
             kg_path, require_signature=require_sig, trust=state.kg_trust_policy
         )
+        _require_graph_shape(state.knowledge_graph)
         state.kg_version_hash = _compute_kg_version_hash(state.knowledge_graph)
         logger.info(
             "KG loaded: version=%s rules=%d signature_verified=%s kg_trust=%s signer=%s kg_hash=%s",
@@ -647,13 +662,14 @@ async def load_kg(kg_data: Dict[str, Any]) -> Dict[str, Any]:
     try:
         policy = state.kg_trust_policy if state.kg_trust_policy is not None else KGTrustPolicy.from_env()
         kg = KnowledgeGraph.from_dict(kg_data, require_signature=True, trust=policy)
-        kg_version_hash = _compute_kg_version_hash(kg)
+        _require_graph_shape(kg)
+        new_hash = _compute_kg_version_hash(kg)
     except Exception as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"KG invalid: {exc}") from exc
 
     state.knowledge_graph = kg
     state.tag_registry = TagRegistry.from_knowledge_graph(kg)
-    state.kg_version_hash = kg_version_hash
+    state.kg_version_hash = new_hash
 
     if state.evaluator is not None:
         state.evaluator.kg_version_hash = state.kg_version_hash
@@ -814,6 +830,7 @@ async def _evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     snapshot = state.knowledge_graph.scope_to(
         jurisdiction=measurement.jurisdiction,
         as_of=measurement_ts,
+        subject=measurement.subject,
     )
 
     # PR 11: evaluator yields envelope + signed transcript; ledger persists both.

@@ -153,9 +153,11 @@ def _measurement(value: int = 50, *, ts: str = "2026-01-15T12:00:00Z") -> Dict[s
     }
 
 
-def _enable_hot_load(monkeypatch: pytest.MonkeyPatch) -> None:
+def _enable_hot_load(monkeypatch: pytest.MonkeyPatch, *, allow_flat: bool = True) -> None:
     monkeypatch.setenv("SKI_ENABLE_KG_HOT_LOAD", "true")
     monkeypatch.setenv("SKI_ADMIN_API_KEY", _ADMIN_KEY)
+    if allow_flat:
+        monkeypatch.setenv("SKI_KG_ALLOW_FLAT", "true")  # these fixtures sign flat-shape KGs
 
 
 # ---- Hot-load gating ------------------------------------------------------------
@@ -226,6 +228,22 @@ class TestHotLoadGating:
         envelope = V3VerdictEnvelope.model_validate(resp.json())
         assert envelope.model_provenance.kg_signer_key_id == ed25519_key_id(key.public_key())
         assert envelope.model_provenance.kg_trust == "anchored"
+
+    def test_flat_kg_is_refused_without_the_compatibility_opt_in(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        key = Ed25519PrivateKey.generate()
+        _install(None, _policy(key), tmp_path)
+        _enable_hot_load(monkeypatch, allow_flat=False)
+        monkeypatch.delenv("SKI_KG_ALLOW_FLAT", raising=False)
+        resp = TestClient(server.app).post(
+            "/api/kg/load", json=_signed_kg(key), headers={"X-SKI-Admin-Key": _ADMIN_KEY}
+        )
+        assert resp.status_code == 400
+        assert (
+            "deprecated flat shape" in resp.json()["detail"]
+            and "flat-kg-to-graph.py" in resp.json()["detail"]
+        )
 
     def test_hot_load_of_kg_resigned_with_non_anchor_key_is_refused(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -344,6 +362,7 @@ def _startup_env(
     key_path = tmp_path / "keys" / "transcript.ed25519"
     monkeypatch.setenv("KG_PATH", str(kg_path))
     monkeypatch.setenv("SKI_TRANSCRIPT_KEY_PATH", str(key_path))
+    monkeypatch.setenv("SKI_KG_ALLOW_FLAT", "true")  # these fixtures sign flat-shape KGs
     monkeypatch.setattr(server, "LedgerClient", _StubLedgerClient)
     # A fresh process starts with no KG; other test modules leave one in the
     # module-level state (the autouse fixture restores it afterwards).
