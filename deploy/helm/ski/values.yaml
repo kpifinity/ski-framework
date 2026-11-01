@@ -102,6 +102,13 @@ skiModel:
   modelWeights:
     existingClaim: ""
     file: ""
+  # OpenSSF Model Signing: verify the model's signature at boot (refuses to
+  # start otherwise). signatureFile is a path inside the modelWeights PVC
+  # (it is not counted as a model file); originsConfigMap holds the PEM
+  # public keys of the permitted model origins as key model-origins.pem.
+  modelSigning:
+    signatureFile: ""
+    originsConfigMap: ""
   # Used when the corresponding bundled service is disabled.
   externalOllamaUrl: ""
   externalVllmUrl: ""

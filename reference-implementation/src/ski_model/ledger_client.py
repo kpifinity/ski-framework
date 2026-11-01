@@ -470,6 +470,68 @@ class LedgerClient:
         logger.info("Ledger checkpoint: tree_size=%d root=%s", len(hashes), root)
         return row
 
+    async def evidence(self, sequence_number: int) -> Optional[dict[str, Any]]:
+        """One format-5 entry's evidence: its row, and the entry hashes of the latest checkpoint covering it.
+
+        ``checkpoint_hashes`` is ``None`` until a checkpoint covers the entry
+        (no receipt can be issued yet). Returns ``None`` for no such entry.
+        """
+        assert self._session_factory is not None
+        async with self._session_factory() as session:
+            row = (
+                (
+                    await session.execute(
+                        text(
+                            """
+                            SELECT sequence_number, entry_hash, previous_hash, timestamp, verdict,
+                                   telemetry_id, telemetry_hash, rule_id, knowledge_graph_version,
+                                   ski_model_version, track, envelope_json, envelope_hash,
+                                   transcript_json, signing_key_id, verifier_status, tenant_id,
+                                   kg_version_hash, model_weight_hash, schema_version,
+                                   verdict_signature, verdict_signing_key_id
+                            FROM ledger_entries WHERE sequence_number = :seq
+                            """
+                        ),
+                        {"seq": sequence_number},
+                    )
+                )
+                .mappings()
+                .first()
+            )
+            if row is None:
+                return None
+            tree_size = (
+                await session.execute(
+                    text(
+                        "SELECT MIN(tree_size) FROM ledger_checkpoints "
+                        "WHERE tree_size >= :seq AND tenant_id = :tenant"
+                    ),
+                    {"seq": sequence_number, "tenant": self.tenant_id},
+                )
+            ).scalar()
+            hashes = (
+                [
+                    str(h)
+                    for (h,) in (
+                        await session.execute(
+                            text(
+                                "SELECT entry_hash FROM ledger_entries WHERE sequence_number <= :n "
+                                "ORDER BY sequence_number"
+                            ),
+                            {"n": int(tree_size)},
+                        )
+                    ).all()
+                ]
+                if tree_size is not None
+                else None
+            )
+        entry = {
+            k: (v.strip() if isinstance(v, str) and k.endswith(("_hash", "_key_id")) else v)
+            for k, v in row.items()
+        }
+        entry["timestamp"] = row["timestamp"].isoformat() if row["timestamp"] is not None else None
+        return {"entry": entry, "checkpoint_hashes": hashes}
+
     async def list(self, *, limit: int, offset: int) -> list[dict[str, Any]]:
         assert self._session_factory is not None
         async with self._session_factory() as session:

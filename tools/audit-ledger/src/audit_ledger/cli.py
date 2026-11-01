@@ -358,6 +358,51 @@ if __name__ == "__main__":  # pragma: no cover
     main()
 
 
+@main.command("export-oscal")
+@click.option("--ledger-db", required=True, envvar="LEDGER_DSN", help="PostgreSQL connection string.")
+@click.option("--out", "out_path", required=True, type=click.Path(dir_okay=False, path_type=Path))
+@click.option(
+    "--label", default="ledger", show_default=True, help="Name of the assessed ledger in the report."
+)
+@click.option("--trusted-key-id", "trusted_key_ids", multiple=True, help="As for verify. Repeatable.")
+@click.option(
+    "--checkpoint",
+    "checkpoint_files",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="As for verify. Repeatable.",
+)
+@click.option("--tsa-ca", type=click.Path(exists=True, dir_okay=False, path_type=Path), help="As for verify.")
+@click.option(
+    "--replay-report",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="A JSON report from `audit-ledger replay --output`, included as the spec §8.1 finding.",
+)
+def export_oscal(
+    ledger_db: str,
+    out_path: Path,
+    label: str,
+    trusted_key_ids: tuple[str, ...],
+    checkpoint_files: tuple[Path, ...],
+    tsa_ca: Optional[Path],
+    replay_report: Optional[Path],
+) -> None:
+    """Verify the ledger and write the result as OSCAL 1.1.3 Assessment Results."""
+    import json as _json
+
+    from .oscal import assessment_results
+
+    result = Ledger(ledger_db).verify_integrity(
+        trusted_key_ids=trusted_key_ids or None, checkpoints=checkpoint_files, tsa_ca=tsa_ca
+    )
+    replay = _json.loads(replay_report.read_text(encoding="utf-8")) if replay_report else None
+    document = assessment_results(result, ledger_label=label, replay=replay)
+    out_path.write_text(_json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    click.echo(f"wrote {out_path} (overall: {'pass' if result.is_valid else 'fail'})")
+    if not result.is_valid:
+        raise SystemExit(1)
+
+
 @main.group()
 def checkpoint() -> None:
     """Ledger checkpoints (signed Merkle roots, ledger format 5)."""

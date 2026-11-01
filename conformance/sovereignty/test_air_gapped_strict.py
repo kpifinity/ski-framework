@@ -23,7 +23,7 @@ The tests run in file order: the egress probe trips the guard, so it runs last.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pytest
 
@@ -90,6 +90,7 @@ def test_attestation_reports_the_strict_posture(strict_rig: AirgapRig) -> None:
         "egress_allowlist_local",
         "tls_enabled",
         "single_worker",
+        "model_signature",
     }
     assert document["kg_trust"] == "anchored"
     assert document["kg_signer_key_id"] == strict_rig.anchor_key_id
@@ -98,6 +99,8 @@ def test_attestation_reports_the_strict_posture(strict_rig: AirgapRig) -> None:
     assert document["model_hash_verified"] is True
     assert document["model_hash_source"] == "verified-file-digest"
     assert document["ledger_role"] == {"role": "ski_ledger_writer", "least_privilege": True}
+    signature = document["model_signature"]
+    assert signature["verified"] is True and signature["files"] == 2  # OpenSSF Model Signing at boot
     assert document["image_digest"].startswith("sha256:")
     guard = document["egress_guard"]
     assert guard["mode"] == "strict" and guard["enforcing"] and guard["armed"]
@@ -148,6 +151,60 @@ def test_ledger_is_format5_with_signed_checkpoints_inside_the_airgap(strict_rig:
         checkpoint_statement(
             tenant_id=tenant, tree_size=int(size), root_hash=root, last_entry_hash=last, created_at=created_at
         ),
+    )
+
+
+def test_ledger_entries_are_scitt_statements_with_receipts_and_trace_records(strict_rig: AirgapRig) -> None:
+    """The statement and the receipt for a checkpointed entry verify as plain COSE_Sign1 (RFC 9052)."""
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+    from ski_schemas.merkle import merkle_root
+
+    strict_rig.replay_workload()
+    status, evidence = strict_rig.api("GET", "/api/ledger/2/evidence")
+    assert status == 200, evidence
+    pem = _attestation(strict_rig)["signature"]["public_key_pem"]
+    raw = serialization.load_pem_public_key(pem.encode("ascii")).public_bytes(
+        serialization.Encoding.Raw, serialization.PublicFormat.Raw
+    )
+    _cose_verify(base64.b64decode(evidence["scitt"]["signed_statement"]), raw)
+    size = evidence["scitt"]["receipt_tree_size"]
+    assert size is not None
+    query = f"SELECT entry_hash FROM ledger_entries WHERE sequence_number <= {int(size)}"  # nosec B608 -- int
+    hashes = strict_rig.sql(query + " ORDER BY sequence_number").split()
+    _cose_verify(
+        base64.b64decode(evidence["scitt"]["receipt"]), raw, detached=bytes.fromhex(merkle_root(hashes))
+    )
+    record = evidence["trace_record"]
+    assert record["eat_profile"] == "tag:agentrust-io.com,2026:trace-v0.2"
+    assert record["policy"]["enforcement_mode"] == "enforce"
+
+
+def _cose_verify(message: bytes, raw_key: bytes, detached: Optional[bytes] = None) -> dict[Any, Any]:
+    """Verify a COSE_Sign1 independently of ski_schemas.cose: cbor2 decodes it and builds RFC 9052's
+    Sig_structure; raises on a bad signature. Returns the protected header."""
+    import cbor2
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey as _Key
+
+    tagged = cbor2.loads(message)
+    assert tagged.tag == 18, "not a tagged COSE_Sign1"
+    protected, _unprotected, payload, signature = tagged.value
+    header = cbor2.loads(protected)
+    assert header[1] == -8, "not EdDSA"
+    to_be_signed = cbor2.dumps(["Signature1", protected, b"", payload if payload is not None else detached])
+    _Key.from_public_bytes(raw_key).verify(signature, to_be_signed)
+    return dict(header)
+
+
+def test_ml_bom_inside_the_airgap(strict_rig: AirgapRig) -> None:
+    status, bom = strict_rig.api("GET", "/api/mlbom")
+    assert status == 200 and bom["specVersion"] == "1.6"
+    model = bom["components"][0]
+    assert model["type"] == "machine-learning-model" and model["name"] == "conformance/stub-vllm"
+    props = {p["name"]: p["value"] for p in model["properties"]}
+    assert props["ski:model_hash_verified"] == "true" and props["ski:model_signature_signer"].startswith(
+        "sha256:"
     )
 
 

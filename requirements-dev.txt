@@ -9,6 +9,9 @@ pytest-httpx==0.36.2
 pytest-mock==3.15.1
 hypothesis==6.168.5
 jsonschema==4.26.0
+# Independent CBOR implementation: the COSE / SCITT interop tests decode and
+# re-verify ski_schemas.cose output with it (RFC 9052 Sig_structure built by cbor2).
+cbor2==5.9.0
 ruff==0.15.14
 mypy==1.10.0
 bandit==1.7.8

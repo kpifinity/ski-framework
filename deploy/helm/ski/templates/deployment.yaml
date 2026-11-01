@@ -71,6 +71,14 @@ spec:
               value: {{ printf "/models/%s" (.file | trimPrefix "/") | quote }}
             {{- end }}
             {{- end }}
+            {{- with .Values.skiModel.modelSigning }}
+            {{- if and .signatureFile .originsConfigMap }}
+            - name: SKI_MODEL_SIGNATURE
+              value: {{ printf "/models/%s" (.signatureFile | trimPrefix "/") | quote }}
+            - name: SKI_MODEL_ORIGINS
+              value: /app/model-origins/model-origins.pem
+            {{- end }}
+            {{- end }}
             {{- with .Values.image.digest }}
             - name: SKI_IMAGE_DIGEST
               value: {{ . | quote }}
@@ -160,6 +168,9 @@ spec:
             {{- if and .Values.skiModel.modelWeights.existingClaim .Values.skiModel.modelWeights.file }}
             - {name: model-weights, mountPath: /models, readOnly: true}
             {{- end }}
+            {{- if .Values.skiModel.modelSigning.originsConfigMap }}
+            - {name: model-origins, mountPath: /app/model-origins, readOnly: true}
+            {{- end }}
           {{- $scheme := .Values.tls.enabled | ternary "HTTPS" "HTTP" }}
           startupProbe:
             httpGet: {path: /api/health, port: api, scheme: {{ $scheme }}}
@@ -176,6 +187,12 @@ spec:
         {{- if and .Values.skiModel.modelWeights.existingClaim .Values.skiModel.modelWeights.file }}
         - name: model-weights
           persistentVolumeClaim: {claimName: {{ .Values.skiModel.modelWeights.existingClaim | quote }}, readOnly: true}
+        {{- end }}
+        {{- with .Values.skiModel.modelSigning.originsConfigMap }}
+        - name: model-origins
+          configMap:
+            name: {{ . | quote }}
+            items: [{key: model-origins.pem, path: model-origins.pem}]
         {{- end }}
         - name: kg
           {{- if .Values.kg.fromSecret }}
