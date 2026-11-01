@@ -9,6 +9,25 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Eval rigor
+
+- **312 golden cases across three sectors.** New finance (129) and
+  manufacturing (128) datasets join the hand-labelled energy set (55). They are
+  generated from a table of obligations (`evals/datasets/generate.py`) that
+  covers every numeric predicate, both jurisdictions, future and sunset rules,
+  silent sensors, multi-metric records and near-miss metric names. A test
+  re-derives every label independently, and CI fails if the files drift from
+  the generator.
+- **Seeds and intervals.** `python -m evals.run --dataset all --seeds 0 1 2`
+  runs every dataset under each seed. `evals/summary.py` reports every rate with
+  its Wilson 95% interval and `k/n`, plus seed stability, and combines runs made
+  on different machines.
+- **Two model families.** `evals-real.yml` runs `qwen2.5:1.5b` and `llama3.2:1b`
+  through Ollama on every dataset under three seeds (18 CI jobs), weekly and on
+  eval changes. It replaces the single-model nightly job.
+- FakeLLM baseline pinned on all three sectors: 280/312, with zero breaches and
+  zero silent sensors cleared.
+
 ### One Knowledge Graph shape (spec §3, §5.1, §11.2)
 
 - **Subject routing (spec §5.1).** The KG slice for a measurement now holds only
