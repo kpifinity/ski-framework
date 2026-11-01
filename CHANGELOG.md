@@ -9,6 +9,41 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Ledger format 5: tamper-evident evidence, end to end (spec §7, §8.1)
+
+- **Format 5 entries.** The entry hash now also chains the spec §7.1 columns
+  (`tenant_id`, `kg_version_hash`, `model_weight_hash`, `schema_version`), so
+  every column the spec lists is covered. Each entry carries the runtime's
+  Ed25519 `verdict_signature` over its sequence number, entry hash, telemetry id
+  and transcript id, so a signature cannot be moved to another row; the runtime
+  records its public key in the append-only `ledger_signing_keys`.
+- **Checkpoints.** Every `SKI_LEDGER_CHECKPOINT_EVERY` entries (default 1000)
+  the runtime signs the RFC 6962 Merkle root of the ledger into the append-only
+  `ledger_checkpoints`, optionally time-stamped by an RFC 3161 TSA inside the
+  deployment (`SKI_TSA_URL`). A forward rewrite, even one that recomputes every
+  hash and signature with the runtime's own key, no longer matches the
+  checkpoint. `audit-ledger checkpoint export` writes them to WORM storage.
+- **`audit-ledger verify`** checks formats 3, 4 and 5 and flags any format
+  downgrade, verifies verdict signatures and checkpoints (`--trusted-key-id`,
+  `--checkpoint`, `--tsa-ca`), and rejects a key row whose id is not its key.
+- **`audit-ledger replay`** verifies each transcript's hashes and signature
+  (`--signing-key` for older ledgers), re-renders the prompt and requires it to
+  match, and is no longer clean when nothing in the range was replayed.
+- **Migration.** `migrations/0003_ledger_v5.sql` upgrades a v3.2.x ledger in
+  place (idempotent; existing entries keep verifying). The runtime applies it
+  itself when its role may; as `ski_ledger_writer` it keeps writing format 4,
+  with a warning, until the owner applies it.
+- **Spec §7.1** describes format 5, verdict signatures and checkpoints; new
+  test vectors in `spec/test-vectors/ledger/` (v5) and `spec/test-vectors/merkle/`.
+
+### Fixed
+
+- **Stateful verifier: a window reading beyond the double range was read as
+  "no samples".** A `must_not_exceed_in_window` peak (or a sample) larger than
+  ~1.8e308 became UNVERIFIABLE, which tier 2 and 3 accept, so the LLM's CLEAR
+  stood over a breach. Readings are now kept exact (ints and fractions), and
+  the breach is an `LLM_CONTRADICTION`. Found by the fail-closed property test.
+
 ### Strict sovereignty mode, completed (spec §6, §9 Level 1)
 
 **Breaking for strict deployments (each check names its fix; `advisory` is unchanged):**

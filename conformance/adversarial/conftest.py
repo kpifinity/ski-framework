@@ -47,6 +47,11 @@ class AdversarialRig(Protocol):
 
 
 class _InMemoryLedger:
+    # The ledger-format-5 surface the server sets and reads (off: format 4).
+    format5 = False
+    tenant_id = "default"
+    signer = None
+
     def __init__(self) -> None:
         self.appended: List[Dict[str, Any]] = []
 

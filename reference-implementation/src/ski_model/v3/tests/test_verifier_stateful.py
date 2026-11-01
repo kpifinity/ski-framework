@@ -727,3 +727,49 @@ class TestBufferLikeProtocol:
         # just confirm FakeBuffer exposes the expected attribute.
         b: BufferLike = FakeBuffer()
         assert hasattr(b, "window_query")
+
+
+# ---- Readings beyond the double range -----------------------------------------
+
+
+class _Peak:
+    """An aggregate whose peak is an int no double can hold (the buffer stores exact numerics)."""
+
+    def __init__(self, peak: Any, avg: Any = 0) -> None:
+        self.avg_value = avg
+        self.max_value = peak
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "buffer",
+    [
+        AggregateBuffer(result=_Peak(10**400)),
+        FakeBuffer(data={("emissions", "so2_ppm"): [(_ts(10), 0), (_ts(5), 10**400)]}),
+    ],
+    ids=["aggregate", "samples"],
+)
+async def test_window_peak_beyond_the_double_range_is_a_breach_not_missing_data(buffer: Any) -> None:
+    """Regression: an oversized peak was read as "no samples", so tier-2 accepted a CLEAR over it."""
+    result = await SymbolicVerifier().averify(
+        [_assertion(predicate="must_not_exceed_in_window", value=0, observed=0, window_seconds=60)],
+        llm_verdict=V3Verdict.CLEAR,
+        subject="emissions",
+        as_of=_AS_OF,
+        buffer=buffer,
+    )
+    assert result.status == VerifierStatus.LLM_CONTRADICTION.value
+    assert any("~10^400" in d for d in result.divergences), result.divergences
+
+
+@pytest.mark.asyncio
+async def test_window_average_beyond_the_double_range_is_exact() -> None:
+    buffer = FakeBuffer(data={("emissions", "so2_ppm"): [(_ts(10), 10**400), (_ts(5), 10**400)]})
+    result = await SymbolicVerifier().averify(
+        [_assertion(predicate="must_average_within", value=[0, 100], window_seconds=60)],
+        llm_verdict=V3Verdict.CLEAR,
+        subject="emissions",
+        as_of=_AS_OF,
+        buffer=buffer,
+    )
+    assert result.status == VerifierStatus.LLM_CONTRADICTION.value

@@ -669,17 +669,38 @@ with at minimum the following columns:
 The implementation MAY add additional columns; the columns above are
 the minimum a conforming implementation MUST emit.
 
-**Entry hash (ledger format 4).** `entry_hash` MUST commit to the stored
-evidence as well as the verdict line, so that re-computing it from the
-recovered envelope ([§8.1](#81-provenance-re-verification-procedure),
+**Entry hash (ledger formats 4 and 5).** `entry_hash` MUST commit to the
+stored evidence as well as the verdict line, so that re-computing it from
+the recovered envelope ([§8.1](#81-provenance-re-verification-procedure),
 step 6) detects an edited envelope or transcript. The reference
 implementation's format 4 hashes the [§7.3](#73-prompt-template-and-kg-canonical-hashing)
 canonical form of an object holding `"ledger_format": 4`, the verdict-line
-columns, and the digests of the stored envelope and transcript JSON; the
-field list is in `tools/ski-schemas/src/ski_schemas/ledger.py` and
-`spec/test-vectors/ledger/` pins worked examples. Entries written before
-format 4 hash the verdict line only; a verifier MUST accept them and MUST
-flag a pre-format-4 entry that follows a format-4 entry.
+columns, and the digests of the stored envelope and transcript JSON.
+Format 5 (`"ledger_format": 5`) also commits to `tenant_id`,
+`kg_version_hash`, `model_weight_hash` and `schema_version`, so every
+column in the table above is covered by the chain. The field lists are in
+`tools/ski-schemas/src/ski_schemas/ledger.py` and `spec/test-vectors/ledger/`
+pins worked examples. Entries written before format 4 hash the verdict
+line only; a verifier MUST accept every format and MUST flag an entry
+whose format is lower than that of an entry before it.
+
+**Verdict signature.** An implementation SHOULD sign each entry's position
+with its deployment key: the reference format 5 stores an Ed25519
+`verdict_signature` over the canonical object binding `sequence_number`,
+`entry_hash`, `telemetry_id` and `transcript_id`, so a signature cannot be
+moved between rows, and records its public keys in an append-only table
+keyed by `"sha256:" + hex(SHA-256(raw key))`. Verifiers MUST let the
+auditor pin the key ids they trust.
+
+**Checkpoints.** A hash chain alone does not stop a writer who rewrites an
+entry and every entry after it. An implementation SHOULD periodically sign
+the RFC 6962 Merkle tree head over the entry hashes in sequence order (a
+*checkpoint*), SHOULD time-stamp it with an RFC 3161 Time-Stamping
+Authority inside the sovereign boundary, and SHOULD let operators export
+checkpoints to write-once storage. A verifier MUST report a checkpoint
+whose root no longer matches the entries it covers. The reference
+statement format is in `tools/ski-schemas/src/ski_schemas/merkle.py`;
+`spec/test-vectors/merkle/` pins roots, inclusion proofs and statements.
 
 ### 7.2 Append-only enforcement
 

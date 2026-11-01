@@ -9,13 +9,19 @@ For every entry in a contiguous range that the language model evaluated
      holds that measurement (the ledger and the buffer agree).
   3. Checks the KG supplied with ``--kg-path`` reproduces the recorded
      ``kg_version_hash`` and, re-scoped as recorded, the same snapshot.
-  4. Re-runs the runtime's own ``V3Evaluator`` with the model call
+  4. Verifies the transcript: its request/response hashes are recomputed
+     from the stored prompt and response, its Ed25519 signature is checked
+     against the key the ledger holds for its ``signing_key_id`` (or one
+     given with ``--signing-key``), and, when it was recorded under the
+     current prompt template, the prompt is re-rendered from the recovered
+     inputs and must equal the stored one byte for byte.
+  5. Re-runs the runtime's own ``V3Evaluator`` with the model call
      replaced by the transcript's recorded response, with the same risk
      tier, subject, telemetry time and buffer: the verifier, freshness
      gate and risk-tier policy are deterministic, so the verdict and the
      verifier status must come out as recorded.
-  5. Emits a structured report and (optionally) exits non-zero on
-     divergence.
+  6. Emits a structured report and (optionally) exits non-zero on
+     divergence, or when no entry in the range could be replayed at all.
 
 Re-generating the model output itself is out of scope (spec §8.2: model
 replay is judged by tolerance bounds, not identity). Entries the model did
@@ -34,9 +40,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Optional, Sequence
 
+from ski_schemas.transcript import hash_pair, signing_message
 from sqlalchemy import create_engine, text
+from sqlalchemy.orm import Session
+
+from .evidence import KeyRing, key_id_of, load_key, signature_valid
 
 
 @dataclass
@@ -61,12 +71,18 @@ class ReplayReport:
     replayed_entries: int = 0
     skipped_entries: int = 0
     matched_entries: int = 0
+    transcript_signatures_verified: int = 0
     mismatches: list[ReplayMismatch] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
 
     @property
     def is_clean(self) -> bool:
-        return not self.mismatches and self.replayed_entries == self.matched_entries
+        """Every replayed entry matched, and at least one entry was replayed (an empty replay proves nothing)."""
+        return (
+            not self.mismatches
+            and self.replayed_entries > 0
+            and self.replayed_entries == self.matched_entries
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -78,6 +94,7 @@ class ReplayReport:
             "replayed_entries": self.replayed_entries,
             "skipped_entries": self.skipped_entries,
             "matched_entries": self.matched_entries,
+            "transcript_signatures_verified": self.transcript_signatures_verified,
             "is_clean": self.is_clean,
             "mismatches": [
                 {
@@ -103,9 +120,12 @@ def replay(
     to_sequence: int,
     kg_path: str,
     tenant_id: str = "default",
+    signing_keys: Sequence[str] = (),
 ) -> ReplayReport:
     """Re-check the ledger entries in [from_sequence, to_sequence].
 
+    ``signing_keys`` are PEM public keys to verify transcript signatures
+    with, in addition to the ledger's own ``ledger_signing_keys``.
     Synchronous wrapper; called from the ``audit-ledger replay`` CLI command.
     """
     import asyncio
@@ -117,6 +137,7 @@ def replay(
             to_sequence=to_sequence,
             kg_path=kg_path,
             tenant_id=tenant_id,
+            signing_keys=signing_keys,
         )
     )
 
@@ -183,6 +204,7 @@ async def _replay_async(
     to_sequence: int,
     kg_path: str,
     tenant_id: str,
+    signing_keys: Sequence[str],
 ) -> ReplayReport:
     # The evaluator, KG loader and telemetry buffer live in the
     # reference-implementation package; imported lazily so `audit-ledger
@@ -197,6 +219,7 @@ async def _replay_async(
     from ski_model.kg_loader import load_signed_kg  # type: ignore
     from ski_model.server import _compute_kg_version_hash  # type: ignore
     from ski_model.v3 import V3Evaluator  # type: ignore
+    from ski_model.v3.backends.hashes import PROMPT_TEMPLATE_HASH  # type: ignore
     from sqlalchemy.ext.asyncio import create_async_engine
     from tag_registry import RiskTierGovernor  # type: ignore
     from telemetry_buffer import TelemetryBuffer  # type: ignore
@@ -217,6 +240,15 @@ async def _replay_async(
     engine = create_async_engine(async_dsn, pool_pre_ping=True)
     buffer = TelemetryBuffer(engine, tenant_id=tenant_id)
     sync_engine = create_engine(dsn)
+
+    with Session(sync_engine) as session:
+        ring = KeyRing.load(session)
+    for pem in signing_keys:
+        key = load_key(pem)
+        if key is None:
+            raise ValueError("--signing-key is not an Ed25519 public key PEM.")
+        ring.keys[key_id_of(key)] = key
+    unverifiable_keys: set[str] = set()
 
     with sync_engine.connect() as conn:
         rows = conn.execute(
@@ -278,6 +310,43 @@ async def _replay_async(
             entry = (seq, telemetry_id, rule_id, recorded_verdict, recorded_reasoning)
 
             provenance = envelope.get("model_provenance") or {}
+
+            # The transcript itself: hashes, signature, prompt (spec §8.1 step 3).
+            request_text = str(transcript.get("request_canonical", ""))
+            response = dict(transcript.get("response_canonical") or {})
+            if hash_pair(request_text=request_text, response=response) != (
+                transcript.get("request_hash"),
+                transcript.get("response_hash"),
+            ):
+                mismatch(
+                    entry,
+                    "<not replayed>",
+                    "The stored prompt or response no longer hashes to the transcript's recorded hashes.",
+                    "transcript_hash_mismatch",
+                )
+                continue
+            key_id = str(transcript.get("signing_key_id", ""))
+            key = ring.get(key_id)
+            if key is None:
+                unverifiable_keys.add(key_id)
+            elif signature_valid(
+                key,
+                signing_message(
+                    request_hash=str(transcript["request_hash"]),
+                    response_hash=str(transcript["response_hash"]),
+                ),
+                transcript.get("signature_hex"),
+            ):
+                report.transcript_signatures_verified += 1
+            else:
+                mismatch(
+                    entry,
+                    "<not replayed>",
+                    f"The transcript's signature does not verify with key {key_id}.",
+                    "transcript_signature_invalid",
+                )
+                continue
+
             if provenance.get("kg_version_hash") != kg_version_hash:
                 mismatch(
                     entry,
@@ -332,10 +401,25 @@ async def _replay_async(
                 continue
 
             evaluator = V3Evaluator(
-                llm=_RecordedResponse(dict(transcript.get("response_canonical") or {}), provenance),
+                llm=_RecordedResponse(response, provenance),
                 kg_version_hash=kg_version_hash,
                 decoder_seed=int(provenance.get("decoder_seed", 0)),
             )
+            if provenance.get("prompt_template_hash") == PROMPT_TEMPLATE_HASH:
+                if evaluator._render_canonical_prompt(measurement, snapshot) != request_text:
+                    mismatch(
+                        entry,
+                        "<not replayed>",
+                        "Re-rendering the recorded prompt template from the recovered inputs does not "
+                        "reproduce the stored prompt.",
+                        "prompt_divergence",
+                    )
+                    continue
+            else:
+                report.notes.append(
+                    f"seq={seq}: recorded under prompt template {provenance.get('prompt_template_hash')}, "
+                    "not this runtime's; the prompt was not re-rendered."
+                )
             result = await evaluator.aevaluate_with_transcript(
                 measurement=measurement,
                 kg_snapshot=snapshot,
@@ -359,5 +443,15 @@ async def _replay_async(
     finally:
         await engine.dispose()
         sync_engine.dispose()
+    if unverifiable_keys:
+        report.notes.append(
+            "Transcript signatures not verified for key(s) "
+            f"{', '.join(sorted(unverifiable_keys))}: not in ledger_signing_keys (a pre-format-5 ledger); "
+            "pass the runtime's public key with --signing-key."
+        )
+    if report.replayed_entries == 0:
+        report.notes.append(
+            "No entry in the range was replayed, so the replay proves nothing; it is reported as not clean."
+        )
     report.finished_at = datetime.now(timezone.utc)
     return report

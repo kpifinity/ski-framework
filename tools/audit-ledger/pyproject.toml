@@ -24,6 +24,7 @@ classifiers = [
 ]
 dependencies = [
     "ski-schemas>=3.2.0,<4",
+    "cryptography>=46,<52",
     "psycopg[binary]>=3.1.18,<4",
     "sqlalchemy>=2.0.27,<3",
     "click>=8.1.7,<9",

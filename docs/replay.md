@@ -39,21 +39,31 @@ audit-ledger replay \
 
 Exit code:
 
-- `0` — every replayable entry matched.
-- `1` — at least one divergence (unless `--no-strict` is passed).
+- `0` — at least one entry was replayed and every replayed entry matched.
+- `1` — a divergence, or no entry in the range could be replayed at all
+  (an empty replay proves nothing), unless `--no-strict` is passed.
+
+Transcript signatures are verified with the key `ledger_signing_keys`
+holds for each transcript's `signing_key_id` (ledger format 5). For an
+older ledger, pass the runtime's public key with `--signing-key key.pem`;
+without either, replay notes that the signatures were not verified.
 
 ## What gets replayed
 
 Every entry the language model evaluated (it has a stored envelope and a
 signed transcript). For each one, replay:
 
-1. recovers the exact measurement and scoped KG snapshot the model was
-   given from the transcript's canonical prompt;
-2. finds the telemetry buffer row by `telemetry_hash` and checks it holds
+1. recomputes the transcript's request and response hashes from the stored
+   prompt and response, and verifies its Ed25519 signature;
+2. recovers the exact measurement and scoped KG snapshot the model was
+   given from the transcript's canonical prompt and, when the entry was
+   recorded under this runtime's prompt template, re-renders the prompt
+   from them: it must equal the stored prompt byte for byte;
+3. finds the telemetry buffer row by `telemetry_hash` and checks it holds
    that measurement;
-3. checks `--kg-path` reproduces the recorded `kg_version_hash` and,
+4. checks `--kg-path` reproduces the recorded `kg_version_hash` and,
    scoped as recorded, the same obligations;
-4. re-runs the runtime's own evaluator with the model call replaced by the
+5. re-runs the runtime's own evaluator with the model call replaced by the
    recorded response, with the same risk tier, subject, telemetry time and
    buffer, and compares the verdict and verifier status.
 
@@ -78,6 +88,9 @@ exactly.
 | `telemetry_divergence` | The buffer row for `telemetry_hash` holds a different measurement than the transcript | The buffer or the transcript was altered |
 | `buffer_row_missing` | No buffer row has the entry's `telemetry_hash` | Retention dropped it, or the buffer was not provisioned when the entry was written |
 | `transcript_unreadable` | The transcript's prompt does not have the expected sections | Investigate the transcript |
+| `transcript_hash_mismatch` | The stored prompt or response no longer hashes to what the transcript recorded | The transcript was edited after it was signed |
+| `transcript_signature_invalid` | The transcript's signature does not verify with its key | The transcript or its signature was altered |
+| `prompt_divergence` | Re-rendering the template from the recovered inputs does not give the stored prompt | The prompt was altered, or recorded by a different renderer |
 
 ## Report format
 
@@ -91,6 +104,7 @@ exactly.
   "replayed_entries": 462,
   "matched_entries": 462,
   "skipped_entries": 38,
+  "transcript_signatures_verified": 462,
   "is_clean": true,
   "mismatches": [],
   "notes": [

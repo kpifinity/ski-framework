@@ -9,10 +9,12 @@ v2.1 changes:
 
 from __future__ import annotations
 
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
 import click
 
+from .evidence import export_checkpoints
 from .ledger import Ledger
 
 VERDICT_CHOICES = ["CLEAR", "FLAG", "NULL_UNMAPPED", "NULL_STALE", "DISCRETIONARY"]
@@ -28,10 +30,38 @@ def main() -> None:
 @click.option("--ledger-db", required=True, envvar="LEDGER_DSN", help="PostgreSQL connection string.")
 @click.option("--verbose", is_flag=True)
 @click.option("--output", help="Write a plain-text summary to file.")
-def verify(ledger_db: str, verbose: bool, output: Optional[str]) -> None:
-    """Verify ledger integrity: chain linkage AND entry-hash recomputation."""
+@click.option(
+    "--trusted-key-id",
+    "trusted_key_ids",
+    multiple=True,
+    help="Pin a runtime signing key id (sha256:<hex>, as /api/sovereignty attests). Repeatable. "
+    "Verdict signatures and checkpoints by any other key fail.",
+)
+@click.option(
+    "--checkpoint",
+    "checkpoint_files",
+    multiple=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="An exported checkpoint file (audit-ledger checkpoint export) the ledger must still match. Repeatable.",
+)
+@click.option(
+    "--tsa-ca",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="CA bundle of the RFC 3161 TSA; verifies checkpoint time-stamps with `openssl ts -verify`.",
+)
+def verify(
+    ledger_db: str,
+    verbose: bool,
+    output: Optional[str],
+    trusted_key_ids: tuple[str, ...],
+    checkpoint_files: tuple[Path, ...],
+    tsa_ca: Optional[Path],
+) -> None:
+    """Verify ledger integrity: chain linkage, entry-hash recomputation, signatures and checkpoints."""
     ledger = Ledger(ledger_db)
-    result = ledger.verify_integrity(verbose=verbose)
+    result = ledger.verify_integrity(
+        verbose=verbose, trusted_key_ids=trusted_key_ids or None, checkpoints=checkpoint_files, tsa_ca=tsa_ca
+    )
 
     lines = [
         "Ledger integrity verification",
@@ -43,6 +73,9 @@ def verify(ledger_db: str, verbose: bool, output: Optional[str]) -> None:
         f"Timestamp ordering:           {'OK' if result.timestamp_ordering else 'FAIL'}",
         f"Chain linkage verified:       {result.chain_link_verified_count} / {result.hash_verification_total}",
         f"Entry-hash recomputation:     {result.entry_hash_verified_count} / {result.hash_verification_total}",
+        f"Verdict signatures verified:  {result.verdict_signatures_verified}",
+        f"Checkpoints verified:         {result.checkpoints_verified}"
+        + (f" ({result.timestamps_verified} time-stamp(s) verified)" if result.timestamps_verified else ""),
         "",
         "Verdict distribution:",
     ]
@@ -54,6 +87,11 @@ def verify(ledger_db: str, verbose: bool, output: Optional[str]) -> None:
         f"Overall: {'PASS' if result.is_valid else 'FAIL'}",
         f"Recommendation: {result.recommendation}",
     ]
+
+    if result.warnings:
+        lines.append("")
+        lines.append("Warnings:")
+        lines += [f"  {w}" for w in result.warnings]
 
     if result.issues:
         lines.append("")
@@ -183,7 +221,18 @@ def backup(source: str, output: str, compress: bool, verify: bool) -> None:
 @click.option("--tenant-id", default="default", show_default=True)
 @click.option("--output", default=None, help="Optional path to write the JSON replay report.")
 @click.option(
-    "--strict/--no-strict", default=True, show_default=True, help="Exit non-zero on any verdict divergence."
+    "--strict/--no-strict",
+    default=True,
+    show_default=True,
+    help="Exit non-zero on any divergence, or when no entry in the range was replayed.",
+)
+@click.option(
+    "--signing-key",
+    "signing_keys",
+    multiple=True,
+    type=click.File("r"),
+    help="A runtime public key (PEM) to verify transcript signatures with, for ledgers without "
+    "ledger_signing_keys (before format 5). Repeatable.",
 )
 def replay(
     source: str,
@@ -193,6 +242,7 @@ def replay(
     tenant_id: str,
     output: Optional[str],
     strict: bool,
+    signing_keys: tuple[Any, ...],
 ) -> None:
     """Replay v3 ledger entries from their signed transcripts (spec §8.1).
 
@@ -214,12 +264,14 @@ def replay(
         to_sequence=to_sequence,
         kg_path=kg_path,
         tenant_id=tenant_id,
+        signing_keys=[f.read() for f in signing_keys],
     )
 
     click.echo(
         f"Replay: {report.replayed_entries}/{report.total_entries} entries replayed, "
         f"{report.matched_entries} matched, {len(report.mismatches)} diverged, "
-        f"{report.skipped_entries} skipped."
+        f"{report.skipped_entries} skipped; {report.transcript_signatures_verified} transcript "
+        "signature(s) verified."
     )
     for note in report.notes[:5]:
         click.echo(f"  note: {note}")
@@ -304,3 +356,30 @@ th{{background-color:#f0f0f0;}}
 
 if __name__ == "__main__":  # pragma: no cover
     main()
+
+
+@main.group()
+def checkpoint() -> None:
+    """Ledger checkpoints (signed Merkle roots, ledger format 5)."""
+
+
+@checkpoint.command("export")
+@click.option("--ledger-db", required=True, envvar="LEDGER_DSN", help="PostgreSQL connection string.")
+@click.option(
+    "--out",
+    "out_dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Directory for the checkpoint files; put it on write-once storage (S3 Object Lock, a WORM volume).",
+)
+def checkpoint_export(ledger_db: str, out_dir: Path) -> None:
+    """Write every checkpoint not yet exported to OUT as a self-contained, verifiable JSON file."""
+    ledger = Ledger(ledger_db)
+    session = ledger.Session()
+    try:
+        written = export_checkpoints(session, out_dir)
+    finally:
+        session.close()
+    for path in written:
+        click.echo(f"wrote {path}")
+    click.echo(f"{len(written)} new checkpoint file(s) in {out_dir}.")

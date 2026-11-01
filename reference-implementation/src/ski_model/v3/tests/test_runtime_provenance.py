@@ -28,6 +28,11 @@ _H = "sha256:" + "a" * 64
 
 
 class _Ledger:
+    # The ledger-format-5 surface the server sets and reads (off: format 4).
+    format5 = False
+    tenant_id = "default"
+    signer = None
+
     async def append_v3(self, **kwargs: Any) -> None:
         return None
 

@@ -12,7 +12,7 @@
 CREATE OR REPLACE FUNCTION ledger_block_update_delete()
 RETURNS trigger AS $$
 BEGIN
-    RAISE EXCEPTION 'ledger_entries is append-only; % is not permitted', TG_OP
+    RAISE EXCEPTION '% is append-only; % is not permitted', TG_TABLE_NAME, TG_OP
         USING ERRCODE = 'insufficient_privilege';
 END;
 $$ LANGUAGE plpgsql;
@@ -34,6 +34,26 @@ CREATE TRIGGER ledger_block_truncate
     BEFORE TRUNCATE ON ledger_entries
     EXECUTE FUNCTION ledger_block_update_delete();
 
+-- Ledger format 5 (v3.3.0): signing keys and checkpoints are append-only too.
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['ledger_signing_keys', 'ledger_checkpoints'] LOOP
+        IF to_regclass(t) IS NOT NULL THEN
+            EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_block_update', t);
+            EXECUTE format('CREATE TRIGGER %I BEFORE UPDATE ON %I FOR EACH ROW '
+                           'EXECUTE FUNCTION ledger_block_update_delete()', t || '_block_update', t);
+            EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_block_delete', t);
+            EXECUTE format('CREATE TRIGGER %I BEFORE DELETE ON %I FOR EACH ROW '
+                           'EXECUTE FUNCTION ledger_block_update_delete()', t || '_block_delete', t);
+            EXECUTE format('DROP TRIGGER IF EXISTS %I ON %I', t || '_block_truncate', t);
+            EXECUTE format('CREATE TRIGGER %I BEFORE TRUNCATE ON %I '
+                           'EXECUTE FUNCTION ledger_block_update_delete()', t || '_block_truncate', t);
+        END IF;
+    END LOOP;
+END$$;
+
 -- Read-only role for reporting consumers.
 DO $$
 BEGIN
@@ -45,6 +65,12 @@ END$$;
 GRANT USAGE ON SCHEMA public TO ski_audit_reader;
 GRANT SELECT ON ledger_entries, coverage_register, ledger_summary,
     ledger_chain_linkage TO ski_audit_reader;
+DO $$
+BEGIN
+    IF to_regclass('ledger_checkpoints') IS NOT NULL THEN
+        GRANT SELECT ON ledger_signing_keys, ledger_checkpoints TO ski_audit_reader;
+    END IF;
+END$$;
 
 -- ----------------------------------------------------------------------------
 -- Least-privilege runtime role (v3.2.0). The SKI Model connects as
@@ -82,6 +108,17 @@ BEGIN
     IF seq IS NOT NULL THEN
         EXECUTE format('REVOKE ALL ON SEQUENCE %s FROM ski_ledger_writer', seq);
         EXECUTE format('GRANT USAGE ON SEQUENCE %s TO ski_ledger_writer', seq);
+    END IF;
+END$$;
+
+-- Format 5: the writer registers its public key and appends checkpoints.
+DO $$
+BEGIN
+    IF to_regclass('ledger_checkpoints') IS NOT NULL THEN
+        REVOKE ALL ON ledger_signing_keys, ledger_checkpoints FROM ski_ledger_writer;
+        GRANT SELECT, INSERT ON ledger_signing_keys, ledger_checkpoints TO ski_ledger_writer;
+        REVOKE ALL ON SEQUENCE ledger_checkpoints_id_seq FROM ski_ledger_writer;
+        GRANT USAGE ON SEQUENCE ledger_checkpoints_id_seq TO ski_ledger_writer;
     END IF;
 END$$;
 

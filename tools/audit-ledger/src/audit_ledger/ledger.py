@@ -27,15 +27,17 @@ import os
 import shutil
 import subprocess
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Iterable, List, Optional
 
 from ski_schemas.canonical import CanonicalizationError
-from ski_schemas.ledger import entry_payload_v4, evidence_hash
+from ski_schemas.ledger import entry_payload_v4, entry_payload_v5, evidence_hash, verdict_signing_bytes
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import sessionmaker
 
 from .canonical import canonical_entry_payload
+from .evidence import KeyRing, signature_valid, verify_checkpoints
 from .models import (
     BackupResult,
     ExportResult,
@@ -47,6 +49,36 @@ from .models import (
 )
 
 GENESIS_HASH = "0" * 64
+
+
+_ENTRIES_COLUMNS = """
+    SELECT id, sequence_number, previous_hash, entry_hash, timestamp,
+           verdict, telemetry_id, telemetry_hash, rule_id,
+           knowledge_graph_version, ski_model_version, reasoning, track,
+           envelope_json::text, envelope_hash, transcript_json::text,
+           transcript_signature, signing_key_id, verifier_status,
+"""
+_ENTRIES_QUERY_V5 = (
+    _ENTRIES_COLUMNS
+    + """
+           tenant_id, kg_version_hash, model_weight_hash, schema_version,
+           verdict_signature, verdict_signing_key_id, transcript_json->>'transcript_id'
+    FROM ledger_entries ORDER BY sequence_number ASC
+"""
+)
+# A ledger not yet migrated to format 5 (0003_ledger_v5.sql) has no such columns.
+_ENTRIES_QUERY_PRE_V5 = (
+    _ENTRIES_COLUMNS
+    + """
+           NULL, NULL, NULL, NULL, NULL, NULL, transcript_json->>'transcript_id'
+    FROM ledger_entries ORDER BY sequence_number ASC
+"""
+)
+
+
+def _strip(value: Optional[str]) -> Optional[str]:
+    """CHAR(n) columns come back as stored; normalise without turning None into a string."""
+    return value.strip() if isinstance(value, str) else value
 
 
 class Ledger:
@@ -61,7 +93,14 @@ class Ledger:
     # verify_integrity — REAL hash recomputation, not chain-linkage only.
     # ------------------------------------------------------------------
 
-    def verify_integrity(self, verbose: bool = False) -> VerificationResult:
+    def verify_integrity(
+        self,
+        verbose: bool = False,
+        *,
+        trusted_key_ids: Optional[Iterable[str]] = None,
+        checkpoints: Iterable[Path] = (),
+        tsa_ca: Optional[Path] = None,
+    ) -> VerificationResult:
         """Verify ledger integrity.
 
         For every entry, this method recomputes the entry hash from the
@@ -69,23 +108,26 @@ class Ledger:
         catches tampering with any field, not just the previous_hash. For a
         ledger-v4 entry that includes the stored envelope and transcript:
         their digests are re-derived from the stored JSON and are part of
-        the recomputed payload.
+        the recomputed payload. A format-5 entry also chains the spec §7.1
+        columns, and its verdict signature is verified against the ledger's
+        signing keys (``trusted_key_ids`` pins which keys count). Every
+        checkpoint in the ledger, and every exported checkpoint file in
+        ``checkpoints``, is checked against the entries (:mod:`.evidence`).
         """
         session = self.Session()
         try:
+            columns = {
+                c
+                for (c,) in session.execute(
+                    text(
+                        "SELECT column_name FROM information_schema.columns WHERE table_name = 'ledger_entries'"
+                    )
+                ).all()
+            }
             rows = session.execute(
-                text(
-                    """
-                    SELECT id, sequence_number, previous_hash, entry_hash, timestamp,
-                           verdict, telemetry_id, telemetry_hash, rule_id,
-                           knowledge_graph_version, ski_model_version, reasoning, track,
-                           envelope_json::text, envelope_hash, transcript_json::text,
-                           transcript_signature, signing_key_id, verifier_status
-                    FROM ledger_entries
-                    ORDER BY sequence_number ASC
-                    """
-                )
+                text(_ENTRIES_QUERY_V5 if "verdict_signature" in columns else _ENTRIES_QUERY_PRE_V5)
             ).all()
+            ring = KeyRing.load(session, trusted_key_ids)
 
             if not rows:
                 return VerificationResult(
@@ -112,8 +154,10 @@ class Ledger:
             entry_hash_verified = 0
             timestamps_valid = True
             sequence_valid = True
-            v4_seen = False
+            max_format = 3
             unchained_evidence = 0
+            verdict_signatures_verified = 0
+            v5_entries = 0
 
             for row in rows:
                 (
@@ -136,6 +180,13 @@ class Ledger:
                     transcript_signature,
                     signing_key_id,
                     verifier_status,
+                    tenant_id,
+                    kg_version_hash,
+                    model_weight_hash,
+                    schema_version,
+                    verdict_signature,
+                    verdict_signing_key_id,
+                    transcript_id,
                 ) = row
 
                 # 1. Sequence continuity
@@ -171,52 +222,49 @@ class Ledger:
                 # 3. Entry hash recomputation — the real integrity check.
                 timestamp_iso = timestamp.isoformat() if hasattr(timestamp, "isoformat") else str(timestamp)
 
-                # 3a. Ledger v4: the payload also commits to the stored evidence.
-                is_v4 = False
+                # 3a. Ledger v4/v5: the payload also commits to the stored evidence
+                # (and, in v5, to the spec §7.1 columns).
+                entry_format = 3
                 recomputed_envelope_hash: Optional[str] = None
                 try:
                     recomputed_envelope_hash = evidence_hash(envelope_text)
-                    v4_payload = entry_payload_v4(
-                        sequence_number=int(seq),
-                        previous_hash=str(stored_prev),
-                        timestamp_iso=timestamp_iso,
-                        verdict=str(verdict),
-                        telemetry_id=str(tid),
-                        telemetry_hash=str(thash),
-                        rule_id=rule_id,
-                        kg_version=kg_version,
-                        ski_model_version=str(ski_model_version),
-                        reasoning=reasoning,
-                        track=track,
-                        envelope_hash=recomputed_envelope_hash,
-                        transcript_hash=evidence_hash(transcript_text),
-                        transcript_signature=transcript_signature,
-                        signing_key_id=signing_key_id,
-                        verifier_status=verifier_status,
-                    )
-                    is_v4 = hashlib.sha256(v4_payload).hexdigest() == stored_hash
-                except CanonicalizationError:
-                    pass  # stored evidence has no canonical form: not a valid v4 entry
-
-                if is_v4:
-                    v4_seen = True
-                    entry_hash_verified += 1
-                    if stored_envelope_hash != recomputed_envelope_hash:
-                        # The payload carries the digest of the stored JSON, not
-                        # this column, so a rewritten column alone shows up here.
-                        issues.append(
-                            IntegrityIssue(
-                                issue_type="EVIDENCE_HASH_MISMATCH",
-                                sequence_number=seq,
-                                description=(
-                                    f"Stored envelope_hash at sequence {seq} does not match the "
-                                    "digest of the stored envelope_json."
-                                ),
-                                severity="CRITICAL",
-                                suggested_action="Treat as a confirmed integrity incident.",
-                            )
+                    line: dict[str, Any] = {
+                        "sequence_number": int(seq),
+                        "previous_hash": str(stored_prev),
+                        "timestamp_iso": timestamp_iso,
+                        "verdict": str(verdict),
+                        "telemetry_id": str(tid),
+                        "telemetry_hash": str(thash),
+                        "rule_id": rule_id,
+                        "kg_version": kg_version,
+                        "ski_model_version": str(ski_model_version),
+                        "reasoning": reasoning,
+                        "track": track,
+                        "envelope_hash": recomputed_envelope_hash,
+                        "transcript_hash": evidence_hash(transcript_text),
+                        "transcript_signature": transcript_signature,
+                        "signing_key_id": signing_key_id,
+                        "verifier_status": verifier_status,
+                    }
+                    if tenant_id is not None and schema_version is not None:
+                        v5_payload = entry_payload_v5(
+                            **line,
+                            tenant_id=str(tenant_id),
+                            kg_version_hash=_strip(kg_version_hash),
+                            model_weight_hash=_strip(model_weight_hash),
+                            schema_version=str(schema_version),
                         )
-                else:
+                        if hashlib.sha256(v5_payload).hexdigest() == stored_hash:
+                            entry_format = 5
+                    if (
+                        entry_format == 3
+                        and hashlib.sha256(entry_payload_v4(**line)).hexdigest() == stored_hash
+                    ):
+                        entry_format = 4
+                except CanonicalizationError:
+                    pass  # stored evidence has no canonical form: not a valid v4/v5 entry
+
+                if entry_format == 3:
                     payload = canonical_entry_payload(
                         sequence_number=int(seq),
                         previous_hash=str(stored_prev),
@@ -245,25 +293,80 @@ class Ledger:
                                 suggested_action="Treat as a confirmed integrity incident; do not use this ledger for regulatory reporting.",
                             )
                         )
-                    elif v4_seen:
-                        # Every writer since ledger v4 commits to the evidence;
-                        # a v3-format entry after a v4 one did not.
+                        entry_format = 0  # unverified: no format applies
+                if entry_format and entry_format < max_format:
+                    # Every writer since a format commits to at least what it
+                    # chained; an older-format entry after a newer one did not.
+                    issues.append(
+                        IntegrityIssue(
+                            issue_type="FORMAT_DOWNGRADE",
+                            sequence_number=seq,
+                            description=(
+                                f"Entry {seq} uses ledger format {entry_format} after a format-{max_format} "
+                                "entry, so it chains less of its evidence than the writer before it did."
+                            ),
+                            severity="CRITICAL",
+                            suggested_action="Find the writer that produced it; only an older runtime writes this format.",
+                        )
+                    )
+                elif entry_format:
+                    entry_hash_verified += 1
+                    max_format = max(max_format, entry_format)
+                    if entry_format == 3 and envelope_text is not None:
+                        unchained_evidence += 1
+                if entry_format >= 4 and stored_envelope_hash != recomputed_envelope_hash:
+                    # The payload carries the digest of the stored JSON, not
+                    # this column, so a rewritten column alone shows up here.
+                    issues.append(
+                        IntegrityIssue(
+                            issue_type="EVIDENCE_HASH_MISMATCH",
+                            sequence_number=seq,
+                            description=(
+                                f"Stored envelope_hash at sequence {seq} does not match the "
+                                "digest of the stored envelope_json."
+                            ),
+                            severity="CRITICAL",
+                            suggested_action="Treat as a confirmed integrity incident.",
+                        )
+                    )
+
+                # 3b. Format 5: the runtime signed this row at this position.
+                if entry_format == 5:
+                    v5_entries += 1
+                    key = ring.get(verdict_signing_key_id)
+                    message = verdict_signing_bytes(
+                        sequence_number=int(seq),
+                        entry_hash=str(stored_hash),
+                        telemetry_id=str(tid),
+                        transcript_id=transcript_id,
+                    )
+                    if key is None or not signature_valid(key, message, verdict_signature):
                         issues.append(
                             IntegrityIssue(
-                                issue_type="FORMAT_DOWNGRADE",
+                                issue_type="VERDICT_SIGNATURE_INVALID",
                                 sequence_number=seq,
                                 description=(
-                                    f"Entry {seq} uses the v3 entry format after a ledger-v4 entry, "
-                                    "so its envelope and transcript are not covered by the chain."
+                                    f"Entry {seq}'s verdict signature does not verify for this row "
+                                    f"(key {_strip(verdict_signing_key_id) or 'missing'}): it was altered, "
+                                    "moved from another row, or the key is not in ledger_signing_keys."
                                 ),
                                 severity="CRITICAL",
-                                suggested_action="Find the writer that produced it; only a pre-v4 runtime writes this format.",
+                                suggested_action="Treat as a confirmed integrity incident.",
+                            )
+                        )
+                    elif not ring.is_trusted(verdict_signing_key_id):
+                        issues.append(
+                            IntegrityIssue(
+                                issue_type="UNTRUSTED_SIGNING_KEY",
+                                sequence_number=seq,
+                                description=f"Entry {seq} is signed by {_strip(verdict_signing_key_id)}, "
+                                "which is not a pinned key (--trusted-key-id).",
+                                severity="CRITICAL",
+                                suggested_action="A ledger re-signed with another key: confirm the runtime's key id.",
                             )
                         )
                     else:
-                        entry_hash_verified += 1
-                        if envelope_text is not None:
-                            unchained_evidence += 1
+                        verdict_signatures_verified += 1
 
                 # 4. Timestamp ordering
                 if prev_timestamp is not None and timestamp < prev_timestamp:
@@ -279,6 +382,22 @@ class Ledger:
 
                 prev_hash = stored_hash
                 prev_timestamp = timestamp
+
+            issues.extend(ring.issues())
+            checkpoint_report = verify_checkpoints(
+                session, [str(r[3]) for r in rows], ring, exported=checkpoints, tsa_ca=tsa_ca
+            )
+            issues.extend(checkpoint_report.issues)
+            warnings.extend(checkpoint_report.warnings)
+            if v5_entries and ring.trusted is None:
+                warnings.append(
+                    "Verdict signatures verify against the ledger's own key table, but no key is pinned: "
+                    f"pass --trusted-key-id (keys seen: {', '.join(sorted(ring.keys)) or 'none'})."
+                )
+            if v5_entries and checkpoint_report.verified == 0:
+                warnings.append(
+                    "No checkpoint covers this ledger yet: a forward rewrite would not be detected."
+                )
 
             if unchained_evidence:
                 warnings.append(
@@ -320,6 +439,9 @@ class Ledger:
                 verification_date=datetime.now(),
                 verdict_distribution=verdict_dist,
                 recommendation=recommendation,
+                verdict_signatures_verified=verdict_signatures_verified,
+                checkpoints_verified=checkpoint_report.verified,
+                timestamps_verified=checkpoint_report.timestamps_verified,
             )
         finally:
             session.close()

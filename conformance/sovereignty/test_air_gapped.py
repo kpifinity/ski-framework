@@ -554,6 +554,9 @@ def _boot_rig(request: pytest.FixtureRequest, *, strict: bool) -> AirgapRig:
         rig_handle.base_url = "https://localhost:8000"
         rig_handle.curl_tls = ["--cacert", "/app/tls/ski-model.crt"]
         mode = [
+            # Ledger format 5: checkpoint every 3 entries (the workload writes 6).
+            "-e",
+            "SKI_LEDGER_CHECKPOINT_EVERY=3",
             "-e",
             "SKI_SOVEREIGNTY=strict",
             # The least-privilege role, never the owner (strict refuses it).

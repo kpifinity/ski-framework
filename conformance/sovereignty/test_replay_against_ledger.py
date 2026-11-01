@@ -105,7 +105,9 @@ def ledger(tmp_path_factory: pytest.TempPathFactory) -> Dict[str, Any]:
 
     engine = sqlalchemy.create_engine(DSN)
     with engine.begin() as cx:
-        cx.exec_driver_sql("DROP TABLE IF EXISTS telemetry_buffer, tenants, ledger_entries CASCADE")
+        cx.exec_driver_sql(
+            "DROP TABLE IF EXISTS telemetry_buffer, tenants, ledger_checkpoints, ledger_signing_keys, ledger_entries CASCADE"
+        )
         for name in (
             "schema.sql",
             "append_only.sql",

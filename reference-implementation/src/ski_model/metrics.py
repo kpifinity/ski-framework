@@ -93,6 +93,14 @@ UNVERIFIABLE_BY_TIER = Counter(
     registry=REGISTRY,
 )
 
+LEDGER_CHECKPOINTS = Counter(
+    "ski_ledger_checkpoints",
+    "Signed Merkle checkpoints written to ledger_checkpoints (ledger format 5), "
+    "by whether an RFC 3161 time-stamp token was obtained for them.",
+    ["timestamped"],
+    registry=REGISTRY,
+)
+
 EGRESS_ATTEMPTS = Counter(
     "ski_egress_attempts",
     "Network calls or name lookups outside the egress allowlist (loopback, "

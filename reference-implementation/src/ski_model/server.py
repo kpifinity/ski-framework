@@ -21,6 +21,7 @@ enforcement is preserved from v2.1 (see docs/CONCURRENCY.md).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -33,6 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, Final, List, Optional
 
+import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Response, status
 from pydantic import BaseModel, Field
@@ -55,7 +57,8 @@ from ski_schemas.measurement import MeasurementRecord
 from . import metrics, sovereignty
 from .kg_loader import KGTrustPolicy, KnowledgeGraph, load_signed_kg
 from .ledger_client import LedgerClient
-from .ledger_migrations import ensure_v3_ledger_schema
+from .ledger_migrations import ensure_v3_ledger_schema, ensure_v5_ledger_schema
+from .timestamping import TimestampAuthority, TimestampError
 from .v3 import (
     AgreementMonitor,
     ModelProvenance,
@@ -120,6 +123,10 @@ class _State:
     sovereignty_checks: tuple[sovereignty.Check, ...] = ()
     egress_guard: Optional[sovereignty.EgressGuard] = None
     ledger_role: Optional[str] = None
+    # Ledger checkpoints (format 5): every N entries, optionally time-stamped.
+    tsa: Optional[TimestampAuthority] = None
+    checkpoint_every: int = 0
+    checkpoint_task: Optional[asyncio.Task[None]] = None
 
 
 state = _State()
@@ -494,6 +501,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # evaluation time. Set SKI_AUTOMIGRATE=false to opt out.
     if state.ledger._engine is not None:
         await ensure_v3_ledger_schema(state.ledger._engine)
+        # Ledger format 5 (spec §7.1 columns, verdict signatures, checkpoints).
+        state.ledger.format5 = await ensure_v5_ledger_schema(state.ledger._engine)
     ledger_check, state.ledger_role = await sovereignty.ledger_role_check(state.ledger._engine)
     checks.append(ledger_check)
     state.sovereignty_checks = tuple(checks)
@@ -507,6 +516,19 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         key_path, ledger_has_signed_transcripts=ledger_has_signed
     )
     logger.info("Transcript signer ready (key_id=%s)", state.transcript_signer.key_id)
+    state.tenant_id = os.getenv("SKI_TENANT_ID", "default")
+    state.ledger.tenant_id = state.tenant_id
+    state.ledger.signer = state.transcript_signer
+    if state.ledger.format5:
+        await state.ledger.register_signing_key()
+    state.tsa = TimestampAuthority.from_env()
+    state.checkpoint_every = int(os.getenv(_CHECKPOINT_EVERY_ENV, "1000"))
+    logger.info(
+        "Ledger format %d; checkpoints every %s entries%s.",
+        5 if state.ledger.format5 else 4,
+        state.checkpoint_every if state.ledger.format5 and state.checkpoint_every > 0 else "(off)",
+        f", time-stamped by {state.tsa.url}" if state.tsa is not None else "",
+    )
     kg = state.knowledge_graph
     state.evaluator = V3Evaluator(
         llm=state.llm_backend,
@@ -517,7 +539,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         kg_trust=kg.kg_trust if kg is not None else None,
     )
 
-    state.tenant_id = os.getenv("SKI_TENANT_ID", "default")
     state.max_clock_skew_seconds = await _resolve_max_clock_skew_seconds(
         state.ledger._engine if state.ledger is not None else None,
         state.tenant_id,
@@ -562,6 +583,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        if state.checkpoint_task is not None:
+            await asyncio.gather(state.checkpoint_task, return_exceptions=True)
+        if state.ledger.format5 and state.checkpoint_every > 0:
+            await _checkpoint()  # cover the tail of this run
         await state.ledger.close()
         logger.info("SKI Model stopping (verdicts_produced=%d)", state.verdicts_produced)
 
@@ -737,7 +762,10 @@ async def _evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
             kg_version=state.knowledge_graph.version,
             ski_model_version=_VERSION,
             track="v3-clock-skew-guard",
+            kg_version_hash=state.kg_version_hash,
+            model_weight_hash=None,  # no model was asked
         )
+        _maybe_checkpoint()
         metrics.VERDICTS.labels(
             verdict=getattr(skew_envelope.verdict, "value", str(skew_envelope.verdict))
         ).inc()
@@ -805,7 +833,10 @@ async def _evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
         kg_version=state.knowledge_graph.version,
         ski_model_version=_VERSION,
         track="v3-evaluator",
+        kg_version_hash=state.kg_version_hash,
+        model_weight_hash=state.llm_backend.model_weight_hash if state.llm_backend is not None else None,
     )
+    _maybe_checkpoint()
 
     # PR 12: record the verifier outcome for the agreement-rate monitor.
     if state.agreement_monitor is not None:
@@ -818,6 +849,43 @@ async def _evaluate(measurement: MeasurementRecord) -> V3VerdictEnvelope:
     metrics.VERDICTS.labels(verdict=getattr(envelope.verdict, "value", str(envelope.verdict))).inc()
     metrics.EVALUATION_SECONDS.observe((datetime.now(timezone.utc) - _eval_started).total_seconds())
     return envelope
+
+
+_CHECKPOINT_EVERY_ENV = "SKI_LEDGER_CHECKPOINT_EVERY"
+
+
+async def _checkpoint() -> None:
+    """Sign, and time-stamp when a TSA is configured, the Merkle root of the ledger so far."""
+    if state.ledger is None or state.ledger.signer is None:
+        return
+    tsa = state.tsa
+    try:
+        try:
+            row = await state.ledger.checkpoint(tsa)
+        except (TimestampError, httpx.HTTPError) as exc:
+            logger.error("Checkpoint time-stamp failed (%s); signing the checkpoint without it.", exc)
+            tsa = None
+            row = await state.ledger.checkpoint(None)
+    except Exception:
+        logger.exception("Ledger checkpoint failed; the next one will cover these entries.")
+        return
+    if row is not None:
+        metrics.LEDGER_CHECKPOINTS.labels(timestamped=str(tsa is not None).lower()).inc()
+
+
+def _maybe_checkpoint() -> None:
+    """Start a background checkpoint when SKI_LEDGER_CHECKPOINT_EVERY entries are uncovered."""
+    ledger = state.ledger
+    if ledger is None or not ledger.format5 or state.checkpoint_every <= 0:
+        return
+    if state.checkpoint_task is not None and not state.checkpoint_task.done():
+        return
+
+    async def run() -> None:
+        if await ledger.entries_since_checkpoint() >= state.checkpoint_every:
+            await _checkpoint()
+
+    state.checkpoint_task = asyncio.create_task(run())
 
 
 @app.get("/api/sovereignty")

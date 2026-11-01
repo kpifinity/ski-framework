@@ -147,6 +147,7 @@ jobs:
           grep -q "04-ledger-writer-login.sh" /tmp/render-default.yaml
           grep -q "05-telemetry-buffer.sql" /tmp/render-default.yaml
           grep -A1 "name: SKI_SOVEREIGNTY$" /tmp/render-default.yaml | grep -q '"strict"'
+          grep -A1 "name: SKI_LEDGER_CHECKPOINT_EVERY$" /tmp/render-default.yaml | grep -q '"1000"'
       - name: Render — air-gap + vllm external
         run: |
           helm template ski deploy/helm/ski \

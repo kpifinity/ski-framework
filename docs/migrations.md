@@ -22,6 +22,7 @@ and are versioned alongside the spec.
 |---|---|---|
 | `001_baseline` | v2.0 / v0.1.0-alpha | Captures the v0.1 baseline (already-deployed `ledger_entries` + append-only triggers) without modification |
 | `002_telemetry_buffer` | v2.1 / v0.2.0 | Adds `tenants`, `telemetry_buffer` (RANGE-partitioned), buffer append-only triggers, `schema_version` column on `ledger_entries`, default `tenant` row, default daily partition |
+| `0003_ledger_v5` | v3.0 / v3.3.0 | Ledger format 5: adds `tenant_id`, `kg_version_hash`, `model_weight_hash`, `schema_version`, `verdict_signature`, `verdict_signing_key_id` to `ledger_entries`, and the append-only `ledger_signing_keys` and `ledger_checkpoints` tables with the writer's grants. Idempotent; existing rows are not modified. Fresh deployments get the same from `schema.sql` / `append_only.sql`. |
 | `0002_transcript_columns` | v3.0 / v3.0.0 | Adds the v3 audit-trail columns to `ledger_entries`: `envelope_json`, `envelope_hash`, `transcript_json`, `transcript_signature`, `signing_key_id`, `verifier_status`. Relaxes the legacy `track` CHECK so v3 evaluator entries (`'v3-evaluator'`) are accepted. Idempotent (every ALTER guarded with IF [NOT] EXISTS). Required for any v0.2.x ledger being upgraded to v3.0. **Fresh v3.0.1+ deployments** get these columns directly from `schema.sql` (rewritten to the v3 baseline in PR 15) and docker-compose also mounts this migration as `03-transcript-columns.sql` for defence-in-depth — both paths end at the same column set. |
 
 ## Running migrations
@@ -148,6 +149,50 @@ assert report.ok and report.strict
 `SKI_SOVEREIGNTY=advisory` logs unmet requirements instead of refusing to
 start. It is for demos and CI (the demo stack and FakeLLM use it), never
 production.
+
+### Upgrading the ledger to format 5 (v3.3.0)
+
+Ledger format 5 chains the spec §7.1 columns (`tenant_id`,
+`kg_version_hash`, `model_weight_hash`, `schema_version`) into every entry
+hash, signs each entry's position (`verdict_signature`, so a signature
+cannot be moved to another row), records the runtime's public key in
+`ledger_signing_keys`, and writes signed Merkle checkpoints to
+`ledger_checkpoints` so a rewrite of the ledger *forward* (every later hash
+recomputed) is detectable.
+
+Fresh deployments get it from `schema.sql` and `append_only.sql`. For an
+existing ledger, apply the migration once as the schema owner:
+
+```bash
+psql "<owner DSN>" -f reference-implementation/src/ledger/migrations/0003_ledger_v5.sql
+```
+
+It is idempotent and does not touch existing rows: they keep their format
+3/4 hashes and keep verifying. The runtime also applies it on startup when
+its role may (`SKI_AUTOMIGRATE`); as `ski_ledger_writer` it cannot, so it
+keeps writing format 4 and logs a warning until the owner has applied it.
+
+Checkpoints:
+
+- `SKI_LEDGER_CHECKPOINT_EVERY` (default `1000`, `0` = off; Helm
+  `skiModel.ledgerCheckpointEvery`) entries per checkpoint. The runtime also
+  checkpoints the tail of a run on shutdown.
+- `SKI_TSA_URL` (Helm `skiModel.tsaUrl`): an RFC 3161 Time-Stamping
+  Authority that time-stamps each checkpoint. It must be inside the
+  deployment: it is on the egress allowlist, and strict mode's
+  `egress_allowlist_local` check covers it. If the TSA fails, the checkpoint
+  is still signed and stored, without a time-stamp, and
+  `ski_ledger_checkpoints_total{timestamped="false"}` counts it.
+- Export checkpoints to write-once storage on a schedule, and verify
+  against them:
+
+  ```bash
+  audit-ledger checkpoint export --ledger-db "$LEDGER_DSN" --out /mnt/worm/ski-checkpoints
+  audit-ledger verify --ledger-db "$LEDGER_DSN" \
+      --trusted-key-id sha256:<the runtime key id from /api/sovereignty> \
+      --checkpoint /mnt/worm/ski-checkpoints/checkpoint-default-000000001000.json \
+      --tsa-ca /etc/ski/tsa-ca.pem
+  ```
 
 ### Adding the telemetry buffer to an existing database
 

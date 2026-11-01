@@ -172,11 +172,30 @@ audit-ledger verify [OPTIONS]
 Options:
   --ledger-db TEXT          PostgreSQL connection string [required]
   --verbose                 Show detailed verification output
-  --check-timestamps        Verify timestamp ordering
-  --repair                  Attempt to repair minor issues (use with caution)
   --output TEXT             Write results to file
+  --trusted-key-id TEXT     Pin a runtime signing key id (repeatable)
+  --checkpoint FILE         An exported checkpoint the ledger must still match (repeatable)
+  --tsa-ca FILE             CA of the RFC 3161 TSA, to verify checkpoint time-stamps
   --help                    Show help message
 ```
+
+For ledger format 5 (v3.3.0), `verify` also checks every entry's verdict
+signature against `ledger_signing_keys` and every checkpoint in
+`ledger_checkpoints` against the entries. Pin the runtime's key with
+`--trusted-key-id` (the id `/api/sovereignty` attests); without a pin the
+keys are reported, not trusted. A forward rewrite that recomputes every
+hash, even with the runtime's own key, fails the checkpoint covering it.
+
+### checkpoint export
+
+```bash
+audit-ledger checkpoint export --ledger-db "$LEDGER_DSN" --out /mnt/worm/ski-checkpoints
+```
+
+Writes each checkpoint not yet exported as a self-contained JSON file
+(statement, signature, public key, RFC 3161 response). Keep them on
+write-once storage and pass them back with `verify --checkpoint`: they still
+catch a rewrite after the ledger's own checkpoint rows were replaced.
 
 ### backup
 

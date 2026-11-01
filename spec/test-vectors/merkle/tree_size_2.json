@@ -1,0 +1,18 @@
+{
+  "name": "tree_size_2",
+  "description": "A checkpoint over the first 2 ledger entries.",
+  "entry_hashes": [
+    "5e2d5d1e58e94d7607e0745cd3e612c4a358fc93f37fc5ab1fed8d04bbf7ce77",
+    "edda7b47233f9790fcc6d116d0a0c0eac38a5d6e44b7cf0c002c6d30bfa61e74"
+  ],
+  "root_hash": "fc8467efcbd3b777761e745762ced1458454b2c06a00f7d4467ed7527d62021f",
+  "proofs": [
+    [
+      "5ee80a55110ef9ca07c485651efdc161dd039f3ddc513cefb12063697255ff1f"
+    ],
+    [
+      "33186f3bfa6b0fd360526e6ea4fa5fe220f19e2aacf0724c5d96544e5cf79783"
+    ]
+  ],
+  "checkpoint_statement": "{\"checkpoint_format\":1,\"created_at\":\"2026-11-01T00:00:00+00:00\",\"last_entry_hash\":\"edda7b47233f9790fcc6d116d0a0c0eac38a5d6e44b7cf0c002c6d30bfa61e74\",\"root_hash\":\"fc8467efcbd3b777761e745762ced1458454b2c06a00f7d4467ed7527d62021f\",\"tenant_id\":\"default\",\"tree_size\":2}"
+}
