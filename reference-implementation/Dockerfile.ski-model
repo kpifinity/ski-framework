@@ -1,4 +1,4 @@
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 # The commit this image was built from, attested by /api/sovereignty (spec §6.4).
 ARG SKI_BUILD_COMMIT=unknown
