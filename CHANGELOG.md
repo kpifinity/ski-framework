@@ -58,6 +58,11 @@ referenced from each release entry.
   eval changes. It replaces the single-model nightly job.
 - FakeLLM baseline pinned on all three sectors: 280/312, with zero breaches and
   zero silent sensors cleared.
+- **First real-model results** (`evals/reports/real-models-2026-11-01.md`): 0
+  breaches and 0 silent sensors cleared in 1,872 evaluations. The 1-1.5B models
+  never produced an assertion the verifier could agree with (agreement 0%), so
+  every answer went to human review or was reported unmapped. That is the safe
+  floor; useful accuracy needs a larger model.
 
 ### One Knowledge Graph shape (spec §3, §5.1, §11.2)
 

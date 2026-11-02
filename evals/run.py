@@ -60,7 +60,13 @@ def main() -> int:
             if args.dataset == "all"
             else [args.dataset]
         )
-        return _run_matrix(backend, [root / n for n in names], args.seeds or [args.seed], Path(args.out))
+        return _run_matrix(
+            backend,
+            [root / n for n in names],
+            args.seeds or [args.seed],
+            Path(args.out),
+            dump_raw=args.dump_raw,
+        )
     dataset_dir = root / args.dataset
     if not dataset_dir.is_dir():
         print(f"error: no dataset at {dataset_dir}", file=sys.stderr)
@@ -78,7 +84,9 @@ def main() -> int:
     return 0
 
 
-def _run_matrix(backend: Any, dataset_dirs: List[Path], seeds: List[int], out: Path) -> int:
+def _run_matrix(
+    backend: Any, dataset_dirs: List[Path], seeds: List[int], out: Path, *, dump_raw: bool = False
+) -> int:
     """Every dataset under every seed, one report each, then the cross-run summary."""
     from .summary import load_runs, render, summarize
 
@@ -91,6 +99,11 @@ def _run_matrix(backend: Any, dataset_dirs: List[Path], seeds: List[int], out: P
         for dataset_dir in dataset_dirs:
             run = asyncio.run(run_eval(dataset_dir=dataset_dir, backend=backend, seed=seed))
             write_report(run, out / model / f"seed-{seed}")
+            if dump_raw:
+                raw_path = (
+                    out / model / f"seed-{seed}" / f"evals-{run.dataset}-{run.provenance['backend']}-raw.json"
+                )
+                raw_path.write_text(json.dumps(run.raw_outputs, indent=2) + "\n", encoding="utf-8")
             print(f"{dataset_dir.name} seed {seed}: accuracy {run.metrics.verdict_accuracy}", file=sys.stderr)
     summary = summarize(load_runs(out / model))
     (out / model / "evals-summary.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")

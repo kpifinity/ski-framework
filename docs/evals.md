@@ -127,6 +127,15 @@ each with the run it came from. Small models were chosen so a full run fits
 CPU runners; their accuracy says little about a production-size model, but
 the safety property (no silent CLEAR) must hold for any model.
 
+**First run (2026-11-01,
+[report](https://github.com/kpifinity/ski-framework/blob/main/evals/reports/real-models-2026-11-01.md)):**
+0 breaches and 0 silent sensors CLEARed in 1,872 evaluations. Neither small
+model produced an assertion the verifier could agree with (agreement 0%,
+accuracy 11.5% for `llama3.2:1b` and 17-18% for `qwen2.5:1.5b`), so every
+answer was routed to human review or reported unmapped rather than honoured.
+That is the floor the architecture guarantees; useful accuracy needs a larger
+model.
+
 The FakeLLM baseline on the three sectors is pinned in CI: 280/312 correct
 (89.7%, Wilson 95% [85.9%, 92.6%]), and every miss is FakeLLM's deliberate
 `must_be_at_least` blind spot or its one-metric-per-record shortcut, all
