@@ -7,7 +7,7 @@ hide:
 
 | | |
 |---|---|
-| **Status** | Draft 3.1 (RFC 0004 in comment period); v3.0 Active (RFC 0002 accepted; implemented in v3.0.0) |
+| **Status** | Active (RFC 0004 accepted; implemented in v3.3.0). Supersedes 3.0 (RFC 0002) |
 | **Editor** | The SKI Framework maintainers |
 | **License** | CC BY 4.0 |
 | **Supersedes** | SKI Framework Specification v2.1 |
@@ -356,7 +356,8 @@ the following five values in its `verdict` field:
 
 - `CLEAR` — applicable obligations evaluated; no compliance issue.
 - `FLAG` — at least one applicable obligation breached.
-- `NULL_UNMAPPED` — the telemetry subject is not present in the KG.
+- `NULL_UNMAPPED` — no obligation in the KG slice maps the telemetry
+  (for example a measured metric no applicable obligation names).
 - `NULL_STALE` — an obligation with a temporal freshness predicate
   matched, but the freshness window was not satisfied.
 - `DISCRETIONARY` — an applicable obligation requires qualified human
@@ -448,7 +449,14 @@ required fields.
 | `checked_assertions` | integer | The count of formalizable assertions the verifier independently evaluated |
 | `divergences` | array | Details of any disagreement |
 
-The `status` values are normative and mean:
+The `status` values are normative and mean the following. An
+implementation MAY first replace a `satisfied` flag it can compute
+mechanically from `observed` and `value` (recording the correction in the
+envelope's notes, the model's claim staying in the signed transcript); the
+status then describes the corrected assertions, so a `FLAG` whose
+corrected assertions all hold is a `NEURO_SYMBOLIC_DIVERGENCE`, while a
+`CLEAR` resting on an assertion corrected to unsatisfied remains an
+`LLM_CONTRADICTION`.
 
 - `AGREED` — the verifier ran every formalizable assertion and
   agreed with the language model's `satisfied` value on each.
@@ -505,8 +513,10 @@ request by:
 1. Identifying the `Rule` nodes whose `applies_to` edges target the
    telemetry record's subject. A `Rule` with no `applies_to` edge applies
    to every subject (as an `Obligation` with no `scoped_to` edge applies in
-   every jurisdiction); a record whose subject no `Rule` applies to gets an
-   empty slice.
+   every jurisdiction); a record whose subject no `Rule` applies to
+   (including a subject absent from the KG) gets an empty slice. Nothing
+   can establish compliance from an empty slice: the implementation MUST
+   NOT return `CLEAR` or `FLAG` for it and SHOULD return `DISCRETIONARY`.
 2. Identifying the `Obligation` nodes reachable from those rules via
    `consists_of`.
 3. Filtering by `effective_date_start <= as_of` and (if
@@ -570,9 +580,10 @@ the enumeration `low`, `medium`, `high`. The risk tier governs how
 the implementation honours the language model's verdict given the
 verifier's result.
 
-**Low.** The implementation MUST honour the language model's verdict.
-Verifier divergences are logged in the envelope but do not change the
-outcome.
+**Low.** If the verifier's status is `LLM_CONTRADICTION`, the
+implementation MUST emit `DISCRETIONARY` and record the divergence.
+Otherwise it MUST honour the language model's verdict; other verifier
+divergences are logged in the envelope but do not change the outcome.
 
 **Medium.** If the verifier's status is `AGREED` or `UNVERIFIABLE`,
 the implementation MUST honour the language model's verdict. If the
@@ -586,6 +597,14 @@ implementation MUST honour the language model's verdict. Otherwise,
 the implementation MUST hold the verdict; the verdict is not finalized
 until the operator submits an attestation token through the
 implementation's attestation API.
+
+> **Note (3.1).** The hold is not implemented by the reference
+> implementation, which at `high` honours an `AGREED` verdict without an
+> attestation and routes every other status to `DISCRETIONARY` with
+> `human_attestation.required = true`. Whether to implement the hold or
+> adopt that rule is deferred to a later revision (RFC 0004, deferred
+> question). Until then, conformance at `high` is assessed on the
+> fail-closed half only: a non-`AGREED` status MUST NOT be honoured.
 
 ### 5.5 Audit ledger write
 

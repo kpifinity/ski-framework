@@ -91,11 +91,10 @@ def test_self_contradicting_clear_goes_to_human_review(sut: SUT) -> None:
 def test_self_contradicting_flag_goes_to_human_review(sut: SUT) -> None:
     """§4.5/§5.4 medium: a FLAG on a reading within the limit is not honoured; it goes to DISCRETIONARY.
 
-    §4.5's wording makes this ``LLM_CONTRADICTION``. An implementation that
-    first corrects ``satisfied`` from the reading reports
-    ``NEURO_SYMBOLIC_DIVERGENCE`` (a FLAG whose assertions all hold); both
-    reach the same verdict and both are accepted here until RFC 0004 settles
-    the status (unresolved questions).
+    Uncorrected, this is ``LLM_CONTRADICTION``; spec 3.1 §4.5 lets an
+    implementation first correct ``satisfied`` from the reading, after which
+    it is ``NEURO_SYMBOLIC_DIVERGENCE`` (a FLAG whose assertions all hold).
+    Both statuses are conformant and reach the same verdict.
     """
     env = sut.envelope(sut.token(), SO2_SUBJECT, {"so2_ppm": 85}, answer("FLAG", [so2(85, False)]))
     _check_envelope(sut, env)
@@ -190,9 +189,9 @@ def test_slice_holds_only_the_subjects_rules(sut: SUT) -> None:
 def test_unrouted_subject_never_passes(sut: SUT, subject: str) -> None:
     """§5.1: a subject no Rule applies to has an empty slice, so nothing can establish CLEAR or FLAG.
 
-    Spec §4.1 names ``NULL_UNMAPPED`` for a subject absent from the KG; an
-    implementation that routes it to human review (``DISCRETIONARY``)
-    instead is also accepted here (RFC 0004, unresolved questions).
+    Spec 3.1 §5.1: such a record MUST NOT get CLEAR or FLAG and SHOULD get
+    ``DISCRETIONARY``; ``NULL_UNMAPPED`` (the 3.0 reading for a subject absent
+    from the KG) is still accepted, as the SHOULD allows it.
     """
     token = sut.token()
     env = sut.envelope(token, subject, {"so2_ppm": 85}, answer("CLEAR", [so2(85, True)]))

@@ -64,9 +64,9 @@ referenced from each release entry.
   every answer went to human review or was reported unmapped. That is the safe
   floor; useful accuracy needs a larger model.
 
-### Specification 3.1 draft (RFC 0004)
+### Specification 3.1 (RFC 0004, accepted)
 
-- **RFC 0004 and the Specification 3.1 text (draft, in comment period).** The
+- **RFC 0004 and the Specification 3.1 text (accepted).** The
   prose now says what the contracts and vectors already pin: canonical JSON is
   RFC 8785 exactly, with its rejections (§7.3); NFC applies to string values
   only; the assertion predicate set includes `must_equal`, `must_not_equal`,
