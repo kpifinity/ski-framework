@@ -3,15 +3,15 @@ hide:
   - toc
 ---
 
-# SKI Framework Specification v3.0
+# SKI Framework Specification v3.1
 
 | | |
 |---|---|
-| **Status** | Active (RFC 0002 accepted; implemented in v3.0.0) |
-| **Editor** | KpiFinity Inc. |
+| **Status** | Active (RFC 0004 accepted; implemented in v3.3.0). Supersedes 3.0 (RFC 0002) |
+| **Editor** | The SKI Framework maintainers |
 | **License** | CC BY 4.0 |
 | **Supersedes** | SKI Framework Specification v2.1 |
-| **Reference RFC** | [RFC 0002 — SKI v3.0 Neuro-Symbolic Pivot](RFCs/0002-v3-neuro-symbolic-pivot.md) |
+| **Reference RFC** | [RFC 0002 — SKI v3.0 Neuro-Symbolic Pivot](RFCs/0002-v3-neuro-symbolic-pivot.md); [RFC 0004 — Specification 3.1](RFCs/0004-spec-3-1-alignment.md) |
 
 ## 0. Status of this document
 
@@ -20,6 +20,16 @@ architectural rationale, alternatives considered, and rollout plan
 live in [RFC 0002](RFCs/0002-v3-neuro-symbolic-pivot.md). This document
 states what an implementation MUST, SHOULD, and MAY do in order to
 conform to the v3.0 specification.
+
+Version 3.1 ([RFC 0004](RFCs/0004-spec-3-1-alignment.md)) is a minor
+revision: it aligns the text with the published contracts (JSON Schema,
+OpenAPI, `spec/test-vectors/`) so that an implementation can be written
+from this document and the vectors alone, and removes vendor names from
+normative text. A v3.0 implementation that reproduces the published
+vectors conforms to 3.1, except that it MUST refuse a Rule with no
+obligation ([§3.3](#33-typed-obligations)) and MUST route by subject
+([§5.1](#51-kg-retrieval)). Where this document says "v3.0" it means the
+v3 line, 3.1 included.
 
 v3.0 supersedes v2.1. v2.1 implementations remain conformant to v2.1
 indefinitely; the v3.0 conformance ladder is distinct. The
@@ -43,12 +53,14 @@ as shown here.
 Throughout this document:
 
 - **"the framework"** means the SKI Framework as a whole.
-- **"this specification"** means this document, v3.0.
+- **"this specification"** means this document, v3.1.
 - **"an implementation"** means any software that claims conformance
   to some level of this specification.
 - **"the reference implementation"** means the open-source
-  implementation maintained by KpiFinity at
-  <https://github.com/kpifinity/ski-framework>.
+  implementation in the SKI Framework repository,
+  <https://github.com/kpifinity/ski-framework>. It is not normative:
+  where it and this document disagree, this document and the published
+  test vectors govern.
 - **"the operator"** means the organization deploying an implementation
   in a regulated environment.
 
@@ -107,7 +119,7 @@ The KG MUST be cryptographically signed; an implementation MUST refuse
 to load an unsigned KG in `SKI_SOVEREIGNTY=strict` mode. The signing
 scheme is Ed25519. The trust anchor MUST be configured by the operator;
 the implementation MUST NOT ship with a default trust anchor that
-chains to KpiFinity or any other vendor.
+chains to any vendor, the implementation's author included.
 
 #### 2.1.3 Intelligence
 
@@ -252,6 +264,10 @@ for every node kind in [§3.1](#31-node-types)):
 - `discretionary` — the obligation requires qualified human judgment
   to evaluate; ALWAYS produces `DISCRETIONARY`.
 
+Every `Rule` MUST consist of at least one `Obligation` (a `consists_of`
+edge). An implementation MUST refuse to load a KG holding a Rule with no
+obligation, rather than evaluate it as vacuously satisfied.
+
 Implementations MUST treat obligations of unknown type as
 `DISCRETIONARY` and record the unknown-type detection in the verdict
 envelope's `verifier_result.divergences` array.
@@ -340,7 +356,8 @@ the following five values in its `verdict` field:
 
 - `CLEAR` — applicable obligations evaluated; no compliance issue.
 - `FLAG` — at least one applicable obligation breached.
-- `NULL_UNMAPPED` — the telemetry subject is not present in the KG.
+- `NULL_UNMAPPED` — no obligation in the KG slice maps the telemetry
+  (for example a measured metric no applicable obligation names).
 - `NULL_STALE` — an obligation with a temporal freshness predicate
   matched, but the freshness window was not satisfied.
 - `DISCRETIONARY` — an applicable obligation requires qualified human
@@ -403,16 +420,23 @@ check.
 
 | Field | Type | Description |
 |---|---|---|
-| `predicate` | enum | The predicate type, drawn from the same enumeration as `Obligation.type` in [§3.3](#33-typed-obligations) |
+| `predicate` | enum | The predicate type: an `obligation_type` of [§3.3](#33-typed-obligations), or one of `must_equal`, `must_not_equal`, `must_not_exceed_in_window`, `must_average_within` |
 | `metric` | string | A dotted-path identifier into the telemetry record's measurement object |
-| `value` | scalar | The operand the predicate is being evaluated against |
-| `observed` | scalar | The measured value the language model claims it observed |
+| `value` | scalar, range or array | The operand: a two-element `[lo, hi]` range for `must_be_within` and `must_average_within`, an array for `must_be_one_of` and `must_not_be_one_of`, otherwise a scalar |
+| `observed` | scalar, range or array | The measured value the language model claims it observed, in the same shape as `value` |
+| `window_seconds` | integer ≥ 1 | Required for the stateful predicates `must_not_exceed_in_window` and `must_average_within`, which evaluate the readings of `metric` in the trailing window; absent otherwise |
 | `satisfied` | boolean | The language model's claim about whether the predicate is satisfied |
 | `obligation_id` | string | The KG obligation this assertion is checking |
 
 The `formalizable_assertions` array MAY be empty if the rule has no
 formalizable subset. Implementations MUST record an empty array as
 `[]`, not as a missing field.
+
+A predicate outside the set above, or a `value` whose shape does not
+match its predicate, is a schema violation: the verifier MUST NOT
+evaluate it as satisfied and MUST record it in
+`verifier_result.divergences`. The normative schema is
+`v3_verdict_envelope.schema.json`.
 
 ### 4.5 Verifier result
 
@@ -425,7 +449,14 @@ required fields.
 | `checked_assertions` | integer | The count of formalizable assertions the verifier independently evaluated |
 | `divergences` | array | Details of any disagreement |
 
-The `status` values are normative and mean:
+The `status` values are normative and mean the following. An
+implementation MAY first replace a `satisfied` flag it can compute
+mechanically from `observed` and `value` (recording the correction in the
+envelope's notes, the model's claim staying in the signed transcript); the
+status then describes the corrected assertions, so a `FLAG` whose
+corrected assertions all hold is a `NEURO_SYMBOLIC_DIVERGENCE`, while a
+`CLEAR` resting on an assertion corrected to unsatisfied remains an
+`LLM_CONTRADICTION`.
 
 - `AGREED` — the verifier ran every formalizable assertion and
   agreed with the language model's `satisfied` value on each.
@@ -453,7 +484,7 @@ fields.
 | `model_weight_hash` | string | SHA-256 of the language model weights, prefixed `sha256:` |
 | `kg_version_hash` | string | SHA-256 of the canonical KG used in evaluation |
 | `prompt_template_id` | string | Stable identifier of the prompt template (e.g., `ski.v3.evaluate.1`) |
-| `prompt_template_hash` | string | SHA-256 of the rendered prompt template, prefixed `sha256:` |
+| `prompt_template_hash` | string | SHA-256 of the prompt template (not of a rendered prompt), prefixed `sha256:` |
 | `decoder_seed` | integer | The decoder seed used for inference |
 | `structured_grammar_hash` | string | SHA-256 of the structured-generation grammar |
 
@@ -461,6 +492,16 @@ All hash values MUST be lowercase hex, prefixed with the algorithm
 identifier (e.g., `sha256:abc123...`). Implementations MAY use
 stronger hashes in addition; SHA-256 is the minimum a conforming
 implementation MUST support.
+
+The following fields are OPTIONAL. An implementation that emits one MUST
+give it the meaning below.
+
+| Field | Type | Description |
+|---|---|---|
+| `model_hash_verified` | boolean | `true` only if an operator-pinned weights digest matched a digest the runtime obtained independently of that pin; `false` means `model_weight_hash` is unverified |
+| `inference_backend` | string | Identifier of the inference backend that served the call |
+| `kg_signer_key_id` | string | `sha256:` + hex SHA-256 of the public key whose signature over the KG was verified at load |
+| `kg_trust` | enum | `anchored` (signature verified against an operator-pinned trust anchor), `unanchored` (checked only against the KG's own embedded key; development only) or `unsigned` (no signature; development only) |
 
 ## 5. Runtime model
 
@@ -472,8 +513,10 @@ request by:
 1. Identifying the `Rule` nodes whose `applies_to` edges target the
    telemetry record's subject. A `Rule` with no `applies_to` edge applies
    to every subject (as an `Obligation` with no `scoped_to` edge applies in
-   every jurisdiction); a record whose subject no `Rule` applies to gets an
-   empty slice.
+   every jurisdiction); a record whose subject no `Rule` applies to
+   (including a subject absent from the KG) gets an empty slice. Nothing
+   can establish compliance from an empty slice: the implementation MUST
+   NOT return `CLEAR` or `FLAG` for it and SHOULD return `DISCRETIONARY`.
 2. Identifying the `Obligation` nodes reachable from those rules via
    `consists_of`.
 3. Filtering by `effective_date_start <= as_of` and (if
@@ -496,8 +539,10 @@ metadata. The prompt construction MUST be:
 1. Deterministic given the same inputs.
 2. Identifiable by a stable `prompt_template_id`.
 3. Canonically hashable; the `prompt_template_hash` recorded in
-   `model_provenance` MUST be the SHA-256 of the rendered prompt as
-   sent to the language model.
+   `model_provenance` MUST be the SHA-256 of the prompt template
+   identified by `prompt_template_id`. The rendered prompt as sent to
+   the language model is recorded in the transcript, whose
+   `request_hash` is its SHA-256.
 
 The language model MUST be invoked with the decoder parameters
 specified in [§2.1.3](#213-intelligence) and with structured-generation
@@ -535,9 +580,10 @@ the enumeration `low`, `medium`, `high`. The risk tier governs how
 the implementation honours the language model's verdict given the
 verifier's result.
 
-**Low.** The implementation MUST honour the language model's verdict.
-Verifier divergences are logged in the envelope but do not change the
-outcome.
+**Low.** If the verifier's status is `LLM_CONTRADICTION`, the
+implementation MUST emit `DISCRETIONARY` and record the divergence.
+Otherwise it MUST honour the language model's verdict; other verifier
+divergences are logged in the envelope but do not change the outcome.
 
 **Medium.** If the verifier's status is `AGREED` or `UNVERIFIABLE`,
 the implementation MUST honour the language model's verdict. If the
@@ -551,6 +597,14 @@ implementation MUST honour the language model's verdict. Otherwise,
 the implementation MUST hold the verdict; the verdict is not finalized
 until the operator submits an attestation token through the
 implementation's attestation API.
+
+> **Note (3.1).** The hold is not implemented by the reference
+> implementation, which at `high` honours an `AGREED` verdict without an
+> attestation and routes every other status to `DISCRETIONARY` with
+> `human_attestation.required = true`. Whether to implement the hold or
+> adopt that rule is deferred to a later revision (RFC 0004, deferred
+> question). Until then, conformance at `high` is assessed on the
+> fail-closed half only: a non-`AGREED` status MUST NOT be honoured.
 
 ### 5.5 Audit ledger write
 
@@ -665,12 +719,16 @@ with at minimum the following columns:
 | `rule_id` | text | The rule the verdict applies to |
 | `kg_version_hash` | text | Per `model_provenance.kg_version_hash` |
 | `model_weight_hash` | text | Per `model_provenance.model_weight_hash` |
-| `llm_transcript` | jsonb | The verdict envelope plus full LLM transcript |
+| `llm_transcript` | jsonb | The verdict envelope plus full LLM transcript, or a reference to them ([§7.4](#74-transcript-store)) |
 | `verifier_result` | jsonb | Per [§4.5](#45-verifier-result) |
 | `schema_version` | text | Currently `3.0.0` |
 
-The implementation MAY add additional columns; the columns above are
-the minimum a conforming implementation MUST emit.
+The table lists the content every entry MUST record; column names and
+layout are not normative. The implementation MAY add additional
+columns. The verdict envelope (which carries `verifier_result`) and the
+transcript MAY be stored in the ledger row itself or in a separate
+store ([§7.4](#74-transcript-store)); in either case `entry_hash` MUST
+commit to them.
 
 **Entry hash (ledger formats 4 and 5).** `entry_hash` MUST commit to the
 stored evidence as well as the verdict line, so that re-computing it from
@@ -720,25 +778,38 @@ is the SHA-256 of the canonical UTF-8 byte serialization of the
 underlying object. The canonical serialization is JSON with the
 following rules:
 
-1. Object keys are sorted lexicographically.
-2. Whitespace is removed between tokens.
-3. String values are UTF-8 NFC-normalized.
-4. Numeric values are emitted with the minimum number of significant
-   digits required to round-trip.
-5. Floating-point values follow ECMA-262 §7.1.12.1 ("ToString applied
-   to the Number type").
+1. The serialization is the JSON Canonicalization Scheme, RFC 8785,
+   exactly: no whitespace between tokens; object member names sorted
+   by their UTF-16 code units; strings escaped as RFC 8785 §3.2.2.2
+   prescribes; every number (integers included) serialized as
+   ECMA-262 `Number::toString` of its IEEE-754 double value.
+2. Before serialization, every string **value** is normalized to
+   Unicode NFC. Member names are used as written; normalizing them
+   could merge distinct keys.
+3. An implementation MUST reject, rather than serialize, NaN,
+   positive or negative infinity, strings holding lone surrogates, and
+   any in-memory integer that no IEEE-754 double represents exactly
+   (so two distinct integers never canonicalize to the same bytes).
+   Number literals in JSON *text* are read as `JSON.parse` reads them.
+4. When hashing JSON text, an implementation MUST reject text with
+   duplicate member names (I-JSON, RFC 7493) or a leading byte-order
+   mark.
 
-This canonical scheme is identical to the v2.1 ledger entry hashing
-scheme; v3 reuses it for KG and prompt-template hashing.
+`spec/test-vectors/canonical/` pins the output for edge cases (key
+order beyond the Basic Multilingual Plane, number formatting, NFC,
+rejections); an implementation MUST reproduce every vector. This
+scheme is the one the v2.1 ledger used, stated precisely; v3 reuses
+it for ledger entries, KG and prompt-template hashing.
 
 ### 7.4 Transcript store
 
-The full language model transcript MUST be persisted in a transcript
-store separate from the main ledger table. The transcript MUST be
-referenced from the ledger entry via `llm_transcript->>'transcript_ref'`.
-
-The transcript store MUST be append-only and signature-verifiable
-in the same way as the ledger.
+The full language model transcript MUST be persisted, either in the
+ledger row or in a transcript store separate from the ledger table. A
+separate store MUST be referenced from the ledger entry (the reference
+form is `llm_transcript->>'transcript_ref'`) and MUST be append-only.
+Either way the transcript MUST be signature-verifiable and committed to
+by `entry_hash` ([§7.1](#71-ledger-schema)); the reference ledger stores
+the signed transcript in the row (ledger formats 4 and 5).
 
 The transcript store MAY be partitioned for retention; partition
 drop policies are operator-defined.
@@ -749,8 +820,9 @@ For Level 3 conformance, the implementation MUST attach a verifiable
 inference receipt to every verdict. The receipt scheme MUST permit a
 third party to verify, given the receipt and the model weights, that
 the recorded transcript was produced by the recorded model on the
-recorded prompt. The reference scheme is CommitLLM (or equivalent
-receipt scheme accepted by KpiFinity's conformance authority).
+recorded prompt. Any receipt scheme whose verification procedure is
+published, and which provides that property, is acceptable; CommitLLM
+is one such scheme.
 
 For Level 1 and Level 2 conformance, the receipt is OPTIONAL.
 
@@ -765,9 +837,11 @@ procedure for an entry is:
    storage. Confirm the SHA-256 matches.
 2. Re-fetch the language model weights at `model_weight_hash` from
    operator-controlled storage. Confirm the SHA-256 matches.
-3. Re-render the prompt from `(rule, kg_slice, telemetry,
-   prompt_template_id)`. Compute the SHA-256 and compare to
-   `prompt_template_hash`. The hashes MUST match.
+3. Confirm that the prompt template identified by
+   `prompt_template_id` hashes to `prompt_template_hash`. Re-render the
+   prompt from `(rule, kg_slice, telemetry, prompt_template_id)` and
+   compare it with the rendered prompt recorded in the transcript
+   (its `request_hash`). Both MUST match.
 4. Re-invoke the language model with `decoder_seed` and the structured
    grammar identified by `structured_grammar_hash`. Compare the
    resulting transcript to the recorded transcript using the receipt

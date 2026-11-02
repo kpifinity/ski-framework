@@ -32,6 +32,13 @@ See [Governance](../governance.md) for the full process.
   models into a `ski-schemas` package. PR 2 (the SDK) landed June 2026;
   PR 1 (`ski-schemas`) is deferred to v3.1.
 
+- [RFC 0004 — Specification 3.1: align the text with the contracts](0004-spec-3-1-alignment.md)
+  — Canonical JSON is RFC 8785 exactly; NFC on values only; the full
+  assertion predicate set and `window_seconds`; optional provenance fields;
+  `prompt_template_hash` is the template's hash; ledger storage by content;
+  one KG shape; every Rule needs an obligation; vendor-neutral normative
+  text. Accepted 2026-11-02; implemented in **v3.3.0**.
+
 ## Draft
 
 _(none currently)_
