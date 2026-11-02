@@ -54,6 +54,7 @@ class EvalRun:
                     "verdict_correct": r.verdict_correct,
                     "assertions_correct": r.assertions_correct,
                     "verifier_status": r.verifier_status,
+                    "checked_assertions": r.checked_assertions,
                 }
                 for r in self.results
             ],
@@ -131,6 +132,7 @@ async def run_eval(*, dataset_dir: Path, backend: V3LLMBackend, seed: int = 0) -
     provenance = {
         "ran_at": datetime.now(timezone.utc).isoformat(),
         "backend": backend.name,
+        "model_id": getattr(backend, "model_id", backend.name),
         "model_weight_hash": backend.model_weight_hash,
         "prompt_template_id": backend.prompt_template_id,
         "prompt_template_hash": backend.prompt_template_hash,

@@ -82,10 +82,64 @@ deliberately flawed model,
 no breach was silently cleared — that is the neuro-symbolic
 architecture doing its job, demonstrated by the eval suite itself.
 
-Real-model numbers (Ollama, `qwen2.5:7b-instruct`, seed 42) run
-nightly in [`evals.yml`](https://github.com/kpifinity/ski-framework/blob/main/.github/workflows/evals.yml)
-and are published as workflow artifacts; a results page will be added
-once enough nightly history exists to report stable numbers.
+## Three sectors, 312 cases (v3.3)
+
+| Dataset | Cases | CLEAR | FLAG | NULL_UNMAPPED | NULL_STALE | How labelled |
+|---|---|---|---|---|---|---|
+| energy | 55 | 20 | 18 | 12 | 5 | by hand |
+| finance | 129 | 46 | 38 | 26 | 19 | generated |
+| manufacturing | 128 | 42 | 41 | 26 | 19 | generated |
+
+The finance and manufacturing sets are produced by
+[`evals/datasets/generate.py`](https://github.com/kpifinity/ski-framework/blob/main/evals/datasets/generate.py)
+from a table of nine obligations per sector covering all three numeric
+predicates, an EU-only obligation, a future rule and a sunset rule. For
+every obligation it emits readings on both sides of the threshold and on it
+(inclusive boundaries), silent sensors, records from the other jurisdiction,
+records outside the effective-date interval, records carrying two mapped
+readings, and near-miss metric names. Each label follows from the predicate
+definitions in spec §3.3 and the scoping rules of §3.4 / §5.1, computed by
+the generator's own predicate table, not by the reference implementation;
+`evals/tests/test_evals_rigor.py` re-checks every label independently and
+CI fails if the committed files drift from the generator.
+
+## Rigor: seeds, model families, intervals
+
+```bash
+python -m evals.run --backend ollama --dataset all --seeds 0 1 2
+python -m evals.summary evals-report/      # combine runs made elsewhere
+```
+
+Every rate is reported with its **Wilson 95% interval** and its `k/n`, pooled
+over the datasets of one (model, seed) run. Seeds are not pooled: the same
+case under three seeds is not three independent trials, so each seed gets its
+own interval and the summary adds the share of cases with the same verdict
+under every seed. The two safety counts (breaches silently CLEARed, silent
+sensors CLEARed) are reported as raw counts, because the requirement is zero.
+
+[`evals-real.yml`](https://github.com/kpifinity/ski-framework/blob/main/.github/workflows/evals-real.yml)
+runs two open-weight model families on CPU through Ollama, `qwen2.5:1.5b`
+(Qwen) and `llama3.2:1b` (Llama), on every dataset under seeds 0, 1 and 2
+(18 jobs), weekly and on pull requests that change the evals. The summary is
+in the workflow's job summary and artifacts. Committed results are in
+[`evals/reports/`](https://github.com/kpifinity/ski-framework/tree/main/evals/reports),
+each with the run it came from. Small models were chosen so a full run fits
+CPU runners; their accuracy says little about a production-size model, but
+the safety property (no silent CLEAR) must hold for any model.
+
+**First run (2026-11-01,
+[report](https://github.com/kpifinity/ski-framework/blob/main/evals/reports/real-models-2026-11-01.md)):**
+0 breaches and 0 silent sensors CLEARed in 1,872 evaluations. Neither small
+model produced an assertion the verifier could agree with (agreement 0%,
+accuracy 11.5% for `llama3.2:1b` and 17-18% for `qwen2.5:1.5b`), so every
+answer was routed to human review or reported unmapped rather than honoured.
+That is the floor the architecture guarantees; useful accuracy needs a larger
+model.
+
+The FakeLLM baseline on the three sectors is pinned in CI: 280/312 correct
+(89.7%, Wilson 95% [85.9%, 92.6%]), and every miss is FakeLLM's deliberate
+`must_be_at_least` blind spot or its one-metric-per-record shortcut, all
+caught by the verifier and routed to DISCRETIONARY.
 
 ## Real-model iteration log (qwen2.5:7b-instruct, seed 42)
 

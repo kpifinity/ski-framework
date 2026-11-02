@@ -9,6 +9,61 @@ referenced from each release entry.
 
 ## [Unreleased]
 
+### Black-box conformance suite
+
+- **`conformance/blackbox/`: conformance for any implementation.** The suite
+  tests an implementation through its HTTP API, its ledger (SQL, for the §7.2
+  append-only checks) and `spec/test-vectors/` only; a test fails the build if
+  any file in it imports reference code. The implementation uses a scripted,
+  OpenAI-compatible LLM (`scripted_llm.py`), so each test fixes the model's
+  answer: correct, self-contradicting, misreporting the reading, citing outside
+  the slice, malformed, or missing. It then checks the verdict, the verifier
+  status, the risk-tier outcome, routing, and the ledger evidence (hash chain,
+  envelope hash, SCITT and TRACE signatures, Merkle receipts). Its RFC 8785 and
+  RFC 6962 checkers are written from the RFCs and verified against the vectors.
+  `adapters/reference.py` runs it against the reference implementation, and CI
+  does so on every pull request (50 checks, all passing).
+
+### Quality gates
+
+- **Strict typing** now covers the v3 evaluator, verifier, policies and backends
+  and the whole `audit_ledger` package (was: its canonical module only).
+- **Branch coverage** is measured and gated (81% overall with branches; the
+  safety-critical modules stay at 95%, measured 96%).
+- **Fuzzing:** Hypothesis fuzzers for the §7.3 canonicalizer and the KG loader run
+  on every push and at 20,000 examples weekly. They found that a flat KG with a
+  non-object rule (`"rules": [null]`) crashed the loader with a `TypeError`; flat
+  documents are now validated and refused with a `ValueError`.
+- **Mutation testing** of the Symbolic Verifier and the risk-tier policy
+  (`mutmut`), weekly and on pull requests that touch them, gated on the score of
+  the non-text mutants (`scripts/mutation_score.py`): 83.7% measured, gate 82%.
+  The first run found the tier-2 `NEURO_SYMBOLIC_DIVERGENCE` path and the
+  `human_attestation` marker on downgrades untested; both are now pinned.
+
+### Eval rigor
+
+- **312 golden cases across three sectors.** New finance (129) and
+  manufacturing (128) datasets join the hand-labelled energy set (55). They are
+  generated from a table of obligations (`evals/datasets/generate.py`) that
+  covers every numeric predicate, both jurisdictions, future and sunset rules,
+  silent sensors, multi-metric records and near-miss metric names. A test
+  re-derives every label independently, and CI fails if the files drift from
+  the generator.
+- **Seeds and intervals.** `python -m evals.run --dataset all --seeds 0 1 2`
+  runs every dataset under each seed. `evals/summary.py` reports every rate with
+  its Wilson 95% interval and `k/n`, plus seed stability, and combines runs made
+  on different machines.
+- **Two model families.** `evals-real.yml` runs `qwen2.5:1.5b` and `llama3.2:1b`
+  through Ollama on every dataset under three seeds (18 CI jobs), weekly and on
+  eval changes. It replaces the single-model nightly job.
+- FakeLLM baseline pinned on all three sectors: 280/312, with zero breaches and
+  zero silent sensors cleared.
+- **First real-model results** (`evals/reports/real-models-2026-11-01.md`): 0
+  breaches and 0 silent sensors cleared in 1,872 evaluations. The 1-1.5B models
+  never produced an assertion the verifier could agree with (agreement 0%), so
+  every answer went to human review or was reported unmapped. That is the safe
+  floor; useful accuracy needs a larger model.
+
 ### Specification 3.1 draft (RFC 0004)
 
 - **RFC 0004 and the Specification 3.1 text (draft, in comment period).** The
