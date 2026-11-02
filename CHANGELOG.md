@@ -4,10 +4,26 @@ All notable changes to this repository are documented here. The format is
 based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The **specification** version (currently v3.0) is tracked separately and
+The **specification** version (currently v3.1) is tracked separately and
 referenced from each release entry.
 
 ## [Unreleased]
+
+## [3.3.0] -- 2026-11-02
+
+Tamper-evident, standards-native, and implementable from the specification
+(**Specification 3.1**, RFC 0004). Ledger format 5 chains every spec §7.1 column,
+signs each entry's position, and checkpoints the chain as a signed Merkle root,
+optionally time-stamped. Every entry can be exported as a SCITT statement with a
+COSE Receipt and a TRACE record, with an ML-BOM, OSCAL results and OpenSSF Model
+Signing alongside. Strict sovereignty mode is complete. A black-box conformance
+suite, stricter quality gates, and 312-case evals across three sectors round out
+the release.
+
+**Breaking, by design:** a flat-format KG needs `SKI_KG_ALLOW_FLAT=true` or a
+one-time conversion (`scripts/flat-kg-to-graph.py`); strict mode checks more
+before it starts (each check names its fix; `advisory` is unchanged). Existing
+ledgers upgrade in place (`0003_ledger_v5.sql`). See `docs/releases/v3.3.0.md`.
 
 ### Black-box conformance suite
 
@@ -64,7 +80,7 @@ referenced from each release entry.
   every answer went to human review or was reported unmapped. That is the safe
   floor; useful accuracy needs a larger model.
 
-### Specification 3.1 (RFC 0004, accepted)
+### Specification 3.1 (RFC 0004)
 
 - **RFC 0004 and the Specification 3.1 text (accepted).** The
   prose now says what the contracts and vectors already pin: canonical JSON is
