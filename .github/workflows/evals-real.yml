@@ -1,0 +1,105 @@
+name: Evals (real models)
+
+# SKI Evals with real open-weight language models from two model families,
+# on CPU through Ollama: every dataset under three decoder seeds. Each
+# (model, seed, dataset) is one job; the summary job pools them and reports
+# Wilson 95% intervals (evals/summary.py). The per-case reports and the
+# summary are uploaded as artifacts and printed to the job summary.
+#
+# Weekly, on demand, and on pull requests that change the evals.
+
+on:
+  schedule:
+    - cron: "41 2 * * 0"  # weekly, Sunday 02:41 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "evals/**"
+      - "!evals/reports/**"  # committing a run's results must not start another run
+      - ".github/workflows/evals-real.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-real-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  run:
+    name: ${{ matrix.model }} / seed ${{ matrix.seed }} / ${{ matrix.dataset }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        model: ["qwen2.5:1.5b", "llama3.2:1b"]
+        seed: [0, 1, 2]
+        dataset: [energy, finance, manufacturing]
+    env:
+      OLLAMA_VERSION: "0.6.8"
+      OLLAMA_BASE_URL: http://127.0.0.1:11434
+      SKI_MODEL_NAME: ${{ matrix.model }}
+      SKI_MODEL_SEED: ${{ matrix.seed }}
+      # 512 (default) truncates reasoning+assertions JSON; CPU inference with
+      # schema-constrained decoding can take minutes per case (docs/evals.md).
+      SKI_MODEL_MAX_TOKENS: "1536"
+      SKI_OLLAMA_TIMEOUT_S: "600"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - run: pip install -e tools/ski-schemas
+      - name: Install and start Ollama
+        run: |
+          curl -fsSL https://ollama.com/install.sh | sh
+          (ollama serve > "$RUNNER_TEMP/ollama.log" 2>&1 &)
+          for _ in $(seq 1 60); do curl -fsS "$OLLAMA_BASE_URL/api/tags" > /dev/null && break; sleep 1; done
+          ollama --version
+      - name: Pull ${{ matrix.model }}
+        run: ollama pull "$SKI_MODEL_NAME"
+      - name: Evaluate
+        run: >-
+          python -m evals.run --backend ollama --dataset ${{ matrix.dataset }}
+          --seeds ${{ matrix.seed }} --dump-raw --out evals-real
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: evals-real-${{ strategy.job-index }}
+          path: evals-real/
+          if-no-files-found: warn
+
+  summary:
+    name: Summary (Wilson 95% intervals)
+    needs: run
+    # Summarize whatever finished (a failed model job must not hide the others),
+    # but not a run that was cancelled by a newer push.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: evals-real-*
+          path: evals-real
+          merge-multiple: true
+      - name: Summarize
+        run: |
+          python -m evals.summary evals-real --out evals-real/evals-summary
+          {
+            echo "Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} (commit ${GITHUB_SHA})"
+            echo
+            cat evals-real/evals-summary.md
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "----- evals-summary.json -----"
+          cat evals-real/evals-summary.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: evals-real-summary
+          path: evals-real/

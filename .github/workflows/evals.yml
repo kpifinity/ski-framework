@@ -1,14 +1,12 @@
 # SKI Evals — verdict-accuracy evaluation suite.
 #
-# Two jobs:
+# One job here:
 #   * evals-fake: gating harness check on every PR that touches evals/
 #     or the v3 evaluator. FakeLLM baseline is pinned by
 #     evals/tests/test_evals_harness.py, so any behaviour change in the
 #     evaluator/verifier/scoping shows up here as a red diff.
-#   * evals-ollama: nightly real-model run (qwen2.5:7b-instruct on the
-#     runner's CPU). Best-effort: model download or inference flakiness
-#     must not block anything, so it is continue-on-error; the report is
-#     uploaded as an artifact either way.
+#   Real-model runs (two model families, three seeds, every dataset, Wilson
+#   95% intervals) are in evals-real.yml.
 name: evals
 
 on:
@@ -36,48 +34,12 @@ jobs:
           cache: pip
       - run: pip install -r requirements-dev.txt
       - run: pytest -q evals/tests/
-      - run: python -m evals.run --backend fake --out evals-report
+      - run: python -m evals.datasets.generate --check
+      - run: python -m evals.run --backend fake --dataset all --seeds 0 1 2 --out evals-report
         env:
           # v3.2.0: the backend factory refuses FakeLLM without this opt-in.
           SKI_ALLOW_FAKE_LLM: "true"
       - uses: actions/upload-artifact@v4
         with:
           name: evals-report-fake
-          path: evals-report/
-
-  evals-ollama:
-    name: Evals real model (Ollama, nightly)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    continue-on-error: true
-    timeout-minutes: 180
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
-          cache: pip
-      - run: pip install -r requirements-dev.txt
-      - name: Install and start Ollama
-        run: |
-          curl -fsSL https://ollama.com/install.sh | sh
-          ollama serve &
-          sleep 5
-          ollama pull qwen2.5:7b-instruct
-      - name: Run evals against the local model
-        env:
-          OLLAMA_BASE_URL: http://localhost:11434
-          SKI_MODEL_NAME: qwen2.5:7b-instruct
-          SKI_MODEL_SEED: "42"
-          # 512 (default) truncates reasoning+assertions JSON; truncation
-          # parses as malformed and falls back to DISCRETIONARY.
-          SKI_MODEL_MAX_TOKENS: "1536"
-          # CPU inference with schema-constrained decoding takes minutes
-          # per case; the 60s default read-timeout was the real cause of
-          # runs 1-3's DISCRETIONARY flood (ReadTimeout fallbacks).
-          SKI_OLLAMA_TIMEOUT_S: "600"
-        run: python -m evals.run --backend ollama --seed 42 --dump-raw --out evals-report
-      - uses: actions/upload-artifact@v4
-        with:
-          name: evals-report-ollama
           path: evals-report/

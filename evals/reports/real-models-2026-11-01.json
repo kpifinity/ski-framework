@@ -1,0 +1,1723 @@
+{
+  "run": "https://github.com/kpifinity/ski-framework/actions/runs/41346707708",
+  "pr_head": "19e8a56b01e5c773fb06b38e0d242ad0a963a042",
+  "ollama": "0.6.8",
+  "models": {
+    "llama3.2:1b": {
+      "backend": "ollama-v3",
+      "model_weight_hash": "sha256:74701a8c35f6c8d9a4b91f3f3497643001d63e0c7a84e085bed452548fa88d45",
+      "seeds": {
+        "0": {
+          "datasets": [
+            "energy",
+            "finance",
+            "manufacturing"
+          ],
+          "pooled": {
+            "verdict_accuracy": {
+              "k": 36,
+              "n": 312,
+              "rate": 0.11538461538461539,
+              "ci95": [
+                0.0845,
+                0.1556
+              ]
+            },
+            "flag_recall": {
+              "k": 0,
+              "n": 97,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0381
+              ]
+            },
+            "flag_precision": {
+              "k": 0,
+              "n": 0,
+              "rate": null,
+              "ci95": [
+                0.0,
+                1.0
+              ]
+            },
+            "null_unmapped_recall": {
+              "k": 35,
+              "n": 64,
+              "rate": 0.546875,
+              "ci95": [
+                0.4257,
+                0.6627
+              ]
+            },
+            "null_stale_recall": {
+              "k": 1,
+              "n": 43,
+              "rate": 0.023255813953488372,
+              "ci95": [
+                0.0041,
+                0.1206
+              ]
+            },
+            "discretionary_rate": {
+              "k": 248,
+              "n": 312,
+              "rate": 0.7948717948717948,
+              "ci95": [
+                0.7466,
+                0.836
+              ]
+            },
+            "verifier_agreement": {
+              "k": 0,
+              "n": 245,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0154
+              ]
+            },
+            "breaches_silently_cleared": 0,
+            "silent_sensors_cleared": 0,
+            "n_cases": 312
+          },
+          "per_dataset": {
+            "energy": {
+              "verdict_accuracy": {
+                "k": 12,
+                "n": 55,
+                "rate": 0.21818181818181817,
+                "ci95": [
+                  0.1295,
+                  0.3437
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 12,
+                "n": 12,
+                "rate": 1.0,
+                "ci95": [
+                  0.7575,
+                  1.0
+                ]
+              },
+              "null_stale_recall": {
+                "k": 0,
+                "n": 5,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.4345
+                ]
+              },
+              "discretionary_rate": {
+                "k": 18,
+                "n": 55,
+                "rate": 0.32727272727272727,
+                "ci95": [
+                  0.2181,
+                  0.459
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 55
+            },
+            "finance": {
+              "verdict_accuracy": {
+                "k": 13,
+                "n": 129,
+                "rate": 0.10077519379844961,
+                "ci95": [
+                  0.0598,
+                  0.1648
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 38,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0918
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 12,
+                "n": 26,
+                "rate": 0.46153846153846156,
+                "ci95": [
+                  0.2876,
+                  0.6454
+                ]
+              },
+              "null_stale_recall": {
+                "k": 1,
+                "n": 19,
+                "rate": 0.05263157894736842,
+                "ci95": [
+                  0.0094,
+                  0.2464
+                ]
+              },
+              "discretionary_rate": {
+                "k": 114,
+                "n": 129,
+                "rate": 0.8837209302325582,
+                "ci95": [
+                  0.817,
+                  0.9283
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 113,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0329
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 129
+            },
+            "manufacturing": {
+              "verdict_accuracy": {
+                "k": 11,
+                "n": 128,
+                "rate": 0.0859375,
+                "ci95": [
+                  0.0487,
+                  0.1473
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 41,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0857
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 11,
+                "n": 26,
+                "rate": 0.4230769230769231,
+                "ci95": [
+                  0.2554,
+                  0.6105
+                ]
+              },
+              "null_stale_recall": {
+                "k": 0,
+                "n": 19,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1682
+                ]
+              },
+              "discretionary_rate": {
+                "k": 116,
+                "n": 128,
+                "rate": 0.90625,
+                "ci95": [
+                  0.8433,
+                  0.9456
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 114,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0326
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 128
+            }
+          }
+        },
+        "1": {
+          "datasets": [
+            "energy",
+            "finance",
+            "manufacturing"
+          ],
+          "pooled": {
+            "verdict_accuracy": {
+              "k": 36,
+              "n": 312,
+              "rate": 0.11538461538461539,
+              "ci95": [
+                0.0845,
+                0.1556
+              ]
+            },
+            "flag_recall": {
+              "k": 0,
+              "n": 97,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0381
+              ]
+            },
+            "flag_precision": {
+              "k": 0,
+              "n": 0,
+              "rate": null,
+              "ci95": [
+                0.0,
+                1.0
+              ]
+            },
+            "null_unmapped_recall": {
+              "k": 35,
+              "n": 64,
+              "rate": 0.546875,
+              "ci95": [
+                0.4257,
+                0.6627
+              ]
+            },
+            "null_stale_recall": {
+              "k": 1,
+              "n": 43,
+              "rate": 0.023255813953488372,
+              "ci95": [
+                0.0041,
+                0.1206
+              ]
+            },
+            "discretionary_rate": {
+              "k": 248,
+              "n": 312,
+              "rate": 0.7948717948717948,
+              "ci95": [
+                0.7466,
+                0.836
+              ]
+            },
+            "verifier_agreement": {
+              "k": 0,
+              "n": 245,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0154
+              ]
+            },
+            "breaches_silently_cleared": 0,
+            "silent_sensors_cleared": 0,
+            "n_cases": 312
+          },
+          "per_dataset": {
+            "energy": {
+              "verdict_accuracy": {
+                "k": 12,
+                "n": 55,
+                "rate": 0.21818181818181817,
+                "ci95": [
+                  0.1295,
+                  0.3437
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 12,
+                "n": 12,
+                "rate": 1.0,
+                "ci95": [
+                  0.7575,
+                  1.0
+                ]
+              },
+              "null_stale_recall": {
+                "k": 0,
+                "n": 5,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.4345
+                ]
+              },
+              "discretionary_rate": {
+                "k": 18,
+                "n": 55,
+                "rate": 0.32727272727272727,
+                "ci95": [
+                  0.2181,
+                  0.459
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 55
+            },
+            "finance": {
+              "verdict_accuracy": {
+                "k": 13,
+                "n": 129,
+                "rate": 0.10077519379844961,
+                "ci95": [
+                  0.0598,
+                  0.1648
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 38,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0918
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 12,
+                "n": 26,
+                "rate": 0.46153846153846156,
+                "ci95": [
+                  0.2876,
+                  0.6454
+                ]
+              },
+              "null_stale_recall": {
+                "k": 1,
+                "n": 19,
+                "rate": 0.05263157894736842,
+                "ci95": [
+                  0.0094,
+                  0.2464
+                ]
+              },
+              "discretionary_rate": {
+                "k": 114,
+                "n": 129,
+                "rate": 0.8837209302325582,
+                "ci95": [
+                  0.817,
+                  0.9283
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 113,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0329
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 129
+            },
+            "manufacturing": {
+              "verdict_accuracy": {
+                "k": 11,
+                "n": 128,
+                "rate": 0.0859375,
+                "ci95": [
+                  0.0487,
+                  0.1473
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 41,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0857
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 11,
+                "n": 26,
+                "rate": 0.4230769230769231,
+                "ci95": [
+                  0.2554,
+                  0.6105
+                ]
+              },
+              "null_stale_recall": {
+                "k": 0,
+                "n": 19,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1682
+                ]
+              },
+              "discretionary_rate": {
+                "k": 116,
+                "n": 128,
+                "rate": 0.90625,
+                "ci95": [
+                  0.8433,
+                  0.9456
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 114,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0326
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 128
+            }
+          }
+        },
+        "2": {
+          "datasets": [
+            "energy",
+            "finance",
+            "manufacturing"
+          ],
+          "pooled": {
+            "verdict_accuracy": {
+              "k": 36,
+              "n": 312,
+              "rate": 0.11538461538461539,
+              "ci95": [
+                0.0845,
+                0.1556
+              ]
+            },
+            "flag_recall": {
+              "k": 0,
+              "n": 97,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0381
+              ]
+            },
+            "flag_precision": {
+              "k": 0,
+              "n": 0,
+              "rate": null,
+              "ci95": [
+                0.0,
+                1.0
+              ]
+            },
+            "null_unmapped_recall": {
+              "k": 35,
+              "n": 64,
+              "rate": 0.546875,
+              "ci95": [
+                0.4257,
+                0.6627
+              ]
+            },
+            "null_stale_recall": {
+              "k": 1,
+              "n": 43,
+              "rate": 0.023255813953488372,
+              "ci95": [
+                0.0041,
+                0.1206
+              ]
+            },
+            "discretionary_rate": {
+              "k": 248,
+              "n": 312,
+              "rate": 0.7948717948717948,
+              "ci95": [
+                0.7466,
+                0.836
+              ]
+            },
+            "verifier_agreement": {
+              "k": 0,
+              "n": 245,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0154
+              ]
+            },
+            "breaches_silently_cleared": 0,
+            "silent_sensors_cleared": 0,
+            "n_cases": 312
+          },
+          "per_dataset": {
+            "energy": {
+              "verdict_accuracy": {
+                "k": 12,
+                "n": 55,
+                "rate": 0.21818181818181817,
+                "ci95": [
+                  0.1295,
+                  0.3437
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 12,
+                "n": 12,
+                "rate": 1.0,
+                "ci95": [
+                  0.7575,
+                  1.0
+                ]
+              },
+              "null_stale_recall": {
+                "k": 0,
+                "n": 5,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.4345
+                ]
+              },
+              "discretionary_rate": {
+                "k": 18,
+                "n": 55,
+                "rate": 0.32727272727272727,
+                "ci95": [
+                  0.2181,
+                  0.459
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 55
+            },
+            "finance": {
+              "verdict_accuracy": {
+                "k": 13,
+                "n": 129,
+                "rate": 0.10077519379844961,
+                "ci95": [
+                  0.0598,
+                  0.1648
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 38,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0918
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 12,
+                "n": 26,
+                "rate": 0.46153846153846156,
+                "ci95": [
+                  0.2876,
+                  0.6454
+                ]
+              },
+              "null_stale_recall": {
+                "k": 1,
+                "n": 19,
+                "rate": 0.05263157894736842,
+                "ci95": [
+                  0.0094,
+                  0.2464
+                ]
+              },
+              "discretionary_rate": {
+                "k": 114,
+                "n": 129,
+                "rate": 0.8837209302325582,
+                "ci95": [
+                  0.817,
+                  0.9283
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 113,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0329
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 129
+            },
+            "manufacturing": {
+              "verdict_accuracy": {
+                "k": 11,
+                "n": 128,
+                "rate": 0.0859375,
+                "ci95": [
+                  0.0487,
+                  0.1473
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 41,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0857
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 11,
+                "n": 26,
+                "rate": 0.4230769230769231,
+                "ci95": [
+                  0.2554,
+                  0.6105
+                ]
+              },
+              "null_stale_recall": {
+                "k": 0,
+                "n": 19,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1682
+                ]
+              },
+              "discretionary_rate": {
+                "k": 116,
+                "n": 128,
+                "rate": 0.90625,
+                "ci95": [
+                  0.8433,
+                  0.9456
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 114,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0326
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 128
+            }
+          }
+        }
+      },
+      "seed_stability": {
+        "k": 312,
+        "n": 312,
+        "rate": 1.0,
+        "ci95": [
+          0.9878,
+          1.0
+        ]
+      }
+    },
+    "qwen2.5:1.5b": {
+      "backend": "ollama-v3",
+      "model_weight_hash": "sha256:183715c435899236895da3869489cc30ac241476b4971a20285b1a462818a5b4",
+      "seeds": {
+        "0": {
+          "datasets": [
+            "energy",
+            "finance",
+            "manufacturing"
+          ],
+          "pooled": {
+            "verdict_accuracy": {
+              "k": 53,
+              "n": 312,
+              "rate": 0.16987179487179488,
+              "ci95": [
+                0.1323,
+                0.2155
+              ]
+            },
+            "flag_recall": {
+              "k": 0,
+              "n": 97,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0381
+              ]
+            },
+            "flag_precision": {
+              "k": 0,
+              "n": 0,
+              "rate": null,
+              "ci95": [
+                0.0,
+                1.0
+              ]
+            },
+            "null_unmapped_recall": {
+              "k": 11,
+              "n": 64,
+              "rate": 0.171875,
+              "ci95": [
+                0.0988,
+                0.2821
+              ]
+            },
+            "null_stale_recall": {
+              "k": 41,
+              "n": 43,
+              "rate": 0.9534883720930233,
+              "ci95": [
+                0.8454,
+                0.9872
+              ]
+            },
+            "discretionary_rate": {
+              "k": 102,
+              "n": 312,
+              "rate": 0.3269230769230769,
+              "ci95": [
+                0.2773,
+                0.3808
+              ]
+            },
+            "verifier_agreement": {
+              "k": 0,
+              "n": 153,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0245
+              ]
+            },
+            "breaches_silently_cleared": 0,
+            "silent_sensors_cleared": 0,
+            "n_cases": 312
+          },
+          "per_dataset": {
+            "energy": {
+              "verdict_accuracy": {
+                "k": 7,
+                "n": 55,
+                "rate": 0.12727272727272726,
+                "ci95": [
+                  0.063,
+                  0.2402
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 3,
+                "n": 12,
+                "rate": 0.25,
+                "ci95": [
+                  0.0889,
+                  0.5323
+                ]
+              },
+              "null_stale_recall": {
+                "k": 4,
+                "n": 5,
+                "rate": 0.8,
+                "ci95": [
+                  0.3755,
+                  0.9638
+                ]
+              },
+              "discretionary_rate": {
+                "k": 18,
+                "n": 55,
+                "rate": 0.32727272727272727,
+                "ci95": [
+                  0.2181,
+                  0.459
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 19,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1682
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 55
+            },
+            "finance": {
+              "verdict_accuracy": {
+                "k": 19,
+                "n": 129,
+                "rate": 0.14728682170542637,
+                "ci95": [
+                  0.0964,
+                  0.2186
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 38,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0918
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 0,
+                "n": 26,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1287
+                ]
+              },
+              "null_stale_recall": {
+                "k": 18,
+                "n": 19,
+                "rate": 0.9473684210526315,
+                "ci95": [
+                  0.7536,
+                  0.9906
+                ]
+              },
+              "discretionary_rate": {
+                "k": 47,
+                "n": 129,
+                "rate": 0.3643410852713178,
+                "ci95": [
+                  0.2863,
+                  0.4502
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 84,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0437
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 129
+            },
+            "manufacturing": {
+              "verdict_accuracy": {
+                "k": 27,
+                "n": 128,
+                "rate": 0.2109375,
+                "ci95": [
+                  0.1492,
+                  0.2895
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 41,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0857
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 8,
+                "n": 26,
+                "rate": 0.3076923076923077,
+                "ci95": [
+                  0.165,
+                  0.4999
+                ]
+              },
+              "null_stale_recall": {
+                "k": 19,
+                "n": 19,
+                "rate": 1.0,
+                "ci95": [
+                  0.8318,
+                  1.0
+                ]
+              },
+              "discretionary_rate": {
+                "k": 37,
+                "n": 128,
+                "rate": 0.2890625,
+                "ci95": [
+                  0.2176,
+                  0.3728
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 50,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0713
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 128
+            }
+          }
+        },
+        "1": {
+          "datasets": [
+            "energy",
+            "finance",
+            "manufacturing"
+          ],
+          "pooled": {
+            "verdict_accuracy": {
+              "k": 53,
+              "n": 312,
+              "rate": 0.16987179487179488,
+              "ci95": [
+                0.1323,
+                0.2155
+              ]
+            },
+            "flag_recall": {
+              "k": 0,
+              "n": 97,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0381
+              ]
+            },
+            "flag_precision": {
+              "k": 0,
+              "n": 0,
+              "rate": null,
+              "ci95": [
+                0.0,
+                1.0
+              ]
+            },
+            "null_unmapped_recall": {
+              "k": 11,
+              "n": 64,
+              "rate": 0.171875,
+              "ci95": [
+                0.0988,
+                0.2821
+              ]
+            },
+            "null_stale_recall": {
+              "k": 41,
+              "n": 43,
+              "rate": 0.9534883720930233,
+              "ci95": [
+                0.8454,
+                0.9872
+              ]
+            },
+            "discretionary_rate": {
+              "k": 102,
+              "n": 312,
+              "rate": 0.3269230769230769,
+              "ci95": [
+                0.2773,
+                0.3808
+              ]
+            },
+            "verifier_agreement": {
+              "k": 0,
+              "n": 153,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0245
+              ]
+            },
+            "breaches_silently_cleared": 0,
+            "silent_sensors_cleared": 0,
+            "n_cases": 312
+          },
+          "per_dataset": {
+            "energy": {
+              "verdict_accuracy": {
+                "k": 7,
+                "n": 55,
+                "rate": 0.12727272727272726,
+                "ci95": [
+                  0.063,
+                  0.2402
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 3,
+                "n": 12,
+                "rate": 0.25,
+                "ci95": [
+                  0.0889,
+                  0.5323
+                ]
+              },
+              "null_stale_recall": {
+                "k": 4,
+                "n": 5,
+                "rate": 0.8,
+                "ci95": [
+                  0.3755,
+                  0.9638
+                ]
+              },
+              "discretionary_rate": {
+                "k": 18,
+                "n": 55,
+                "rate": 0.32727272727272727,
+                "ci95": [
+                  0.2181,
+                  0.459
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 19,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1682
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 55
+            },
+            "finance": {
+              "verdict_accuracy": {
+                "k": 19,
+                "n": 129,
+                "rate": 0.14728682170542637,
+                "ci95": [
+                  0.0964,
+                  0.2186
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 38,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0918
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 0,
+                "n": 26,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1287
+                ]
+              },
+              "null_stale_recall": {
+                "k": 18,
+                "n": 19,
+                "rate": 0.9473684210526315,
+                "ci95": [
+                  0.7536,
+                  0.9906
+                ]
+              },
+              "discretionary_rate": {
+                "k": 47,
+                "n": 129,
+                "rate": 0.3643410852713178,
+                "ci95": [
+                  0.2863,
+                  0.4502
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 84,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0437
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 129
+            },
+            "manufacturing": {
+              "verdict_accuracy": {
+                "k": 27,
+                "n": 128,
+                "rate": 0.2109375,
+                "ci95": [
+                  0.1492,
+                  0.2895
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 41,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0857
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 8,
+                "n": 26,
+                "rate": 0.3076923076923077,
+                "ci95": [
+                  0.165,
+                  0.4999
+                ]
+              },
+              "null_stale_recall": {
+                "k": 19,
+                "n": 19,
+                "rate": 1.0,
+                "ci95": [
+                  0.8318,
+                  1.0
+                ]
+              },
+              "discretionary_rate": {
+                "k": 37,
+                "n": 128,
+                "rate": 0.2890625,
+                "ci95": [
+                  0.2176,
+                  0.3728
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 50,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0713
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 128
+            }
+          }
+        },
+        "2": {
+          "datasets": [
+            "energy",
+            "finance",
+            "manufacturing"
+          ],
+          "pooled": {
+            "verdict_accuracy": {
+              "k": 55,
+              "n": 312,
+              "rate": 0.1762820512820513,
+              "ci95": [
+                0.138,
+                0.2224
+              ]
+            },
+            "flag_recall": {
+              "k": 0,
+              "n": 97,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0381
+              ]
+            },
+            "flag_precision": {
+              "k": 0,
+              "n": 0,
+              "rate": null,
+              "ci95": [
+                0.0,
+                1.0
+              ]
+            },
+            "null_unmapped_recall": {
+              "k": 12,
+              "n": 64,
+              "rate": 0.1875,
+              "ci95": [
+                0.1106,
+                0.2997
+              ]
+            },
+            "null_stale_recall": {
+              "k": 41,
+              "n": 43,
+              "rate": 0.9534883720930233,
+              "ci95": [
+                0.8454,
+                0.9872
+              ]
+            },
+            "discretionary_rate": {
+              "k": 105,
+              "n": 312,
+              "rate": 0.33653846153846156,
+              "ci95": [
+                0.2864,
+                0.3907
+              ]
+            },
+            "verifier_agreement": {
+              "k": 0,
+              "n": 148,
+              "rate": 0.0,
+              "ci95": [
+                0.0,
+                0.0253
+              ]
+            },
+            "breaches_silently_cleared": 0,
+            "silent_sensors_cleared": 0,
+            "n_cases": 312
+          },
+          "per_dataset": {
+            "energy": {
+              "verdict_accuracy": {
+                "k": 7,
+                "n": 55,
+                "rate": 0.12727272727272726,
+                "ci95": [
+                  0.063,
+                  0.2402
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 18,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1759
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 3,
+                "n": 12,
+                "rate": 0.25,
+                "ci95": [
+                  0.0889,
+                  0.5323
+                ]
+              },
+              "null_stale_recall": {
+                "k": 4,
+                "n": 5,
+                "rate": 0.8,
+                "ci95": [
+                  0.3755,
+                  0.9638
+                ]
+              },
+              "discretionary_rate": {
+                "k": 18,
+                "n": 55,
+                "rate": 0.32727272727272727,
+                "ci95": [
+                  0.2181,
+                  0.459
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 19,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.1682
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 55
+            },
+            "finance": {
+              "verdict_accuracy": {
+                "k": 21,
+                "n": 129,
+                "rate": 0.16279069767441862,
+                "ci95": [
+                  0.109,
+                  0.2361
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 38,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0918
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 1,
+                "n": 26,
+                "rate": 0.038461538461538464,
+                "ci95": [
+                  0.0068,
+                  0.1889
+                ]
+              },
+              "null_stale_recall": {
+                "k": 18,
+                "n": 19,
+                "rate": 0.9473684210526315,
+                "ci95": [
+                  0.7536,
+                  0.9906
+                ]
+              },
+              "discretionary_rate": {
+                "k": 50,
+                "n": 129,
+                "rate": 0.3875968992248062,
+                "ci95": [
+                  0.3079,
+                  0.4738
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 79,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0464
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 129
+            },
+            "manufacturing": {
+              "verdict_accuracy": {
+                "k": 27,
+                "n": 128,
+                "rate": 0.2109375,
+                "ci95": [
+                  0.1492,
+                  0.2895
+                ]
+              },
+              "flag_recall": {
+                "k": 0,
+                "n": 41,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0857
+                ]
+              },
+              "flag_precision": {
+                "k": 0,
+                "n": 0,
+                "rate": null,
+                "ci95": [
+                  0.0,
+                  1.0
+                ]
+              },
+              "null_unmapped_recall": {
+                "k": 8,
+                "n": 26,
+                "rate": 0.3076923076923077,
+                "ci95": [
+                  0.165,
+                  0.4999
+                ]
+              },
+              "null_stale_recall": {
+                "k": 19,
+                "n": 19,
+                "rate": 1.0,
+                "ci95": [
+                  0.8318,
+                  1.0
+                ]
+              },
+              "discretionary_rate": {
+                "k": 37,
+                "n": 128,
+                "rate": 0.2890625,
+                "ci95": [
+                  0.2176,
+                  0.3728
+                ]
+              },
+              "verifier_agreement": {
+                "k": 0,
+                "n": 50,
+                "rate": 0.0,
+                "ci95": [
+                  0.0,
+                  0.0713
+                ]
+              },
+              "breaches_silently_cleared": 0,
+              "silent_sensors_cleared": 0,
+              "n_cases": 128
+            }
+          }
+        }
+      },
+      "seed_stability": {
+        "k": 280,
+        "n": 312,
+        "rate": 0.8974358974358975,
+        "ci95": [
+          0.8588,
+          0.9264
+        ]
+      }
+    }
+  }
+}
