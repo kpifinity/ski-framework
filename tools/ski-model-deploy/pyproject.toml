@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ski-model-deploy"
-version = "3.2.0"
+version = "3.3.0"
 description = "Deploy and verify signed Knowledge Graphs against a SKI Model runtime."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,7 +24,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "ski-schemas>=3.2.0,<4",
+    "ski-schemas>=3.3.0,<4",
     "click>=8.1.7,<9",
     "pydantic>=2.13.4,<3",
     "python-dotenv>=1.2.2,<2",

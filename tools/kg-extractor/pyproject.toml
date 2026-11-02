@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ski-kg-extractor"
-version = "3.2.0"
+version = "3.3.0"
 description = "Extract compliance rules from regulatory documents using LLM-assisted parsing. Phase 1 only."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -25,7 +25,7 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = [
-    "ski-schemas>=3.2.0,<4",
+    "ski-schemas>=3.3.0,<4",
     "pydantic>=2.13.4,<3",
     "python-dotenv>=1.2.2,<2",
     "click>=8.1.7,<9",

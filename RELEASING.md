@@ -5,7 +5,7 @@ of the SKI Framework reference implementation and CLI tools. It assumes
 the reader is a member of `@kpifinity/maintainers` with write access to
 the repository and the `kpifinity` GHCR namespace.
 
-The specification version (currently **v3.0**) is decoupled from the
+The specification version (currently **v3.1**) is decoupled from the
 implementation version and is bumped through the RFC process in
 [docs/governance.md](./docs/governance.md), not as part of a release.
 

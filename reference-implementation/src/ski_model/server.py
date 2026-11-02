@@ -90,7 +90,7 @@ logging.basicConfig(
 logger = logging.getLogger("ski_model.server")
 
 
-_VERSION = "3.2.0"
+_VERSION = "3.3.0"
 
 # Safe default when no tenant row and no SKI_MAX_CLOCK_SKEW_SECONDS override
 # are available; matches the telemetry_buffer.sql `tenants` column default.
