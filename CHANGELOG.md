@@ -64,6 +64,20 @@ referenced from each release entry.
   every answer went to human review or was reported unmapped. That is the safe
   floor; useful accuracy needs a larger model.
 
+### Specification 3.1 (RFC 0004, accepted)
+
+- **RFC 0004 and the Specification 3.1 text (accepted).** The
+  prose now says what the contracts and vectors already pin: canonical JSON is
+  RFC 8785 exactly, with its rejections (§7.3); NFC applies to string values
+  only; the assertion predicate set includes `must_equal`, `must_not_equal`,
+  `must_not_exceed_in_window` and `must_average_within`, with `window_seconds`
+  and value shapes (§4.4); the optional provenance fields are defined (§4.6);
+  `prompt_template_hash` is the template's hash and replay compares the
+  re-rendered prompt with the transcript (§5.2, §8.1); ledger storage is
+  specified by content, row or separate store (§7.1, §7.4); every Rule needs an
+  obligation (§3.3). Vendor names are out of the normative text (editor, the
+  reference-implementation definition, §2.1.2, §7.5 receipt schemes).
+
 ### One Knowledge Graph shape (spec §3, §5.1, §11.2)
 
 - **Subject routing (spec §5.1).** The KG slice for a measurement now holds only

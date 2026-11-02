@@ -63,10 +63,11 @@ An adapter for another implementation follows the same pattern. Tests whose
 options are missing skip rather than fail; the ledger-evidence tests skip if
 the implementation has no `GET /api/ledger/{n}/evidence`.
 
-## Where the reference and the text differ
+## What the suite leaves open
 
-Writing this suite surfaced places where the specification's wording and
-the reference implementation disagree, and both are defensible. The suite
-accepts either behaviour there and RFC 0004 records them for the Spec
-Editor: the verifier status of a FLAG whose assertions all hold, the verdict
-for a subject absent from the KG, and the `high` / `low` risk-tier rules.
+Writing this suite surfaced places where the 3.0 wording and the reference
+implementation disagreed; RFC 0004 settled them in Specification 3.1 (the
+verifier status after `satisfied` correction, the verdict for a subject with
+an empty slice, the `low` tier). Where 3.1 allows more than one answer the
+suite accepts each. The `high` tier's attestation hold is deferred, so the
+suite does not test `high` or `low` Rules; its fixture KG is `medium`.
