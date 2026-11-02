@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ski-audit-ledger"
-version = "3.2.0"
+version = "3.3.0"
 description = "Audit ledger management tool for the SKI Framework."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,7 +23,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "ski-schemas>=3.2.0,<4",
+    "ski-schemas>=3.3.0,<4",
     "cryptography>=46,<52",
     "psycopg[binary]>=3.1.18,<4",
     "sqlalchemy>=2.0.27,<3",

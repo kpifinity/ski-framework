@@ -29,7 +29,7 @@ from .kg import KGObligation
 from .measurement import MeasurementRecord
 from .transcript import LLMTranscript, hash_pair, signing_message
 
-__version__ = "3.2.0"
+__version__ = "3.3.0"
 
 __all__ = [
     "CanonicalizationError",

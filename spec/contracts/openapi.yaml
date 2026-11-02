@@ -375,7 +375,7 @@ info:
   description: Public contract for the SKI Model API, pruned to the four public paths. Generated from
     the FastAPI app by spec/contracts/generate_openapi.py; do not edit by hand.
   title: SKI Model Inference Engine
-  version: 3.2.0
+  version: 3.3.0
 openapi: 3.1.0
 paths:
   /api/evaluate:

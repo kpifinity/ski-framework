@@ -15,7 +15,7 @@ image:
   # clusters: mirror this image into your internal registry and point
   # repository at the mirror.
   repository: ghcr.io/kpifinity/ski-model
-  tag: "3.2.0"
+  tag: "3.3.0"
   # Optional sha256:<hex> image digest. When set the pod pulls
   # repository@digest and /api/sovereignty attests it (SKI_IMAGE_DIGEST).
   digest: ""
